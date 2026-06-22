@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Default token values (overridden by JS via setProperty) ───────────── */
+:root {
+  --surface: #1a1b1e;
+  --surface-raised: #25262b;
+  --surface-overlay: #2c2d33;
+  --sidebar: #141517;
+  --accent: #5865f2;
+  --accent-hover: #4752c4;
+  --border: #373a40;
+  --text-primary: #f2f2f2;
+  --text-secondary: #a6a7ab;
+  --text-muted: #6d6f75;
+  --grid-color: rgba(255, 255, 255, 0.04);
+  --grid-accent-color: rgba(255, 255, 255, 0.08);
+  --app-font: "Inter", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--app-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Board / expanded block grid background */
+.board-grid {
+  background-image:
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
+    linear-gradient(var(--grid-accent-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-accent-color) 1px, transparent 1px);
+  background-size:
+    20px 20px, 20px 20px, 100px 100px, 100px 100px;
+  background-position:
+    -1px -1px, -1px -1px, -1px -1px, -1px -1px;
+}
+
+/* Dragging state */
+.dragging { opacity: 0.5; cursor: grabbing !important; }
+
+/* Selection ring */
+.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
