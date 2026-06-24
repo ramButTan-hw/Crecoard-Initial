@@ -3,9 +3,16 @@
 import { useCallback, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Lock, Copy, X, ChevronDown } from "lucide-react";
-import { Box, useBoardStore, useActiveBoard, resolveVars } from "@/store/boardStore";
+import {
+  ChevronDown,
+  Edit3, Copy, Trash2, Lock, Unlock,
+  CopyPlus, Clipboard, ArrowUpToLine, ArrowDownToLine,
+  SquareDashedMousePointer, Maximize2,
+} from "lucide-react";
+import { Box, BlockItem, useBoardStore, useActiveBoard, resolveVars } from "@/store/boardStore";
 import { ItemRenderer } from "@/components/items/ItemRenderer";
+import { DeckBox } from "./DeckBox";
+import { ContextMenu } from "@/components/ui/ContextMenu";
 import { cn } from "@/lib/utils";
 
 const MIN_W = 160;
@@ -14,6 +21,105 @@ const GRID = 20;
 
 function snap(v: number) { return Math.round(v / GRID) * GRID; }
 
+// ─── Collapsed item card (absolute-positioned, draggable + resizable) ──────────
+
+function CollapsedItemCard({
+  item, idx, boardId, boxId, boxW, padding, vars, isFinished, zoom,
+}: {
+  item: BlockItem; idx: number;
+  boardId: string; boxId: string;
+  boxW: number; padding: number;
+  vars: Record<string, number>; isFinished: boolean; zoom: number;
+}) {
+  const { moveCollapsedItem, resizeCollapsedItem } = useBoardStore();
+  const [livePos, setLivePos] = useState<{ x: number; y: number } | null>(null);
+  const [liveSize, setLiveSize] = useState<{ w: number; h: number } | null>(null);
+
+  const defaultW = Math.max(80, boxW - padding * 2 - 8);
+  const x = item.collapsedX ?? padding;
+  const y = item.collapsedY ?? (padding + idx * 46);
+  const w = item.collapsedW ?? defaultW;
+  const h = item.collapsedH ?? 40;
+
+  const displayX = livePos?.x ?? x;
+  const displayY = livePos?.y ?? y;
+  const displayW = liveSize?.w ?? w;
+  const displayH = liveSize?.h ?? h;
+
+  const handleDragStart = (e: React.PointerEvent) => {
+    if (isFinished) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const onMove = (ev: PointerEvent) => {
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
+      setLivePos({ x: Math.max(0, x + dx), y: Math.max(0, y + dy) });
+    };
+    const onUp = (ev: PointerEvent) => {
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
+      moveCollapsedItem(boardId, boxId, item.id, Math.max(0, Math.round(x + dx)), Math.max(0, Math.round(y + dy)));
+      setLivePos(null);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  const handleResizeStart = (e: React.PointerEvent) => {
+    if (isFinished) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const onMove = (ev: PointerEvent) => {
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
+      setLiveSize({ w: Math.max(60, w + dx), h: Math.max(20, h + dy) });
+    };
+    const onUp = (ev: PointerEvent) => {
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
+      resizeCollapsedItem(boardId, boxId, item.id, Math.max(60, Math.round(w + dx)), Math.max(20, Math.round(h + dy)));
+      setLiveSize(null);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  return (
+    <div
+      className="absolute group/ci"
+      style={{
+        left: displayX, top: displayY,
+        width: displayW, height: displayH,
+        overflow: "hidden",
+        cursor: isFinished ? "default" : "move",
+        zIndex: 1,
+      }}
+      onPointerDown={!isFinished ? handleDragStart : undefined}
+    >
+      <ItemRenderer item={item} boardId={boardId} boxId={boxId} vars={vars} collapsed isFinished={isFinished} containerW={displayW} containerH={displayH} />
+      {!isFinished && (
+        <div
+          className="absolute bottom-0 right-0 w-3 h-3 opacity-0 group-hover/ci:opacity-60 transition-opacity"
+          style={{
+            cursor: "se-resize",
+            background: "linear-gradient(135deg, transparent 50%, var(--accent) 50%)",
+            zIndex: 10,
+          }}
+          onPointerDown={handleResizeStart}
+        />
+      )}
+    </div>
+  );
+}
+
 interface BoardBoxProps {
   box: Box;
   boardId: string;
@@ -21,67 +127,94 @@ interface BoardBoxProps {
 }
 
 export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
-  const { selectBox, removeBox, updateBox, resizeBox, addBox, bringToFront, setExpandedBox } = useBoardStore();
+  const {
+    selectBox, removeBox, updateBox, resizeBox, moveBox, bringToFront, sendToBack,
+    duplicateBox, copyBox, pasteBox, copiedBox, setExpandedBox,
+  } = useBoardStore();
+  const zoom = useBoardStore(s => s.zoom);
   const board = useActiveBoard();
   const isFinished = board?.isFinished ?? false;
 
-  // Whole block is draggable — click fires when no drag movement (dnd-kit distance threshold)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameInput, setRenameInput] = useState(box.title);
+
+  // ─── Drag ───────────────────────────────────────────────────────────────────
   const { attributes, listeners, setNodeRef: setDragRef, transform } = useDraggable({
     id: box.id,
     disabled: box.locked || isFinished,
     data: { kind: "block" },
   });
 
-  // Droppable — accepts palette items
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `drop-${box.id}`,
     data: { kind: "block-drop-zone" },
     disabled: isFinished,
   });
 
-  const setRef = (el: HTMLElement | null) => {
-    setDragRef(el);
-    setDropRef(el);
-  };
+  const setRef = (el: HTMLElement | null) => { setDragRef(el); setDropRef(el); };
 
-  // Resize
+  // ─── Resize ─────────────────────────────────────────────────────────────────
   const resizing = useRef(false);
-  const resizeStart = useRef({ x: 0, y: 0, w: 0, h: 0 });
-  const [liveSize, setLiveSize] = useState<{ w: number; h: number } | null>(null);
+  const resizeOrigin = useRef({ mx: 0, my: 0, x: 0, y: 0, w: 0, h: 0 });
+  const [liveBox, setLiveBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
-  const onResizeMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (box.locked) return;
-      e.stopPropagation(); e.preventDefault();
-      resizing.current = true;
-      resizeStart.current = { x: e.clientX, y: e.clientY, w: box.width, h: box.height };
+  const makeResizeHandler = useCallback(
+    (edges: { n?: boolean; s?: boolean; e?: boolean; w?: boolean }) =>
+      (e: React.MouseEvent) => {
+        if (box.locked || isFinished) return;
+        e.stopPropagation(); e.preventDefault();
+        resizing.current = true;
+        resizeOrigin.current = { mx: e.clientX, my: e.clientY, x: box.x, y: box.y, w: box.width, h: box.height };
 
-      const onMove = (ev: MouseEvent) => {
-        if (!resizing.current) return;
-        setLiveSize({
-          w: Math.max(MIN_W, snap(resizeStart.current.w + ev.clientX - resizeStart.current.x)),
-          h: Math.max(MIN_H, snap(resizeStart.current.h + ev.clientY - resizeStart.current.y)),
-        });
-      };
-      const onUp = (ev: MouseEvent) => {
-        resizing.current = false;
-        resizeBox(boardId, box.id,
-          Math.max(MIN_W, snap(resizeStart.current.w + ev.clientX - resizeStart.current.x)),
-          Math.max(MIN_H, snap(resizeStart.current.h + ev.clientY - resizeStart.current.y))
-        );
-        setLiveSize(null);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    },
-    [boardId, box.id, box.width, box.height, box.locked, resizeBox]
+        const compute = (ev: MouseEvent) => {
+          const dx = (ev.clientX - resizeOrigin.current.mx) / zoom;
+          const dy = (ev.clientY - resizeOrigin.current.my) / zoom;
+          let { x, y, w, h } = resizeOrigin.current;
+          if (edges.e) w = Math.max(MIN_W, snap(w + dx));
+          if (edges.s) h = Math.max(MIN_H, snap(h + dy));
+          if (edges.w) { const nw = Math.max(MIN_W, snap(w - dx)); x = snap(x + w - nw); w = nw; }
+          if (edges.n) { const nh = Math.max(MIN_H, snap(h - dy)); y = snap(y + h - nh); h = nh; }
+          return { x: Math.max(0, x), y: Math.max(0, y), w, h };
+        };
+
+        const onMove = (ev: MouseEvent) => { if (resizing.current) setLiveBox(compute(ev)); };
+        const onUp = (ev: MouseEvent) => {
+          resizing.current = false;
+          const { x, y, w, h } = compute(ev);
+          moveBox(boardId, box.id, x, y);
+          resizeBox(boardId, box.id, w, h);
+          setLiveBox(null);
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      },
+    [boardId, box.id, box.x, box.y, box.width, box.height, box.locked, isFinished, zoom, moveBox, resizeBox]
   );
 
+  // ─── Context menu handler ────────────────────────────────────────────────────
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    if (isFinished) return;
+    e.preventDefault();
+    e.stopPropagation();
+    selectBox(box.id);
+    bringToFront(boardId, box.id);
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, [isFinished, selectBox, bringToFront, boardId, box.id]);
+
+  const commitRename = useCallback(() => {
+    if (renameInput.trim()) updateBox(boardId, box.id, { title: renameInput.trim() });
+    setIsRenaming(false);
+  }, [boardId, box.id, renameInput, updateBox]);
+
+  // ─── Derived styles ──────────────────────────────────────────────────────────
   const s = box.style;
-  const displayW = liveSize?.w ?? box.width;
-  const displayH = liveSize?.h ?? box.height;
+  const displayW = liveBox?.w ?? box.width;
+  const displayH = liveBox?.h ?? box.height;
+  const displayX = liveBox?.x ?? box.x;
+  const displayY = liveBox?.y ?? box.y;
   const transformStyle = transform ? CSS.Translate.toString(transform) : undefined;
 
   const wallpaperStyle: React.CSSProperties = s.wallpaperUrl
@@ -99,140 +232,261 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
   };
 
   const isGlow = s.borderStyle === "glow";
-  const borderCSS = isGlow ? "none" : `${s.borderWidth}px ${s.borderStyle} ${s.borderColor}`;
-  const glowCSS = isGlow
+  const borderCSS = box.isDeck ? "none" : isGlow ? "none" : `${s.borderWidth}px ${s.borderStyle} ${s.borderColor}`;
+  const glowCSS = !box.isDeck && isGlow
     ? `0 0 ${s.borderWidth * 6}px ${s.borderColor}, 0 0 ${s.borderWidth * 14}px ${s.borderColor}66`
     : null;
-  const boxShadowCSS = [glowCSS, shadowMap[s.shadow]].filter(Boolean).join(", ") || "none";
+  const boxShadowCSS = [glowCSS, box.isDeck ? null : shadowMap[s.shadow]].filter(Boolean).join(", ") || "none";
 
   const summaryItems = box.items.filter((i) => i.showInCollapsed);
   const vars = resolveVars(box.items);
+  const draggingBlockId = useBoardStore(s => s.draggingBlockId);
+  const isDeckMergeTarget = isOver && !!draggingBlockId && draggingBlockId !== box.id && !box.isDeck;
+
+  // ─── Block context menu items ────────────────────────────────────────────────
+  const blockMenuItems = [
+    {
+      label: "Open block",
+      icon: <Maximize2 size={14} />,
+      onClick: () => setExpandedBox(box.id),
+    },
+    {
+      label: "Rename",
+      icon: <Edit3 size={14} />,
+      onClick: () => { setRenameInput(box.title); setIsRenaming(true); },
+    },
+    "separator" as const,
+    {
+      label: "Duplicate",
+      icon: <CopyPlus size={14} />,
+      shortcut: "⌘D",
+      onClick: () => duplicateBox(boardId, box.id),
+    },
+    {
+      label: "Copy block",
+      icon: <Copy size={14} />,
+      shortcut: "⌘C",
+      onClick: () => copyBox(boardId, box.id),
+    },
+    ...(copiedBox ? [{
+      label: "Paste as new block",
+      icon: <Clipboard size={14} />,
+      shortcut: "⌘V",
+      onClick: () => pasteBox(boardId, box.x + 32, box.y + 32),
+    }] : []),
+    "separator" as const,
+    {
+      label: box.locked ? "Unlock block" : "Lock block",
+      icon: box.locked ? <Unlock size={14} /> : <Lock size={14} />,
+      onClick: () => updateBox(boardId, box.id, { locked: !box.locked }),
+    },
+    {
+      label: "Bring to front",
+      icon: <ArrowUpToLine size={14} />,
+      onClick: () => bringToFront(boardId, box.id),
+    },
+    {
+      label: "Send to back",
+      icon: <ArrowDownToLine size={14} />,
+      onClick: () => sendToBack(boardId, box.id),
+    },
+    "separator" as const,
+    {
+      label: "Reset size",
+      icon: <SquareDashedMousePointer size={14} />,
+      onClick: () => resizeBox(boardId, box.id, 280, 220),
+    },
+    "separator" as const,
+    {
+      label: "Delete block",
+      icon: <Trash2 size={14} />,
+      danger: true,
+      onClick: () => removeBox(boardId, box.id),
+    },
+  ];
 
   return (
-    <div
-      ref={setRef}
-      {...(!box.locked && !isFinished ? listeners : {})}
-      {...(!box.locked && !isFinished ? attributes : {})}
-      className={cn(
-        "board-box absolute group",
-        isDragging && "dragging",
-        isOver && !isDragging && "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-transparent"
-      )}
-      style={{
-        left: box.x, top: box.y,
-        width: displayW, height: displayH,
-        zIndex: box.zIndex,
-        transform: transformStyle,
-        border: borderCSS,
-        borderRadius: s.borderRadius,
-        boxShadow: boxShadowCSS,
-        fontFamily: s.fontFamily, fontSize: s.fontSize,
-        color: s.fontColor,
-        fontWeight: s.fontWeight === "bold" ? 700 : s.fontWeight === "medium" ? 500 : 400,
-        overflow: "hidden",
-        cursor: box.locked || isFinished ? "default" : "pointer",
-        position: "absolute",
-        display: "flex",
-        flexDirection: "column",
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (!isFinished) {
-          selectBox(box.id);
-          bringToFront(boardId, box.id);
-        }
-        setExpandedBox(box.id);
-      }}
-    >
-      {/* Wallpaper layer */}
-      <div aria-hidden style={{ position: "absolute", inset: 0, borderRadius: "inherit", pointerEvents: "none", zIndex: 0, ...wallpaperStyle }} />
+    <>
+      <div
+        ref={setRef}
+        {...(!box.locked && !isFinished ? listeners : {})}
+        {...(!box.locked && !isFinished ? attributes : {})}
+        className={cn(
+          "board-box absolute group",
+          isDragging && "dragging",
+          isOver && !isDragging && "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-transparent"
+        )}
+        style={{
+          left: displayX, top: displayY,
+          width: displayW, height: displayH,
+          zIndex: box.zIndex,
+          transform: transformStyle,
+          border: liveBox ? "2px solid var(--accent)" : borderCSS,
+          borderRadius: s.borderRadius,
+          boxShadow: boxShadowCSS,
+          fontFamily: s.fontFamily, fontSize: s.fontSize,
+          color: s.fontColor,
+          fontWeight: s.fontWeight === "bold" ? 700 : s.fontWeight === "medium" ? 500 : 400,
+          overflow: "hidden",
+          cursor: box.locked || isFinished ? "default" : "pointer",
+          position: "absolute",
+          display: "flex",
+          flexDirection: "column",
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!isFinished) {
+            selectBox(box.id);
+            bringToFront(boardId, box.id);
+          }
+          if (!box.isDeck) setExpandedBox(box.id);
+        }}
+        onContextMenu={handleContextMenu}
+      >
+        {/* Dimension readout while resizing */}
+        {liveBox && (
+          <div aria-hidden style={{
+            position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            zIndex: 30, pointerEvents: "none",
+            background: "rgba(0,0,0,0.62)", backdropFilter: "blur(6px)",
+            color: "#fff", fontFamily: "ui-monospace, monospace",
+            fontSize: 11, padding: "4px 10px", borderRadius: 6,
+            whiteSpace: "nowrap", letterSpacing: "0.06em",
+          }}>
+            {Math.round(liveBox.w)} × {Math.round(liveBox.h)}
+          </div>
+        )}
 
-      {/* Drop zone highlight */}
-      {isOver && (
-        <div aria-hidden className="absolute inset-0 z-10 rounded-[inherit] border-2 border-dashed border-[var(--accent)] bg-[var(--accent)]/10 flex items-center justify-center pointer-events-none">
-          <span className="rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-semibold text-white shadow">Drop to add item</span>
-        </div>
-      )}
+        {/* Wallpaper layer */}
+        {!box.isDeck && <div aria-hidden style={{ position: "absolute", inset: 0, borderRadius: "inherit", pointerEvents: "none", zIndex: 0, ...wallpaperStyle }} />}
 
-      {/* Floating controls — top-right, appear on hover */}
-      {!isFinished && (
-        <div className="absolute top-2 right-2 z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={(e) => { e.stopPropagation(); updateBox(boardId, box.id, { locked: !box.locked }); }}
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white/60 hover:text-white backdrop-blur-sm transition-colors"
-            title={box.locked ? "Unlock" : "Lock"}
+        {/* Drop zone highlights */}
+        {isOver && isDeckMergeTarget && (
+          <div aria-hidden className="absolute inset-0 z-10 rounded-[inherit] border-2 border-dashed border-purple-400 bg-purple-400/10 flex items-center justify-center pointer-events-none">
+            <span className="rounded-full bg-purple-500 px-3 py-1 text-xs font-semibold text-white shadow">Drop to create slideshow</span>
+          </div>
+        )}
+        {isOver && !isDeckMergeTarget && !box.isDeck && (
+          <div aria-hidden className="absolute inset-0 z-10 rounded-[inherit] border-2 border-dashed border-[var(--accent)] bg-[var(--accent)]/10 flex items-center justify-center pointer-events-none">
+            <span className="rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-semibold text-white shadow">Drop to add item</span>
+          </div>
+        )}
+        {isOver && box.isDeck && !!draggingBlockId && (
+          <div aria-hidden className="absolute inset-0 z-10 rounded-[inherit] border-2 border-dashed border-purple-400 bg-purple-400/10 flex items-center justify-center pointer-events-none">
+            <span className="rounded-full bg-purple-500 px-3 py-1 text-xs font-semibold text-white shadow">Drop to add slide</span>
+          </div>
+        )}
+
+        {/* Block title / rename input — bottom-left */}
+        {isRenaming ? (
+          <input
+            autoFocus
+            value={renameInput}
+            onChange={e => setRenameInput(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={e => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setIsRenaming(false); }}
+            onClick={e => e.stopPropagation()}
+            className="absolute bottom-2 left-3 z-20 w-[65%] rounded bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white outline-none ring-1 ring-[var(--accent)]"
+            style={{ backdropFilter: "blur(4px)" }}
+          />
+        ) : box.title ? (
+          <div
+            aria-hidden
+            className="absolute bottom-2 left-3 z-10 max-w-[65%] truncate text-[11px] font-semibold pointer-events-none select-none"
+            style={{ color: s.fontColor, opacity: 0.5 }}
           >
-            <Lock size={11} className={box.locked ? "text-[var(--accent)]" : ""} />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); addBox(boardId, { ...box, x: box.x + 24, y: box.y + 24, title: box.title + " (copy)" }); }}
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white/60 hover:text-white backdrop-blur-sm transition-colors"
-            title="Duplicate"
-          >
-            <Copy size={11} />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); removeBox(boardId, box.id); }}
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500/80 text-white hover:bg-red-500 backdrop-blur-sm transition-colors"
-            title="Delete"
-          >
-            <X size={11} />
-          </button>
-        </div>
-      )}
+            {box.title}
+          </div>
+        ) : null}
 
-      {/* Block title — bottom-left, always visible but subtle */}
-      {box.title && (
-        <div
-          aria-hidden
-          className="absolute bottom-2 left-3 z-10 max-w-[65%] truncate text-[11px] font-semibold pointer-events-none select-none"
-          style={{ color: s.fontColor, opacity: 0.5 }}
-        >
-          {box.title}
-        </div>
-      )}
+        {/* Lock badge */}
+        {box.locked && !isFinished && (
+          <div className="absolute top-2 left-2 z-20 pointer-events-none">
+            <Lock size={11} className="text-[var(--accent)] opacity-70" />
+          </div>
+        )}
 
-      {/* Content */}
-      <div className="relative z-10 flex-1 overflow-auto" style={{ padding: s.padding }}>
-        {summaryItems.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center pointer-events-none">
-            {box.items.length === 0 ? (
-              !isFinished && <p className="text-xs" style={{ color: s.fontColor, opacity: 0.4 }}>Click to open</p>
-            ) : (
-              <>
-                <p className="text-xs" style={{ color: s.fontColor, opacity: 0.5 }}>{box.items.length} item{box.items.length !== 1 ? "s" : ""}</p>
-                {!isFinished && <p className="text-[10px]" style={{ color: s.fontColor, opacity: 0.3 }}>Click to expand</p>}
-              </>
-            )}
+        {/* Content */}
+        {box.isDeck ? (
+          <div className="relative z-10 flex-1 overflow-hidden">
+            <DeckBox deck={box} boardId={boardId} />
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {summaryItems.map((item) => (
-              <ItemRenderer key={item.id} item={item} boardId={boardId} boxId={box.id} vars={vars} collapsed isFinished={isFinished} />
-            ))}
-            {box.items.length > summaryItems.length && (
-              <span className="flex items-center gap-1 text-[10px] pointer-events-none" style={{ opacity: 0.4 }}>
-                <ChevronDown size={11} />
-                {box.items.length - summaryItems.length} more
-              </span>
+          <div className="relative z-10 flex-1 overflow-hidden">
+            {summaryItems.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center pointer-events-none" style={{ padding: s.padding }}>
+                {box.items.length === 0 ? (
+                  !isFinished && <p className="text-xs" style={{ color: s.fontColor, opacity: 0.4 }}>Click to open · right-click for options</p>
+                ) : (
+                  <>
+                    <p className="text-xs" style={{ color: s.fontColor, opacity: 0.5 }}>{box.items.length} item{box.items.length !== 1 ? "s" : ""}</p>
+                    {!isFinished && <p className="text-[10px]" style={{ color: s.fontColor, opacity: 0.3 }}>Click to expand</p>}
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="relative w-full h-full">
+                {summaryItems.map((item, idx) => (
+                  <CollapsedItemCard
+                    key={item.id}
+                    item={item}
+                    idx={idx}
+                    boardId={boardId}
+                    boxId={box.id}
+                    boxW={displayW}
+                    padding={s.padding}
+                    vars={vars}
+                    isFinished={isFinished}
+                    zoom={zoom}
+                  />
+                ))}
+                {box.items.length > summaryItems.length && (
+                  <div className="absolute bottom-1 left-2 flex items-center gap-1 text-[10px] pointer-events-none" style={{ opacity: 0.4 }}>
+                    <ChevronDown size={11} />
+                    {box.items.length - summaryItems.length} more
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
+
+        {/* 8-directional resize handles */}
+        {!isFinished && !box.locked && (<>
+          <div onMouseDown={makeResizeHandler({ n: true })} onClick={e => e.stopPropagation()} style={{ position:"absolute", top:0,    left:8,   right:8,  height:6,  cursor:"n-resize",  zIndex:15 }} className="group/edge-n">
+            <div className="absolute top-0 left-2 right-2 h-px bg-[var(--accent)] opacity-0 group-hover/edge-n:opacity-50 transition-opacity" />
+          </div>
+          <div onMouseDown={makeResizeHandler({ s: true })} onClick={e => e.stopPropagation()} style={{ position:"absolute", bottom:0, left:8,   right:8,  height:6,  cursor:"s-resize",  zIndex:15 }} className="group/edge-s">
+            <div className="absolute bottom-0 left-2 right-2 h-px bg-[var(--accent)] opacity-0 group-hover/edge-s:opacity-50 transition-opacity" />
+          </div>
+          <div onMouseDown={makeResizeHandler({ w: true })} onClick={e => e.stopPropagation()} style={{ position:"absolute", top:8,   left:0,   bottom:8, width:6,   cursor:"w-resize",  zIndex:15 }} className="group/edge-w">
+            <div className="absolute left-0 top-2 bottom-2 w-px bg-[var(--accent)] opacity-0 group-hover/edge-w:opacity-50 transition-opacity" />
+          </div>
+          <div onMouseDown={makeResizeHandler({ e: true })} onClick={e => e.stopPropagation()} style={{ position:"absolute", top:8,   right:0,  bottom:8, width:6,   cursor:"e-resize",  zIndex:15 }} className="group/edge-e">
+            <div className="absolute right-0 top-2 bottom-2 w-px bg-[var(--accent)] opacity-0 group-hover/edge-e:opacity-50 transition-opacity" />
+          </div>
+          <div onMouseDown={makeResizeHandler({ n:true, w:true })} onClick={e => e.stopPropagation()} style={{ position:"absolute", top:0,    left:0,  width:10, height:10, cursor:"nw-resize", zIndex:16 }} />
+          <div onMouseDown={makeResizeHandler({ n:true, e:true })} onClick={e => e.stopPropagation()} style={{ position:"absolute", top:0,    right:0, width:10, height:10, cursor:"ne-resize", zIndex:16 }} />
+          <div onMouseDown={makeResizeHandler({ s:true, w:true })} onClick={e => e.stopPropagation()} style={{ position:"absolute", bottom:0, left:0,  width:10, height:10, cursor:"sw-resize", zIndex:16 }} />
+          <div onMouseDown={makeResizeHandler({ s:true, e:true })} onClick={e => e.stopPropagation()} style={{ position:"absolute", bottom:0, right:0, width:16, height:16, cursor:"se-resize", zIndex:16 }} className="group/se">
+            <svg aria-hidden width="10" height="10" viewBox="0 0 10 10" style={{ position:"absolute", bottom:3, right:3, pointerEvents:"none" }} className="opacity-20 group-hover/se:opacity-65 transition-opacity">
+              <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" />
+              <circle cx="4.5" cy="8.5" r="1.5" fill="currentColor" />
+              <circle cx="8.5" cy="4.5" r="1.5" fill="currentColor" />
+            </svg>
+          </div>
+        </>)}
       </div>
 
-      {/* Resize handle */}
-      {!isFinished && !box.locked && (
-        <div
-          onMouseDown={onResizeMouseDown}
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: "absolute", right: 0, bottom: 0,
-            width: 16, height: 16, cursor: "se-resize",
-            background: "linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.25) 50%)",
-            zIndex: 10,
-          }}
+      {/* Context menu — portaled to body so it's never clipped by canvas transform */}
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          items={blockMenuItems}
+          onClose={() => setCtxMenu(null)}
         />
       )}
-    </div>
+    </>
   );
 }

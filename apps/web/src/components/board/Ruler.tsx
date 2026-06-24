@@ -50,7 +50,7 @@ export function Ruler({ zoom }: RulerProps) {
                   background: "var(--border)",
                 }}
               />
-              {i % 5 === 0 && (
+              {i % 5 === 0 && i > 0 && (
                 <span
                   style={{
                     position: "absolute",
@@ -108,7 +108,7 @@ export function Ruler({ zoom }: RulerProps) {
                   background: "var(--border)",
                 }}
               />
-              {i % 5 === 0 && (
+              {i % 5 === 0 && i > 0 && (
                 <span
                   style={{
                     position: "absolute",

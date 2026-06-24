@@ -1,16 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Check, Plus, Trash2, ExternalLink, Play, Pause, RotateCcw,
-  Wifi, WifiOff, ImageIcon, Upload, X as XIcon,
+  Wifi, WifiOff, ImageIcon, Upload, X as XIcon, Hash,
+  Filter, Search, ArrowUpDown, ArrowUp, ArrowDown,
+  Music, SkipBack, SkipForward, Repeat, Shuffle, Volume1, Volume2, VolumeX,
+  Radio, Users, Lock, LockOpen, CheckSquare, Square, Copy, FileDown,
 } from "lucide-react";
 import { WallpaperEditor } from "@/components/ui/WallpaperEditor";
 import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer,
+  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, Sector,
+  AreaChart, Area, RadarChart, Radar, PolarGrid, PolarAngleAxis,
+  ScatterChart, Scatter, ZAxis,
+  XAxis, YAxis, Tooltip, Legend, CartesianGrid, LabelList,
 } from "recharts";
-import { BlockItem, GameId, ListEntry, GraphPoint, useBoardStore, resolveVars } from "@/store/boardStore";
+import { BlockItem, CalendarEvent, CalendarFeed, TableLink, TableColumn, TableRow, TableFilter, FilterOp, ListEntry, PlaylistTrack, GraphPoint, useBoardStore, resolveVars } from "@/store/boardStore";
+import { useShallow } from "zustand/react/shallow";
 import { FontPicker } from "@/components/ui/FontPicker";
 import { loadGoogleFont } from "@/lib/fonts";
 import { DEFAULT_WIDGET_CODE } from "@/lib/defaultWidgetCode";
@@ -19,28 +26,30 @@ import { cn } from "@/lib/utils";
 
 const CHART_COLORS = ["#5865f2", "#48cfa6", "#f2994a", "#eb5757", "#9b51e0", "#2d9cdb"];
 
-const GAME_META: Record<GameId, { name: string; color: string; bg: string; stats: { label: string; value: string }[]; detailStats: { label: string; value: string }[] }> = {
-  valorant: {
-    name: "Valorant", color: "#ff4655", bg: "#ff465512",
-    stats: [{ label: "Rank", value: "Diamond 2" }, { label: "K/D", value: "1.42" }],
-    detailStats: [{ label: "Win Rate", value: "54%" }, { label: "HS%", value: "28%" }, { label: "ACS", value: "234" }, { label: "Games", value: "182" }],
-  },
-  lol: {
-    name: "League of Legends", color: "#c89b3c", bg: "#c89b3c12",
-    stats: [{ label: "Rank", value: "Plat I" }, { label: "KDA", value: "3.2" }],
-    detailStats: [{ label: "Win Rate", value: "51%" }, { label: "Main", value: "Mid" }, { label: "CS/min", value: "7.4" }, { label: "Games", value: "210" }],
-  },
-  apex: {
-    name: "Apex Legends", color: "#da3b20", bg: "#da3b2012",
-    stats: [{ label: "K/D", value: "1.8" }, { label: "Dmg/Game", value: "1240" }],
-    detailStats: [{ label: "Win Rate", value: "7.2%" }, { label: "Level", value: "412" }, { label: "Kills", value: "3,820" }, { label: "Games", value: "820" }],
-  },
-  csgo: {
-    name: "CS2", color: "#f5a623", bg: "#f5a62312",
-    stats: [{ label: "Rating", value: "1.12" }, { label: "HS%", value: "46%" }],
-    detailStats: [{ label: "K/D", value: "1.05" }, { label: "ADR", value: "78.4" }, { label: "KAST", value: "71%" }, { label: "Impact", value: "1.08" }],
-  },
-};
+// ─── Paragraph style presets (Google Docs-style) ──────────────────────────────
+const PARA_STYLES: {
+  id: string; label: string;
+  fontSize: number; bold: boolean; italic: boolean; fontFamily?: string;
+}[] = [
+  { id: "normal",   label: "Normal",    fontSize: 14, bold: false, italic: false },
+  { id: "title",    label: "Title",     fontSize: 40, bold: true,  italic: false },
+  { id: "subtitle", label: "Subtitle",  fontSize: 18, bold: false, italic: true  },
+  { id: "h1",       label: "Heading 1", fontSize: 30, bold: true,  italic: false },
+  { id: "h2",       label: "Heading 2", fontSize: 22, bold: true,  italic: false },
+  { id: "h3",       label: "Heading 3", fontSize: 16, bold: true,  italic: false },
+  { id: "caption",  label: "Caption",   fontSize: 11, bold: false, italic: true  },
+  { id: "code",     label: "Code",      fontSize: 13, bold: false, italic: false, fontFamily: "Courier New" },
+];
+
+const API_PRESETS: { id: string; label: string; url: string; method: "GET" | "POST"; authType: "none" | "bearer" | "apikey"; authHeader?: string; note?: string }[] = [
+  { id: "jsonplaceholder", label: "JSONPlaceholder", url: "https://jsonplaceholder.typicode.com/todos/1", method: "GET", authType: "none", note: "Free test API" },
+  { id: "github-user",     label: "GitHub User",     url: "https://api.github.com/users/octocat",          method: "GET", authType: "none", note: "Public — no key needed" },
+  { id: "weather",         label: "OpenWeather",     url: "https://api.openweathermap.org/data/2.5/weather?q=London&appid=YOUR_KEY&units=metric", method: "GET", authType: "none", note: "Add your API key to URL" },
+  { id: "google-sheets",   label: "Google Sheets",   url: "https://sheets.googleapis.com/v4/spreadsheets/SHEET_ID/values/Sheet1!A1:Z100", method: "GET", authType: "bearer", note: "Needs OAuth token" },
+  { id: "airtable",        label: "Airtable",        url: "https://api.airtable.com/v0/BASE_ID/TABLE_NAME", method: "GET", authType: "bearer", note: "Use Personal Access Token" },
+  { id: "notion",          label: "Notion",          url: "https://api.notion.com/v1/databases/DATABASE_ID/query", method: "POST", authType: "bearer", note: "Use Integration Token" },
+  { id: "openai",          label: "OpenAI",          url: "https://api.openai.com/v1/models", method: "GET", authType: "bearer", note: "Use API key as Bearer" },
+];
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -53,25 +62,30 @@ interface ItemRendererProps {
   isFinished?: boolean;
   /** Card pixel width — used for font auto-scaling */
   containerW?: number;
+  /** Card pixel height — passed to chart so ResponsiveContainer gets a real value */
+  containerH?: number;
 }
 
 // ─── Main dispatcher ──────────────────────────────────────────────────────────
 
-export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished, containerW }: ItemRendererProps) {
+export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished, containerW, containerH }: ItemRendererProps) {
   const upd = (patch: Partial<BlockItem>) =>
     useBoardStore.getState().updateItem(boardId, boxId, item.id, patch);
 
   switch (item.type) {
-    case "text":     return <TextItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
-    case "list":     return <ListItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} containerW={containerW} />;
+    case "text":     return <TextItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} />;
+    case "list":     return <ListItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} />;
     case "variable": return <VariableItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} />;
     case "embed":    return <EmbedItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
-    case "timer":    return <TimerItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
+    case "timer":    return <TimerItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} containerH={containerH} />;
     case "image":    return <ImageItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
-    case "graph":    return <GraphItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
-    case "gaming":   return <GamingItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
+    case "graph":    return <GraphItem item={item} vars={vars} collapsed={collapsed} containerW={containerW} containerH={containerH} boardId={boardId} boxId={boxId} />;
+    case "api":      return <ApiItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
+    case "calendar": return <CalendarItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} />;
+    case "table":    return <TableItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
     case "divider":  return <hr className="border-[var(--border)] my-1" />;
     case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} />;
+    case "playlist": return <PlaylistItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
     default:         return null;
   }
 }
@@ -91,15 +105,233 @@ const TEXT_BORDER_STYLES = [
 ] as const;
 
 
-function TextItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+function evalTextCalcFormula(formula: string, vars: Record<string, number>): string {
+  let expr = formula;
+  const refs = [...expr.matchAll(/\{([^}]+)\}/g)];
+  for (const [full, name] of refs) {
+    const v = vars[name.trim()];
+    if (v === undefined) return `? (${name.trim()} not found)`;
+    expr = expr.replace(full, String(v));
+  }
+  try {
+    // Only allow safe math expressions
+    if (!/^[\d\s+\-*/%.(),\^]+$/.test(expr)) return expr; // plain text passthrough
+    // eslint-disable-next-line no-new-func
+    const result = Function(`"use strict"; return (${expr})`)();
+    const num = Number(result);
+    return isNaN(num) ? String(result) : String(Math.round(num * 10000) / 10000);
+  } catch {
+    return "Error";
+  }
+}
+
+// ─── Shared rich-text selection hook ──────────────────────────────────────────
+// containerRef: the element whose descendants are the editable divs.
+// onHTMLChange: called with the contenteditable element that was modified so
+//               the caller can persist the updated innerHTML.
+
+function useRichSel(
+  containerRef: React.RefObject<HTMLElement | null>,
+  onHTMLChange: (el: HTMLElement) => void,
+) {
+  const savedRangeRef = useRef<Range | null>(null);
+  const [selRect, setSelRect] = useState<{ cx: number; top: number } | null>(null);
+  const [selState, setSelState] = useState({ bold: false, italic: false, underline: false });
+
+  useEffect(() => {
+    const onSelChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (!containerRef.current?.contains(range.commonAncestorContainer)) return;
+      savedRangeRef.current = range.cloneRange();
+      const rect = range.getBoundingClientRect();
+      setSelRect({ cx: rect.left + rect.width / 2, top: rect.top });
+      setSelState({
+        bold: document.queryCommandState("bold"),
+        italic: document.queryCommandState("italic"),
+        underline: document.queryCommandState("underline"),
+      });
+    };
+    document.addEventListener("selectionchange", onSelChange);
+    return () => document.removeEventListener("selectionchange", onSelChange);
+  }, [containerRef]);
+
+  // Find the contenteditable ancestor of the saved range's start
+  const findEditableEl = useCallback((): HTMLElement | null => {
+    let node: Node | null = savedRangeRef.current?.startContainer ?? null;
+    while (node) {
+      if (node instanceof HTMLElement && node.isContentEditable) return node;
+      node = node.parentNode;
+    }
+    return null;
+  }, []);
+
+  const withSavedRange = useCallback((fn: () => void) => {
+    const range = savedRangeRef.current;
+    if (!range) return;
+    const el = findEditableEl();
+    if (el) el.focus();
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    fn();
+    const newSel = window.getSelection();
+    if (newSel && !newSel.isCollapsed && newSel.rangeCount > 0) {
+      savedRangeRef.current = newSel.getRangeAt(0).cloneRange();
+      setSelState({
+        bold: document.queryCommandState("bold"),
+        italic: document.queryCommandState("italic"),
+        underline: document.queryCommandState("underline"),
+      });
+    }
+    if (el) onHTMLChange(el);
+  }, [findEditableEl, onHTMLChange]);
+
+  const wrapSelectionSpan = useCallback((styleProps: Record<string, string>) => {
+    const el = findEditableEl();
+    const range = savedRangeRef.current;
+    if (!el || !range) return;
+    el.focus();
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    const cur = window.getSelection();
+    if (cur && !cur.isCollapsed && cur.rangeCount > 0) {
+      const r = cur.getRangeAt(0);
+      const span = document.createElement("span");
+      for (const [k, v] of Object.entries(styleProps)) {
+        (span.style as unknown as Record<string, string>)[k] = v;
+      }
+      try { r.surroundContents(span); }
+      catch { const frag = r.extractContents(); span.appendChild(frag); r.insertNode(span); }
+      sel?.removeAllRanges();
+    }
+    onHTMLChange(el);
+    savedRangeRef.current = null;
+    setSelRect(null);
+  }, [findEditableEl, onHTMLChange]);
+
+  const dismissSelToolbar = useCallback(() => {
+    savedRangeRef.current = null;
+    setSelRect(null);
+  }, []);
+
+  return { selRect, selState, withSavedRange, wrapSelectionSpan, dismissSelToolbar };
+}
+
+function TextItem({ item, upd, vars = {}, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; vars?: Record<string, number>; collapsed?: boolean; isFinished?: boolean }) {
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [showWallpaper, setShowWallpaper] = useState(false);
   const bgImageFileRef = useRef<HTMLInputElement>(null);
 
+  // Rich text editing
+  const editorRef = useRef<HTMLDivElement>(null);
+  const innerHTMLRef = useRef(item.text ?? "");
+  const savedRangeRef = useRef<Range | null>(null);
+  type SelRect = { cx: number; top: number };
+  const [selRect, setSelRect] = useState<SelRect | null>(null);
+  const [selState, setSelState] = useState({ bold: false, italic: false, underline: false });
+
+  // Initialize editor content on mount
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.innerHTML = item.text ?? "";
+      innerHTMLRef.current = item.text ?? "";
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync external changes without disrupting active editing
+  useEffect(() => {
+    if (editorRef.current && document.activeElement !== editorRef.current && item.text !== innerHTMLRef.current) {
+      editorRef.current.innerHTML = item.text ?? "";
+      innerHTMLRef.current = item.text ?? "";
+    }
+  }, [item.text]);
+
+  // Track text selection — save range + screen position for the portal toolbar
+  useEffect(() => {
+    const onSelChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        // Don't clear selRect here; user may be clicking the portal toolbar
+        return;
+      }
+      const range = sel.getRangeAt(0);
+      if (!editorRef.current?.contains(range.commonAncestorContainer)) return;
+      savedRangeRef.current = range.cloneRange();
+      const rect = range.getBoundingClientRect();
+      setSelRect({ cx: rect.left + rect.width / 2, top: rect.top });
+      setSelState({
+        bold: document.queryCommandState("bold"),
+        italic: document.queryCommandState("italic"),
+        underline: document.queryCommandState("underline"),
+      });
+    };
+    document.addEventListener("selectionchange", onSelChange);
+    return () => document.removeEventListener("selectionchange", onSelChange);
+  }, []);
+
+  // Restore saved range, run fn, then persist HTML to store
+  const withSavedRange = useCallback((fn: () => void) => {
+    const range = savedRangeRef.current;
+    if (!range) return;
+    editorRef.current?.focus();
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    fn();
+    // Re-save range in case execCommand moved it
+    const newSel = window.getSelection();
+    if (newSel && !newSel.isCollapsed && newSel.rangeCount > 0) {
+      savedRangeRef.current = newSel.getRangeAt(0).cloneRange();
+      setSelState({
+        bold: document.queryCommandState("bold"),
+        italic: document.queryCommandState("italic"),
+        underline: document.queryCommandState("underline"),
+      });
+    }
+    const html = editorRef.current?.innerHTML ?? "";
+    innerHTMLRef.current = html;
+    upd({ text: html });
+  }, [upd]);
+
+  // Wrap saved selection in a <span> with inline styles, then dismiss toolbar
+  const wrapSelectionSpan = useCallback((styleProps: Record<string, string>) => {
+    withSavedRange(() => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+      const range = sel.getRangeAt(0);
+      const span = document.createElement("span");
+      for (const [k, v] of Object.entries(styleProps)) {
+        (span.style as unknown as Record<string, string>)[k] = v;
+      }
+      try { range.surroundContents(span); }
+      catch { const frag = range.extractContents(); span.appendChild(frag); range.insertNode(span); }
+      sel.removeAllRanges();
+    });
+    savedRangeRef.current = null;
+    setSelRect(null);
+  }, [withSavedRange]);
+
+  const dismissSelToolbar = useCallback(() => {
+    savedRangeRef.current = null;
+    setSelRect(null);
+  }, []);
+
   const hasBorder = (item.textBorderWidth ?? 0) > 0;
   const hasBg = !!(item.textBgColor || item.textBgImage);
   const isTextGlow = hasBorder && item.textBorderStyle === "glow";
+  const shadowColor = item.textShadowColor ?? "#000000";
+  const boxShadowVal = isTextGlow
+    ? `0 0 ${(item.textBorderWidth ?? 1) * 5}px ${item.textBorderColor ?? "#ffffff"}, 0 0 ${(item.textBorderWidth ?? 1) * 12}px ${item.textBorderColor ?? "#ffffff"}55`
+    : item.textShadow === "drop" ? `4px 4px 8px ${shadowColor}99`
+    : item.textShadow === "hard" ? `3px 3px 0px ${shadowColor}`
+    : item.textShadow === "glow" ? `0 0 12px ${shadowColor}, 0 0 24px ${shadowColor}88`
+    : item.textShadow === "neon" ? `0 0 6px ${shadowColor}, 0 0 14px ${shadowColor}, 0 0 30px ${shadowColor}66`
+    : undefined;
 
   const textStyle: React.CSSProperties = {
     fontSize: item.fontSize ?? 16,
@@ -117,11 +349,10 @@ function TextItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: 
     border: hasBorder && !isTextGlow
       ? `${item.textBorderWidth}px ${item.textBorderStyle ?? "solid"} ${item.textBorderColor ?? "#ffffff"}`
       : "none",
-    boxShadow: isTextGlow
-      ? `0 0 ${(item.textBorderWidth ?? 1) * 5}px ${item.textBorderColor ?? "#ffffff"}, 0 0 ${(item.textBorderWidth ?? 1) * 12}px ${item.textBorderColor ?? "#ffffff"}55`
-      : undefined,
-    padding: hasBg || hasBorder ? 8 : 0,
-    lineHeight: 1.5,
+    boxShadow: boxShadowVal,
+    padding: item.textPadding ?? (hasBg || hasBorder ? 8 : 0),
+    lineHeight: item.textLineHeight ?? 1.5,
+    letterSpacing: item.textLetterSpacing ? `${item.textLetterSpacing}px` : undefined,
   };
 
   const handleBgImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -134,11 +365,10 @@ function TextItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: 
   };
 
   if (collapsed) {
-    return (
-      <p className="truncate" style={textStyle}>
-        {item.text || <span className="opacity-40 italic" style={{ fontSize: 12 }}>Empty text</span>}
-      </p>
-    );
+    if (!item.text) {
+      return <p className="truncate opacity-40 italic" style={{ ...textStyle, fontSize: 12 }}>Empty text</p>;
+    }
+    return <p className="truncate" style={textStyle} dangerouslySetInnerHTML={{ __html: item.text }} />;
   }
 
   const showToolbar = (focused || hovered) && !isFinished;
@@ -159,14 +389,31 @@ function TextItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: 
           style={{ bottom: "calc(100% + 6px)", left: 0, background: "var(--surface-raised)", whiteSpace: "nowrap" }}
           onMouseDown={(e) => e.preventDefault()}
         >
+          {/* Paragraph style */}
+          <select
+            value={item.textParaStyle ?? "normal"}
+            onChange={(e) => {
+              const style = PARA_STYLES.find(s => s.id === e.target.value);
+              if (!style) return;
+              const patch: Partial<BlockItem> = { textParaStyle: style.id, fontSize: style.fontSize, bold: style.bold, italic: style.italic };
+              if (style.fontFamily) patch.fontFamily = style.fontFamily;
+              upd(patch);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-xs text-[var(--text-primary)] outline-none cursor-pointer"
+            style={{ maxWidth: 80 }}
+          >
+            {PARA_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+
+          <Divider />
+
           {/* Font family */}
           <FontPicker
             compact
             value={item.fontFamily ?? "Inter"}
-            onChange={(font) => {
-              loadGoogleFont(font);
-              upd({ fontFamily: font });
-            }}
+            onChange={(font) => { loadGoogleFont(font); upd({ fontFamily: font }); }}
           />
 
           {/* Font size */}
@@ -321,17 +568,99 @@ function TextItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: 
         </div>
       )}
 
-      {/* The text itself */}
-      <textarea
-        readOnly={isFinished}
-        className="w-full h-full resize-none outline-none placeholder:opacity-30"
-        placeholder="Click to type…"
-        value={item.text ?? ""}
-        style={{ ...textStyle, width: "100%", height: "100%", display: "block" }}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onChange={(e) => upd({ text: e.target.value })}
-      />
+      {/* Number mode — big editable number, exposes {textVarName} to vars */}
+      {item.textMode === "number" ? (
+        <div className="flex flex-col items-center justify-center w-full h-full gap-1" style={textStyle}>
+          {item.textVarName && (
+            <span className="font-mono text-[11px] opacity-50 tracking-widest uppercase">{item.textVarName}</span>
+          )}
+          <input
+            type="number"
+            readOnly={isFinished}
+            className="bg-transparent outline-none text-center font-mono font-bold w-full"
+            style={{ fontSize: item.fontSize ?? 40, color: item.textColor || "var(--accent)" }}
+            placeholder="0"
+            value={item.text ?? ""}
+            onChange={(e) => upd({ text: e.target.value })}
+          />
+        </div>
+      ) : item.textMode === "formula" ? (
+        /* Formula mode — formula input at top, result displayed large, optional var name at bottom */
+        <div className="flex flex-col w-full h-full" style={textStyle}>
+          {!isFinished && !collapsed && (
+            <input
+              className="w-full bg-[var(--surface-overlay)] border-b border-[var(--border)] px-3 py-1.5 font-mono text-[11px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent)] transition-colors"
+              placeholder="{var1} + {var2} * 2"
+              value={item.textCalcFormula ?? ""}
+              onChange={(e) => upd({ textCalcFormula: e.target.value })}
+            />
+          )}
+          <div className="flex-1 flex items-center justify-center font-mono font-bold" style={{ fontSize: item.fontSize ?? 40, color: item.textColor || "var(--accent)" }}>
+            {item.textCalcFormula ? evalTextCalcFormula(item.textCalcFormula, vars) : "—"}
+          </div>
+          {!isFinished && !collapsed && (
+            <div className="flex items-center gap-1.5 border-t border-[var(--border)] px-2 py-1">
+              <Hash size={9} className="text-[var(--accent)] flex-shrink-0" />
+              <input
+                className="flex-1 bg-transparent font-mono text-[10px] text-[var(--accent)] outline-none placeholder:text-[var(--text-muted)]/40"
+                placeholder="expose as variable name…"
+                value={item.textVarName ?? ""}
+                onChange={(e) => upd({ textVarName: e.target.value })}
+              />
+            </div>
+          )}
+          {(isFinished || collapsed) && item.textVarName && (
+            <div className="flex items-center gap-1 px-2 py-0.5 border-t border-[var(--border)]">
+              <Hash size={9} className="text-[var(--accent)]" />
+              <span className="font-mono text-[10px] text-[var(--accent)]">{item.textVarName}</span>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Normal text — contenteditable for rich inline formatting */
+        <div className="relative w-full h-full">
+          {!item.text && !focused && !isFinished && (
+            <span
+              className="absolute inset-0 pointer-events-none opacity-30 italic select-none"
+              style={{ fontSize: textStyle.fontSize, fontFamily: textStyle.fontFamily, padding: textStyle.padding }}
+            >
+              Click to type…
+            </span>
+          )}
+          <div
+            ref={editorRef}
+            contentEditable={!isFinished}
+            suppressContentEditableWarning
+            className="w-full h-full outline-none"
+            style={{ ...textStyle, wordBreak: "break-word", whiteSpace: "pre-wrap", overflowWrap: "anywhere", overflowY: "auto" }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => { setFocused(false); }}
+            onInput={() => {
+              dismissSelToolbar();
+              const html = editorRef.current?.innerHTML ?? "";
+              innerHTMLRef.current = html;
+              upd({ text: html });
+            }}
+          />
+        </div>
+      )}
+
+      {/* Selection formatting toolbar — portal so it's never clipped */}
+      {selRect && !isFinished && createPortal(
+        <RichSelToolbar
+          cx={selRect.cx}
+          top={selRect.top}
+          selState={selState}
+          onExecCmd={(cmd) => withSavedRange(() => document.execCommand(cmd))}
+          onFontFamily={(font) => { loadGoogleFont(font); wrapSelectionSpan({ fontFamily: font }); }}
+          onFontSize={(size) => wrapSelectionSpan({ fontSize: `${size}px` })}
+          onColor={(color) => withSavedRange(() => document.execCommand("foreColor", false, color))}
+          onHighlight={(color) => withSavedRange(() => document.execCommand("hiliteColor", false, color))}
+          onClearFormat={() => { withSavedRange(() => document.execCommand("removeFormat")); dismissSelToolbar(); }}
+          onDismiss={dismissSelToolbar}
+        />,
+        document.body
+      )}
     </div>
   );
 }
@@ -352,6 +681,72 @@ function TBtn({ children, active, onClick, title }: { children: React.ReactNode;
     >
       {children}
     </button>
+  );
+}
+
+// ─── Rich text selection toolbar (portal) ─────────────────────────────────────
+
+function RichSelToolbar({
+  cx, top, selState,
+  onExecCmd, onFontFamily, onFontSize, onColor, onHighlight, onClearFormat, onDismiss,
+}: {
+  cx: number; top: number;
+  selState: { bold: boolean; italic: boolean; underline: boolean };
+  onExecCmd: (cmd: string) => void;
+  onFontFamily: (font: string) => void;
+  onFontSize: (size: number) => void;
+  onColor: (color: string) => void;
+  onHighlight: (color: string) => void;
+  onClearFormat: () => void;
+  onDismiss: () => void;
+}) {
+  const [sizeInput, setSizeInput] = useState("");
+  const toolbarTop = Math.max(8, top - 52);
+  const left = Math.max(8, cx - 180);
+
+  return (
+    <div
+      style={{ position: "fixed", top: toolbarTop, left, zIndex: 99999, pointerEvents: "auto" }}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      <div
+        className="flex items-center gap-0.5 rounded-xl border border-[var(--border)] shadow-2xl px-2 py-1.5"
+        style={{ background: "var(--surface-raised)", whiteSpace: "nowrap" }}
+      >
+        {/* Font family */}
+        <FontPicker compact value="" onChange={onFontFamily} />
+        {/* Font size */}
+        <input
+          type="number" min={6} max={200} placeholder="px"
+          value={sizeInput}
+          onChange={(e) => setSizeInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && sizeInput) { onFontSize(Number(sizeInput)); setSizeInput(""); } }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          className="w-11 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-xs text-[var(--text-primary)] outline-none"
+          title="Font size (press Enter)"
+        />
+        <Divider />
+        <TBtn active={selState.bold} onClick={() => onExecCmd("bold")} title="Bold"><span className="font-bold text-xs">B</span></TBtn>
+        <TBtn active={selState.italic} onClick={() => onExecCmd("italic")} title="Italic"><span className="italic text-xs">I</span></TBtn>
+        <TBtn active={selState.underline} onClick={() => onExecCmd("underline")} title="Underline"><span className="underline text-xs">U</span></TBtn>
+        <TBtn active={false} onClick={() => onExecCmd("strikeThrough")} title="Strikethrough"><span className="line-through text-xs">S</span></TBtn>
+        <Divider />
+        {/* Text color */}
+        <label className="cursor-pointer flex items-center" title="Text color">
+          <span className="font-bold text-xs text-[var(--text-primary)] px-1" style={{ textDecoration: "underline 2px var(--accent)" }}>A</span>
+          <input type="color" defaultValue="#ffffff" onChange={(e) => onColor(e.target.value)} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} className="h-4 w-4 cursor-pointer border-0 bg-transparent p-0 outline-none" />
+        </label>
+        {/* Highlight */}
+        <label className="cursor-pointer flex items-center ml-0.5" title="Highlight">
+          <span className="text-[10px] px-1 bg-yellow-300 text-black rounded-sm font-medium">H</span>
+          <input type="color" defaultValue="#ffff00" onChange={(e) => onHighlight(e.target.value)} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} className="h-4 w-4 cursor-pointer border-0 bg-transparent p-0 outline-none" />
+        </label>
+        <Divider />
+        <TBtn active={false} onClick={onClearFormat} title="Clear formatting"><span className="text-[10px]">T↩</span></TBtn>
+        <button onClick={onDismiss} className="ml-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] px-1 leading-none" title="Dismiss">✕</button>
+      </div>
+    </div>
   );
 }
 
@@ -381,6 +776,17 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
 
   return (
     <div className="flex flex-col gap-4 p-3 text-xs">
+
+      {/* Title */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Title</p>
+        <input
+          className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] transition-colors"
+          placeholder="List title (optional)…"
+          value={item.listTitle ?? ""}
+          onChange={(e) => upd({ listTitle: e.target.value || undefined })}
+        />
+      </div>
 
       {/* Wallpaper */}
       <div>
@@ -432,17 +838,11 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
               onChange={(e) => upd({ listFontSize: Number(e.target.value) })}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
-              disabled={!!item.listFontAutoScale}
-              className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none disabled:opacity-40"
+              className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none"
               title="Font size"
             />
             <span className="text-[10px] text-[var(--text-muted)]">px</span>
           </div>
-          <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors select-none">
-            <input type="checkbox" checked={!!item.listFontAutoScale} onChange={(e) => upd({ listFontAutoScale: e.target.checked })} className="accent-[var(--accent)]" />
-            <span className="flex-1 text-[var(--text-secondary)]">Scale with card size</span>
-            <span className="text-[10px] text-[var(--text-muted)]">auto</span>
-          </label>
           <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
             <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: item.listFontColor ?? "#f2f2f2" }}>
               <input type="color" value={item.listFontColor ?? "#f2f2f2"} onChange={(e) => upd({ listFontColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
@@ -450,6 +850,42 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
             <span className="flex-1 text-[var(--text-secondary)]">Text color</span>
             <span className="font-mono text-[10px] text-[var(--text-muted)]">{item.listFontColor ?? "default"}</span>
           </label>
+        </div>
+      </div>
+
+      {/* Variable value appearance */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Variable value</p>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <FontPicker
+              compact
+              value={item.listVarValueFontFamily ?? "monospace"}
+              onChange={(font) => { loadGoogleFont(font); upd({ listVarValueFontFamily: font }); }}
+            />
+            <input
+              type="number" min={8} max={72}
+              value={item.listVarValueFontSize ?? 10}
+              onChange={(e) => upd({ listVarValueFontSize: Number(e.target.value) })}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none"
+              title="Font size"
+            />
+            <span className="text-[10px] text-[var(--text-muted)]">px</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 flex-1 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
+              <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: item.listVarValueFontColor ?? "#888888" }}>
+                <input type="color" value={item.listVarValueFontColor ?? "#888888"} onChange={(e) => upd({ listVarValueFontColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="flex-1 text-[var(--text-secondary)]">Value color</span>
+            </label>
+            <button
+              onClick={() => upd({ listVarValueBold: !item.listVarValueBold })}
+              className={cn("rounded px-2.5 py-2 text-xs font-bold border transition-colors", item.listVarValueBold ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]")}
+            >B</button>
+          </div>
         </div>
       </div>
 
@@ -532,43 +968,275 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
         )}
       </div>
 
-      {/* Row spacing */}
+      {/* Shape */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Row spacing</p>
-        <div className="flex items-center gap-2">
-          <input type="range" min={0} max={24} step={1} value={item.listRowSpacing ?? 4} onChange={(e) => upd({ listRowSpacing: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
-          <span className="w-8 text-right text-[var(--text-muted)]">{item.listRowSpacing ?? 4}px</span>
-        </div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shape</p>
+        <PanelSlider label="Corners" value={item.listBorderRadius ?? 0} min={0} max={120} onChange={(v) => upd({ listBorderRadius: v })} />
+        <PanelSlider label="Padding" value={item.listPadding ?? (item.listBgColor || (item.listBorderWidth ?? 0) > 0 ? 8 : 0)} min={0} max={48} onChange={(v) => upd({ listPadding: v })} />
       </div>
+
+      {/* Spacing */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Spacing</p>
+        <PanelSlider label="Row gap" value={item.listRowSpacing ?? 4} min={0} max={32} onChange={(v) => upd({ listRowSpacing: v })} />
+        <PanelSlider label="Letter" value={item.listLetterSpacing ?? 0} min={-3} max={20} step={0.5} onChange={(v) => upd({ listLetterSpacing: v })} decimals={1} />
+        <PanelSlider label="Line H" value={item.listLineHeight ?? 1.6} min={0.8} max={4} step={0.1} onChange={(v) => upd({ listLineHeight: v })} decimals={1} />
+      </div>
+
+      {/* Background */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background</p>
+        <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
+          <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: item.listBgColor || "transparent", backgroundImage: !item.listBgColor ? "repeating-linear-gradient(45deg,var(--border) 0,var(--border) 1px,transparent 0,transparent 50%) 0/6px 6px" : undefined }}>
+            <input type="color" value={item.listBgColor ?? "#1a1b1e"} onChange={(e) => upd({ listBgColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+          </span>
+          <span className="flex-1 text-[var(--text-secondary)]">Fill color</span>
+          {item.listBgColor && <button onClick={(e) => { e.preventDefault(); upd({ listBgColor: undefined }); }} className="text-[var(--text-muted)] hover:text-red-400 text-xs">×</button>}
+        </label>
+      </div>
+
+      {/* Shadow */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shadow</p>
+        <div className="grid grid-cols-2 gap-1.5 mb-2">
+          {(["none","drop","hard","glow"] as const).map((s) => (
+            <button key={s} onClick={() => upd({ listShadow: s })}
+              className={cn("rounded border py-1.5 text-[10px] capitalize transition-colors",
+                (item.listShadow ?? "none") === s ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]"
+              )}>{s}</button>
+          ))}
+        </div>
+        {item.listShadow && item.listShadow !== "none" && (
+          <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
+            <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: item.listShadowColor ?? "#000000" }}>
+              <input type="color" value={item.listShadowColor ?? "#000000"} onChange={(e) => upd({ listShadowColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+            </span>
+            <span className="flex-1 text-[var(--text-secondary)]">Shadow color</span>
+          </label>
+        )}
+      </div>
+
+      {/* Dividers */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Dividers</p>
+        <div className="grid grid-cols-4 gap-1 mb-3">
+          {(["solid","dashed","dotted","none"] as const).map((s) => (
+            <button key={s} onClick={() => upd({ listDividerStyle: s })}
+              className={cn("rounded border py-1.5 text-[10px] capitalize transition-colors",
+                (item.listDividerStyle ?? "solid") === s ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]"
+              )}>{s}</button>
+          ))}
+        </div>
+        {(item.listDividerStyle ?? "solid") !== "none" && (
+          <div className="flex flex-col gap-2">
+            <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
+              <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: item.listDividerColor ?? "#ffffff" }}>
+                <input type="color" value={item.listDividerColor ?? "#ffffff"} onChange={(e) => upd({ listDividerColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="flex-1 text-[var(--text-secondary)]">Color</span>
+              <span className="font-mono text-[10px] text-[var(--text-muted)]">{item.listDividerColor ?? "#ffffff"}</span>
+            </label>
+            <PanelSlider label="Opacity" value={item.listDividerOpacity ?? 20} min={0} max={100} onChange={(v) => upd({ listDividerOpacity: v })} />
+            <PanelSlider label="Width" value={item.listDividerWidth ?? 1} min={1} max={8} onChange={(v) => upd({ listDividerWidth: v })} />
+          </div>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Progress</p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={!!item.listShowProgress} onChange={(e) => upd({ listShowProgress: e.target.checked })} className="accent-[var(--accent)]" />
+          <span className="text-[var(--text-secondary)]">Show progress bar</span>
+        </label>
+      </div>
+
+      {/* Checkbox */}
+      {(item.listMarker ?? "checkbox") === "checkbox" && (
+        <div>
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Checkbox</p>
+          <div className="flex flex-col gap-2">
+            {/* Checked color */}
+            <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
+              <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: item.listCheckColor ?? "var(--accent)" }}>
+                <input type="color" value={item.listCheckColor ?? "#6c63ff"} onChange={(e) => upd({ listCheckColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="flex-1 text-[var(--text-secondary)]">Checked color</span>
+            </label>
+            {/* Icon size */}
+            <PanelSlider label="Icon size" value={item.listCheckIconSize ?? 18} min={12} max={48} onChange={(v) => upd({ listCheckIconSize: v })} />
+            {/* Unchecked icon */}
+            <div>
+              <p className="mb-1 text-[10px] text-[var(--text-muted)]">Unchecked icon (URL or upload)</p>
+              <div className="flex gap-1.5">
+                <input
+                  className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+                  placeholder="Image URL…"
+                  value={item.listCheckUncheckedIcon?.startsWith("data:") ? "" : (item.listCheckUncheckedIcon ?? "")}
+                  onChange={(e) => upd({ listCheckUncheckedIcon: e.target.value || undefined })}
+                />
+                <IconUploadBtn onUpload={(url) => upd({ listCheckUncheckedIcon: url })} />
+                {item.listCheckUncheckedIcon && <button onClick={() => upd({ listCheckUncheckedIcon: undefined })} className="text-[var(--text-muted)] hover:text-red-400 text-xs px-1">×</button>}
+              </div>
+              {item.listCheckUncheckedIcon && (
+                <img src={item.listCheckUncheckedIcon} alt="unchecked" className="mt-1 h-8 w-8 rounded object-contain border border-[var(--border)]" />
+              )}
+            </div>
+            {/* Checked icon */}
+            <div>
+              <p className="mb-1 text-[10px] text-[var(--text-muted)]">Checked icon (optional — defaults to greyed unchecked)</p>
+              <div className="flex gap-1.5">
+                <input
+                  className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+                  placeholder="Image URL…"
+                  value={item.listCheckCheckedIcon?.startsWith("data:") ? "" : (item.listCheckCheckedIcon ?? "")}
+                  onChange={(e) => upd({ listCheckCheckedIcon: e.target.value || undefined })}
+                />
+                <IconUploadBtn onUpload={(url) => upd({ listCheckCheckedIcon: url })} />
+                {item.listCheckCheckedIcon && <button onClick={() => upd({ listCheckCheckedIcon: undefined })} className="text-[var(--text-muted)] hover:text-red-400 text-xs px-1">×</button>}
+              </div>
+              {item.listCheckCheckedIcon && (
+                <img src={item.listCheckCheckedIcon} alt="checked" className="mt-1 h-8 w-8 rounded object-contain border border-[var(--border)]" />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ListItem({ item, upd, collapsed, isFinished, containerW }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; containerW?: number }) {
+function IconUploadBtn({ onUpload }: { onUpload: (url: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => onUpload(ev.target?.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+  return (
+    <>
+      <button onClick={() => ref.current?.click()}
+        className="flex-shrink-0 rounded border border-dashed border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+        <Upload size={10} />
+      </button>
+      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+    </>
+  );
+}
+
+function PanelSlider({ label, value, min, max, step = 1, decimals = 0, onChange }: {
+  label: string; value: number; min: number; max: number; step?: number; decimals?: number; onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 mb-2">
+      <span className="w-12 flex-shrink-0 text-[10px] text-[var(--text-muted)]">{label}</span>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="flex-1 accent-[var(--accent)] h-1"
+      />
+      <span className="w-8 text-right text-[10px] text-[var(--text-muted)] flex-shrink-0">{value.toFixed(decimals)}</span>
+    </div>
+  );
+}
+
+function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; vars?: Record<string, number>; collapsed?: boolean; isFinished?: boolean }) {
   const entries = item.listItems ?? [];
   const shown = collapsed ? entries.slice(0, 4) : entries;
+  const [hoveredValueId, setHoveredValueId] = useState<string | null>(null);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editingValueId, setEditingValueId] = useState<string | null>(null);
+  const [locked, setLocked] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const marker = item.listMarker ?? "checkbox";
   const hasBorder = (item.listBorderWidth ?? 0) > 0;
 
   const setEntries = (next: ListEntry[]) => upd({ listItems: next });
 
-  const autoFontSize = item.listFontAutoScale && containerW
-    ? Math.max(9, Math.round(containerW * 0.036))
+  const listContainerRef = useRef<HTMLDivElement>(null);
+  const entryHTMLRef = useRef<Map<string, string>>(new Map());
+  const editingDivRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Close context menu on outside click (bubble phase so menu's stopPropagation works)
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [contextMenu]);
+
+  const handleEntryHTMLChange = useCallback((el: HTMLElement) => {
+    const id = el.dataset.entryId;
+    if (!id) return;
+    const html = el.innerHTML;
+    entryHTMLRef.current.set(id, html);
+    setEntries(entries.map((e) => e.id === id ? { ...e, text: html } : e));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries]);
+
+  const { selRect, selState, withSavedRange, wrapSelectionSpan, dismissSelToolbar } = useRichSel(
+    listContainerRef,
+    handleEntryHTMLChange,
+  );
+
+  // Initialize entry divs on mount
+  useEffect(() => {
+    if (!listContainerRef.current) return;
+    for (const entry of entries) {
+      const el = listContainerRef.current.querySelector<HTMLElement>(`[data-entry-id="${entry.id}"]`);
+      if (el) {
+        el.innerHTML = entry.text ?? "";
+        entryHTMLRef.current.set(entry.id, entry.text ?? "");
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync external changes (undo, collaboration) without disrupting active editing
+  useEffect(() => {
+    if (!listContainerRef.current) return;
+    for (const entry of entries) {
+      const el = listContainerRef.current.querySelector<HTMLElement>(`[data-entry-id="${entry.id}"]`);
+      if (el && document.activeElement !== el && entry.text !== entryHTMLRef.current.get(entry.id)) {
+        el.innerHTML = entry.text ?? "";
+        entryHTMLRef.current.set(entry.id, entry.text ?? "");
+      }
+    }
+  }, [entries]);
+
+  const listShadowColor = item.listShadowColor ?? "#000000";
+  const listBoxShadow = item.listShadow === "drop" ? `4px 4px 8px ${listShadowColor}99`
+    : item.listShadow === "hard" ? `3px 3px 0px ${listShadowColor}`
+    : item.listShadow === "glow" ? `0 0 12px ${listShadowColor}, 0 0 24px ${listShadowColor}88`
     : undefined;
 
+  const rowSpacing = item.listRowSpacing ?? 4;
   const containerStyle: React.CSSProperties = {
     fontFamily: item.listFontFamily ?? "inherit",
-    fontSize: autoFontSize ? `${autoFontSize}px` : (item.listFontSize ? `${item.listFontSize}px` : undefined),
+    fontSize: `${item.listFontSize ?? 14}px`,
+    letterSpacing: item.listLetterSpacing ? `${item.listLetterSpacing}px` : undefined,
+    lineHeight: item.listLineHeight ?? 1.6,
     color: item.listFontColor || undefined,
+    backgroundColor: item.listBgColor || undefined,
     border: hasBorder ? `${item.listBorderWidth}px ${item.listBorderStyle ?? "solid"} ${item.listBorderColor ?? "#ffffff"}` : undefined,
     borderRadius: item.listBorderRadius ?? 0,
-    padding: hasBorder ? 8 : 0,
-    gap: item.listRowSpacing ?? 4,
+    boxShadow: listBoxShadow,
+    padding: item.listPadding ?? (hasBorder || item.listBgColor ? 8 : 0),
     position: "relative",
+    overflow: "hidden",
   };
 
+  const checkableEntries = entries.filter((e) => !e.isVariable);
+  const checkedCount = checkableEntries.filter((e) => e.checked).length;
+  const progressPct = checkableEntries.length > 0 ? (checkedCount / checkableEntries.length) * 100 : 0;
+
   return (
-    <div className="flex flex-col" style={containerStyle}>
+    <div ref={listContainerRef} className="flex flex-col w-full h-full" style={containerStyle}
+      onContextMenu={(e) => { if (isFinished) { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }); } }}
+    >
       {/* Wallpaper layer */}
       {item.listWallpaperUrl && (
         <div aria-hidden style={{
@@ -580,57 +1248,310 @@ function ListItem({ item, upd, collapsed, isFinished, containerW }: { item: Bloc
           opacity: item.listWallpaperOpacity ?? 1,
         }} />
       )}
-      {shown.map((entry, i) => (
-        <div key={entry.id} className="flex items-center gap-2 group/le" style={{ position: "relative", zIndex: 1 }}>
-          {marker === "checkbox" && (
-            <button
-              onClick={() => !isFinished && setEntries(entries.map((e) => e.id === entry.id ? { ...e, checked: !e.checked } : e))}
-              className={cn("flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors", entry.checked ? "bg-[var(--accent)] border-[var(--accent)]" : "border-[var(--border)] hover:border-[var(--accent)]")}
-            >
-              {entry.checked && <Check size={10} className="text-white" />}
-            </button>
-          )}
-          {marker === "bullet" && (
-            <span className="w-4 flex-shrink-0 text-center" style={{ color: item.listFontColor || "var(--text-muted)" }}>•</span>
-          )}
-          {marker === "number" && (
-            <span className="w-5 flex-shrink-0 text-right text-xs" style={{ color: item.listFontColor || "var(--text-muted)" }}>{i + 1}.</span>
-          )}
-
-          {isFinished || collapsed ? (
-            <span className={cn("flex-1 text-sm", entry.checked && marker === "checkbox" && "line-through opacity-40")}>{entry.text}</span>
-          ) : (
-            <input
-              className={cn("flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]", entry.checked && marker === "checkbox" && "line-through opacity-40")}
-              placeholder="List item…"
-              value={entry.text}
-              onChange={(e) => setEntries(entries.map((x) => x.id === entry.id ? { ...x, text: e.target.value } : x))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  const next = [...entries];
-                  next.splice(i + 1, 0, { id: nanoid(), text: "", checked: false });
-                  setEntries(next);
-                } else if (e.key === "Backspace" && entry.text === "" && entries.length > 1) {
-                  setEntries(entries.filter((x) => x.id !== entry.id));
-                }
-              }}
-            />
-          )}
-          {!isFinished && !collapsed && (
-            <button onClick={() => setEntries(entries.filter((x) => x.id !== entry.id))} className="opacity-0 group-hover/le:opacity-100 text-[var(--text-muted)] hover:text-red-400 transition-opacity flex-shrink-0">
-              <Trash2 size={11} />
-            </button>
-          )}
+      {/* List title */}
+      {item.listTitle && (
+        <p className="relative z-10 font-semibold truncate shrink-0" style={{
+          color: item.listFontColor || undefined,
+          fontSize: (item.listFontSize ?? 14) + 2,
+          marginBottom: collapsed ? 2 : 6,
+        }}>
+          {item.listTitle}
+        </p>
+      )}
+      {/* Progress bar */}
+      {item.listShowProgress && !collapsed && checkableEntries.length > 0 && (
+        <div className="relative z-10 mb-2 flex flex-col gap-1">
+          <div className="flex items-center justify-between text-[10px]" style={{ color: item.listFontColor ? item.listFontColor + "90" : "var(--text-muted)" }}>
+            <span>{checkedCount} / {checkableEntries.length} done</span>
+            <span className="font-semibold">{Math.round(progressPct)}%</span>
+          </div>
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
+            <div className="h-full rounded-full transition-all duration-300" style={{ width: `${progressPct}%`, background: item.listCheckColor ?? "var(--accent)" }} />
+          </div>
         </div>
-      ))}
+      )}
+      {shown.map((entry, i) => {
+        // Divider
+        const divStyle = item.listDividerStyle ?? "solid";
+        const divColor = item.listDividerColor ?? "#ffffff";
+        const divOpacity = (item.listDividerOpacity ?? 20) / 100;
+        const divWidth = item.listDividerWidth ?? 1;
+        const dividerBorder = i > 0 && divStyle !== "none"
+          ? `${divWidth}px ${divStyle} ${divColor}${Math.round(divOpacity * 255).toString(16).padStart(2, "0")}`
+          : undefined;
+
+        // Checkbox icon
+        const iconSize = item.listCheckIconSize ?? 18;
+        const checkColor = item.listCheckColor ?? "var(--accent)";
+        const hasCustomIcon = !!(item.listCheckUncheckedIcon || item.listCheckCheckedIcon);
+
+        return (
+          <div key={entry.id}
+            className="flex items-center gap-2 min-w-0 group/le transition-colors hover:bg-white/5 active:bg-white/10"
+            style={{
+              position: "relative", zIndex: 1,
+              paddingTop: rowSpacing / 2, paddingBottom: rowSpacing / 2,
+              paddingLeft: 4, paddingRight: 4,
+              borderTop: dividerBorder,
+            }}>
+            {marker === "checkbox" && (
+              hasCustomIcon ? (
+                <button
+                  onClick={() => { if (!isFinished || !locked) setEntries(entries.map((e) => e.id === entry.id ? { ...e, checked: !e.checked } : e)); }}
+                  className="flex-shrink-0 transition-opacity"
+                  style={{ width: iconSize, height: iconSize, cursor: isFinished && locked ? "default" : undefined }}
+                >
+                  {entry.checked && item.listCheckCheckedIcon ? (
+                    <img src={item.listCheckCheckedIcon} alt="" style={{ width: iconSize, height: iconSize, objectFit: "contain" }} />
+                  ) : (
+                    <img
+                      src={item.listCheckUncheckedIcon || item.listCheckCheckedIcon!}
+                      alt=""
+                      style={{ width: iconSize, height: iconSize, objectFit: "contain", opacity: entry.checked ? 0.3 : 1, filter: entry.checked ? "grayscale(1)" : undefined }}
+                    />
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={() => { if (!isFinished || !locked) setEntries(entries.map((e) => e.id === entry.id ? { ...e, checked: !e.checked } : e)); }}
+                  className={cn("flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors",
+                    entry.checked ? "border-transparent" : "border-[var(--border)] hover:border-[var(--accent)]",
+                    isFinished && locked && "cursor-default")}
+                  style={entry.checked ? { backgroundColor: checkColor, borderColor: checkColor } : undefined}
+                >
+                  {entry.checked && <Check size={10} className="text-white" />}
+                </button>
+              )
+            )}
+            {marker === "bullet" && (
+              <span className="w-4 flex-shrink-0 text-center" style={{ color: item.listFontColor || "var(--text-muted)" }}>•</span>
+            )}
+            {marker === "number" && (
+              <span className="w-5 flex-shrink-0 text-right text-xs" style={{ color: item.listFontColor || "var(--text-muted)" }}>{i + 1}.</span>
+            )}
+
+            {entry.isVariable ? (
+              /* Variable entries: label (contentEditable) + value on right */
+              <>
+                {collapsed ? (
+                  <span className={cn("flex-1", entry.checked && marker === "checkbox" && "line-through opacity-40")} style={{ fontSize: "inherit" }} dangerouslySetInnerHTML={{ __html: entry.text ?? "" }} />
+                ) : (
+                  <div
+                    data-entry-id={entry.id}
+                    contentEditable
+                    suppressContentEditableWarning
+                    className={cn("flex-1 min-w-0 outline-none", entry.checked && marker === "checkbox" && "line-through opacity-40")}
+                    style={{ fontSize: "inherit", fontFamily: "inherit", color: "inherit", wordBreak: "break-word", whiteSpace: "pre-wrap", minHeight: "1em", caretColor: isFinished && editingEntryId !== entry.id ? "transparent" : undefined }}
+                    ref={(el) => { if (el) editingDivRefs.current.set(entry.id, el); else editingDivRefs.current.delete(entry.id); }}
+                    onFocus={() => { if (isFinished && !locked) setEditingEntryId(entry.id); }}
+                    onBlur={() => { if (isFinished) setEditingEntryId(null); }}
+                    onInput={(e) => {
+                      if (isFinished && (locked || editingEntryId !== entry.id)) {
+                        e.currentTarget.innerHTML = entryHTMLRef.current.get(entry.id) ?? entry.text ?? "";
+                        return;
+                      }
+                      const html = (e.currentTarget as HTMLDivElement).innerHTML;
+                      const plain = html.replace(/<[^>]*>/g, "").trim();
+                      const autoName = plain.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 20) || "var";
+                      entryHTMLRef.current.set(entry.id, html);
+                      setEntries(entries.map((x) => x.id === entry.id ? { ...x, text: html, variableName: autoName } : x));
+                    }}
+                    onKeyDown={(e) => {
+                      if (isFinished && (locked || editingEntryId !== entry.id)) { e.preventDefault(); return; }
+                      if (isFinished && e.key === "Escape") { e.currentTarget.blur(); }
+                    }}
+                  />
+                )}
+                {/* Value: right-aligned, mode-aware */}
+                {(() => {
+                  const name = entry.variableName?.trim();
+                  const computedVal = name && name in vars
+                    ? String(vars[name])
+                    : (() => { const raw = entry.variableRawValue ?? String(entry.variableValue ?? ""); const n = Number(raw); return isNaN(n) ? raw : String(n); })();
+                  const valStyle: React.CSSProperties = {
+                    fontFamily: item.listVarValueFontFamily ?? "monospace",
+                    fontSize: item.listVarValueFontSize ? `${item.listVarValueFontSize}px` : "10px",
+                    color: item.listVarValueFontColor || "var(--text-muted)",
+                    fontWeight: item.listVarValueBold ? "bold" : undefined,
+                  };
+                  if (collapsed) {
+                    return <span className="flex-shrink-0 ml-2 tabular-nums" style={valStyle}>{computedVal || "—"}</span>;
+                  }
+                  if (isFinished) {
+                    return editingValueId === entry.id && !locked ? (
+                      <input
+                        autoFocus
+                        className="w-20 flex-shrink-0 bg-transparent text-right text-[var(--text-primary)] outline-none border-b border-[var(--accent)] ml-2"
+                        style={valStyle}
+                        placeholder="0"
+                        value={entry.variableRawValue ?? String(entry.variableValue ?? "")}
+                        onChange={(e) => setEntries(entries.map((x) => x.id === entry.id ? { ...x, variableRawValue: e.target.value } : x))}
+                        onBlur={() => setEditingValueId(null)}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur(); }}
+                      />
+                    ) : (
+                      <span
+                        className={cn("flex-shrink-0 ml-2 tabular-nums transition-colors", !locked && "cursor-text")}
+                        style={valStyle}
+                        onClick={() => { if (!locked) setEditingValueId(entry.id); }}
+                      >
+                        {computedVal || "—"}
+                      </span>
+                    );
+                  }
+                  return hoveredValueId === entry.id ? (
+                    <input
+                      autoFocus
+                      className="w-20 flex-shrink-0 bg-transparent text-right text-[var(--text-primary)] outline-none ml-2"
+                      style={valStyle}
+                      placeholder="0"
+                      value={entry.variableRawValue ?? String(entry.variableValue ?? "")}
+                      onChange={(e) => setEntries(entries.map((x) => x.id === entry.id ? { ...x, variableRawValue: e.target.value } : x))}
+                      onBlur={() => setHoveredValueId(null)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur(); }}
+                    />
+                  ) : (
+                    <span
+                      className="flex-shrink-0 ml-2 tabular-nums cursor-text select-none transition-colors"
+                      style={valStyle}
+                      onMouseEnter={() => setHoveredValueId(entry.id)}
+                    >
+                      {computedVal || "—"}
+                    </span>
+                  );
+                })()}
+              </>
+            ) : collapsed ? (
+              <span className={cn("flex-1", entry.checked && marker === "checkbox" && "line-through opacity-40")} style={{ fontSize: "inherit" }} dangerouslySetInnerHTML={{ __html: entry.text ?? "" }} />
+            ) : (
+              <div
+                data-entry-id={entry.id}
+                contentEditable
+                suppressContentEditableWarning
+                className={cn("flex-1 min-w-0 outline-none", entry.checked && marker === "checkbox" && "line-through opacity-40")}
+                style={{ fontSize: "inherit", fontFamily: "inherit", color: "inherit", wordBreak: "break-word", whiteSpace: "pre-wrap", minHeight: "1em", caretColor: isFinished && editingEntryId !== entry.id ? "transparent" : undefined }}
+                ref={(el) => {
+                  if (el) editingDivRefs.current.set(entry.id, el);
+                  else editingDivRefs.current.delete(entry.id);
+                }}
+                onFocus={() => { if (isFinished && !locked) setEditingEntryId(entry.id); }}
+                onBlur={() => { if (isFinished) setEditingEntryId(null); }}
+                onInput={(e) => {
+                  if (isFinished && (locked || editingEntryId !== entry.id)) {
+                    e.currentTarget.innerHTML = entryHTMLRef.current.get(entry.id) ?? entry.text ?? "";
+                    return;
+                  }
+                  dismissSelToolbar();
+                  const html = (e.currentTarget as HTMLDivElement).innerHTML;
+                  entryHTMLRef.current.set(entry.id, html);
+                  setEntries(entries.map((x) => x.id === entry.id ? { ...x, text: html } : x));
+                }}
+                onKeyDown={(e) => {
+                  if (isFinished && (locked || editingEntryId !== entry.id)) { e.preventDefault(); return; }
+                  const el = e.currentTarget as HTMLDivElement;
+                  if (!isFinished && e.key === "Enter") {
+                    e.preventDefault();
+                    const next = [...entries];
+                    next.splice(i + 1, 0, { id: nanoid(), text: "", checked: false });
+                    setEntries(next);
+                  } else if (!isFinished && e.key === "Backspace" && (el.innerHTML === "" || el.innerHTML === "<br>") && entries.length > 1) {
+                    e.preventDefault();
+                    setEntries(entries.filter((x) => x.id !== entry.id));
+                  } else if (isFinished && e.key === "Escape") {
+                    el.blur();
+                  }
+                }}
+              />
+            )}
+            {!isFinished && !collapsed && (
+              <div className="flex items-center gap-0.5 flex-shrink-0">
+                <button
+                  title={entry.isVariable ? "Remove variable" : "Make variable — expose value to other items"}
+                  onClick={() => setEntries(entries.map((x) => x.id === entry.id ? { ...x, isVariable: !x.isVariable, variableName: x.isVariable ? x.variableName : (x.text.replace(/<[^>]*>/g, "").trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 20) || "var") } : x))}
+                  className={cn("rounded p-0.5 transition-colors", entry.isVariable ? "text-[var(--accent)]" : "text-[var(--text-muted)]/40 hover:text-[var(--accent)]")}
+                >
+                  <Hash size={10} />
+                </button>
+                <button onClick={() => setEntries(entries.filter((x) => x.id !== entry.id))} className="text-[var(--text-muted)] opacity-0 group-hover/le:opacity-100 hover:text-red-400 transition-colors rounded p-0.5">
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
       {collapsed && entries.length > 4 && (
-        <p className="text-xs text-[var(--text-muted)]" style={{ position: "relative", zIndex: 1 }}>+{entries.length - 4} more items</p>
+        <p className="text-xs text-[var(--text-muted)] px-1" style={{ position: "relative", zIndex: 1, paddingTop: rowSpacing / 2 }}>+{entries.length - 4} more items</p>
       )}
       {!isFinished && !collapsed && (
-        <button onClick={() => setEntries([...entries, { id: nanoid(), text: "", checked: false }])} className="mt-0.5 flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors w-fit" style={{ position: "relative", zIndex: 1 }}>
+        <button onClick={() => setEntries([...entries, { id: nanoid(), text: "", checked: false }])}
+          className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors w-full px-1"
+          style={{ position: "relative", zIndex: 1, paddingTop: rowSpacing / 2, paddingBottom: rowSpacing / 2,
+            borderTop: shown.length > 0 && (item.listDividerStyle ?? "solid") !== "none"
+              ? `${item.listDividerWidth ?? 1}px ${item.listDividerStyle ?? "solid"} ${item.listDividerColor ?? "#ffffff"}${Math.round(((item.listDividerOpacity ?? 20) / 100) * 255).toString(16).padStart(2, "0")}`
+              : undefined }}>
           <Plus size={11} /> Add item
         </button>
+      )}
+      {selRect && !collapsed && createPortal(
+        <RichSelToolbar
+          cx={selRect.cx}
+          top={selRect.top}
+          selState={selState}
+          onExecCmd={(cmd) => withSavedRange(() => document.execCommand(cmd))}
+          onFontFamily={(font) => { loadGoogleFont(font); wrapSelectionSpan({ fontFamily: font }); }}
+          onFontSize={(size) => wrapSelectionSpan({ fontSize: `${size}px` })}
+          onColor={(color) => withSavedRange(() => document.execCommand("foreColor", false, color))}
+          onHighlight={(color) => withSavedRange(() => document.execCommand("hiliteColor", false, color))}
+          onClearFormat={() => { withSavedRange(() => document.execCommand("removeFormat")); dismissSelToolbar(); }}
+          onDismiss={dismissSelToolbar}
+        />,
+        document.body
+      )}
+      {contextMenu && createPortal(
+        <div
+          style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
+          className="bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-xl py-1 min-w-[168px] text-[13px]"
+          onMouseDown={e => e.stopPropagation()}
+        >
+          <button onClick={() => { setEntries([...entries, { id: nanoid(), text: "", checked: false }]); setContextMenu(null); }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
+            <Plus size={12} /> Add item
+          </button>
+          <div className="my-1 border-t border-[var(--border)]" />
+          <button onClick={() => { setLocked(v => !v); setContextMenu(null); }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
+            {locked ? <LockOpen size={12} /> : <Lock size={12} />}
+            {locked ? "Unlock editing" : "Lock editing"}
+          </button>
+          {marker === "checkbox" && (
+            <>
+              <div className="my-1 border-t border-[var(--border)]" />
+              <button onClick={() => { setEntries(entries.map(e => ({ ...e, checked: true }))); setContextMenu(null); }}
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
+                <CheckSquare size={12} /> Check all
+              </button>
+              <button onClick={() => { setEntries(entries.map(e => ({ ...e, checked: false }))); setContextMenu(null); }}
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
+                <Square size={12} /> Uncheck all
+              </button>
+              <button onClick={() => { setEntries(entries.filter(e => !e.checked)); setContextMenu(null); }}
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-red-400 hover:text-red-300">
+                <Trash2 size={12} /> Delete checked
+              </button>
+            </>
+          )}
+          <div className="my-1 border-t border-[var(--border)]" />
+          <button onClick={() => {
+            const text = entries.map(e => (e.text ?? "").replace(/<[^>]*>/g, "")).filter(Boolean).join("\n");
+            navigator.clipboard.writeText(text);
+            setContextMenu(null);
+          }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
+            <Copy size={12} /> Copy as text
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -704,10 +1625,42 @@ function VariableItem({ item, upd, vars, collapsed, isFinished }: { item: BlockI
 // ─── Embed ────────────────────────────────────────────────────────────────────
 
 function EmbedItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+  const [playing, setPlaying] = useState(false);
   const url = item.embedUrl ?? "";
   const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
   const ytId = ytMatch?.[1];
   const embedSrc = ytId ? `https://www.youtube.com/embed/${ytId}` : null;
+
+  const br = item.embedBorderRadius ?? 8;
+  const bw = item.embedBorderWidth ?? 0;
+  const bc = item.embedBorderColor ?? "#ffffff";
+  const bs = item.embedBorderStyle ?? "solid";
+
+  const filterParts: string[] = [];
+  if (item.embedFilterBrightness !== undefined && item.embedFilterBrightness !== 100) filterParts.push(`brightness(${item.embedFilterBrightness}%)`);
+  if (item.embedFilterContrast !== undefined && item.embedFilterContrast !== 100) filterParts.push(`contrast(${item.embedFilterContrast}%)`);
+  if (item.embedFilterSaturate !== undefined && item.embedFilterSaturate !== 100) filterParts.push(`saturate(${item.embedFilterSaturate}%)`);
+  if (item.embedFilterGrayscale) filterParts.push(`grayscale(${item.embedFilterGrayscale}%)`);
+  if (item.embedFilterSepia) filterParts.push(`sepia(${item.embedFilterSepia}%)`);
+  if (item.embedFilterBlur) filterParts.push(`blur(${item.embedFilterBlur}px)`);
+  if (item.embedFilterHueRotate) filterParts.push(`hue-rotate(${item.embedFilterHueRotate}deg)`);
+  const filterStr = filterParts.join(" ") || undefined;
+
+  const shadowMap: Record<string, string> = {
+    sm: "0 2px 8px rgba(0,0,0,0.4)",
+    md: "0 4px 20px rgba(0,0,0,0.55)",
+    lg: "0 8px 40px rgba(0,0,0,0.7)",
+    glow: `0 0 24px ${bc}88`,
+  };
+  const boxShadow = item.embedShadow && item.embedShadow !== "none" ? shadowMap[item.embedShadow] : undefined;
+
+  const wrapStyle: React.CSSProperties = {
+    borderRadius: br,
+    overflow: "hidden",
+    border: bw > 0 ? (bs === "glow" ? `${bw}px solid ${bc}` : `${bw}px ${bs} ${bc}`) : undefined,
+    boxShadow: bs === "glow" && bw > 0 ? `0 0 ${bw * 4}px ${bc}88` : boxShadow,
+    filter: filterStr,
+  };
 
   if (!url) {
     return (
@@ -723,26 +1676,61 @@ function EmbedItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
   }
 
   if (collapsed) {
+    if (ytId) {
+      if (playing) {
+        return (
+          <div className="relative w-full h-full min-h-[120px] overflow-hidden" style={wrapStyle}>
+            <iframe
+              src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
+              className="absolute inset-0 w-full h-full"
+              allow="autoplay; encrypted-media"
+              allowFullScreen
+              title="embed"
+              style={{ border: "none" }}
+            />
+          </div>
+        );
+      }
+      return (
+        <div
+          className="relative w-full h-full min-h-[120px] overflow-hidden cursor-pointer group/thumb"
+          style={wrapStyle}
+          onClick={(e) => { e.stopPropagation(); setPlaying(true); }}
+        >
+          <img
+            src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+            alt="YouTube thumbnail"
+            className="w-full h-full object-cover"
+            style={{ display: "block" }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover/thumb:bg-black/40 transition-colors">
+            <div className="bg-black/70 group-hover/thumb:bg-black/90 transition-colors rounded-full p-3 shadow-lg">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
-      <div className="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm">
-        <span>🎥</span>
-        <span className="flex-1 truncate text-[var(--text-secondary)]">{ytId ? "YouTube video" : url}</span>
-        {!isFinished && <button onClick={() => upd({ embedUrl: "" })} className="text-[var(--text-muted)] hover:text-red-400"><Trash2 size={11} /></button>}
-      </div>
+      <iframe src={url} className="w-full h-full min-h-[80px]" title="embed" style={{ border: "none", borderRadius: br }} />
     );
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1 w-full h-full">
       {embedSrc ? (
-        <div className="relative w-full overflow-hidden rounded" style={{ paddingBottom: "56.25%" }}>
-          <iframe src={embedSrc} className="absolute inset-0 h-full w-full rounded border border-[var(--border)]" allowFullScreen title="embed" />
+        <div className="relative w-full flex-1" style={{ ...wrapStyle, paddingBottom: url ? undefined : "56.25%" }}>
+          <div className="relative w-full" style={{ paddingBottom: "56.25%", borderRadius: br, overflow: "hidden", ...wrapStyle }}>
+            <iframe src={embedSrc} className="absolute inset-0 h-full w-full" allowFullScreen title="embed" style={{ border: "none" }} />
+          </div>
         </div>
       ) : (
-        <iframe src={url} className="h-48 w-full rounded border border-[var(--border)]" title="embed" />
+        <div style={wrapStyle} className="flex-1">
+          <iframe src={url} className="h-full w-full min-h-[120px]" title="embed" style={{ border: "none", display: "block" }} />
+        </div>
       )}
       {!isFinished && (
-        <button onClick={() => upd({ embedUrl: "" })} className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors">
+        <button onClick={() => upd({ embedUrl: "" })} className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors mt-1">
           <Trash2 size={11} /> Remove embed
         </button>
       )}
@@ -750,68 +1738,1012 @@ function EmbedItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
   );
 }
 
+export function EmbedStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const sliders: Array<{ label: string; key: keyof BlockItem; min: number; max: number; def: number; unit: string }> = [
+    { label: "Brightness", key: "embedFilterBrightness", min: 0, max: 200, def: 100, unit: "%" },
+    { label: "Contrast",   key: "embedFilterContrast",   min: 0, max: 200, def: 100, unit: "%" },
+    { label: "Saturation", key: "embedFilterSaturate",   min: 0, max: 200, def: 100, unit: "%" },
+    { label: "Grayscale",  key: "embedFilterGrayscale",  min: 0, max: 100, def: 0,   unit: "%" },
+    { label: "Sepia",      key: "embedFilterSepia",      min: 0, max: 100, def: 0,   unit: "%" },
+    { label: "Blur",       key: "embedFilterBlur",       min: 0, max: 20,  def: 0,   unit: "px" },
+    { label: "Hue rotate", key: "embedFilterHueRotate",  min: 0, max: 360, def: 0,   unit: "°" },
+  ];
+
+  return (
+    <div className="flex flex-col gap-5 p-3">
+
+      {/* Border */}
+      <div className="flex flex-col gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Border</p>
+        <div className="flex gap-2">
+          <label className="flex flex-col gap-1 flex-1">
+            <span className="text-[10px] text-[var(--text-muted)]">Color</span>
+            <div className="relative h-8 w-full rounded border border-[var(--border)] overflow-hidden" style={{ backgroundColor: item.embedBorderColor ?? "#ffffff" }}>
+              <input type="color" value={item.embedBorderColor ?? "#ffffff"} onChange={(e) => upd({ embedBorderColor: e.target.value })} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+            </div>
+          </label>
+          <label className="flex flex-col gap-1 w-16">
+            <span className="text-[10px] text-[var(--text-muted)]">Width</span>
+            <input type="number" min={0} max={20} value={item.embedBorderWidth ?? 0}
+              onChange={(e) => upd({ embedBorderWidth: Number(e.target.value) })}
+              className="w-full rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]" />
+          </label>
+        </div>
+        <div className="grid grid-cols-3 gap-1">
+          {(["solid","dashed","dotted","double","glow"] as const).map((s) => (
+            <button key={s} onClick={() => upd({ embedBorderStyle: s })}
+              className={cn("rounded py-1 text-[10px] capitalize transition-colors",
+                (item.embedBorderStyle ?? "solid") === s ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              )}>{s}</button>
+          ))}
+        </div>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-[var(--text-muted)]">Corner radius</span>
+            <span className="text-[10px] font-mono text-[var(--text-muted)]">{item.embedBorderRadius ?? 8}px</span>
+          </div>
+          <input type="range" min={0} max={48} value={item.embedBorderRadius ?? 8}
+            onChange={(e) => upd({ embedBorderRadius: Number(e.target.value) })}
+            className="w-full accent-[var(--accent)]" />
+        </div>
+      </div>
+
+      {/* Shadow */}
+      <div className="flex flex-col gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shadow</p>
+        <div className="grid grid-cols-3 gap-1">
+          {(["none","sm","md","lg","glow"] as const).map((s) => (
+            <button key={s} onClick={() => upd({ embedShadow: s })}
+              className={cn("rounded py-1 text-[10px] capitalize transition-colors",
+                (item.embedShadow ?? "none") === s ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              )}>{s}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Filters</p>
+          <button onClick={() => upd({ embedFilterBrightness: undefined, embedFilterContrast: undefined, embedFilterSaturate: undefined, embedFilterGrayscale: undefined, embedFilterSepia: undefined, embedFilterBlur: undefined, embedFilterHueRotate: undefined })}
+            className="text-[10px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">Reset</button>
+        </div>
+        {sliders.map(({ label, key, min, max, def, unit }) => {
+          const val = (item[key] as number | undefined) ?? def;
+          return (
+            <div key={key} className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-[var(--text-muted)]">{label}</span>
+                <span className="text-[10px] font-mono text-[var(--text-muted)]">{val}{unit}</span>
+              </div>
+              <input type="range" min={min} max={max} value={val}
+                onChange={(e) => upd({ [key]: Number(e.target.value) })}
+                className="w-full accent-[var(--accent)]" />
+            </div>
+          );
+        })}
+      </div>
+
+    </div>
+  );
+}
+
 // ─── Timer ────────────────────────────────────────────────────────────────────
 
-function TimerItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
-  const total = item.timerSeconds ?? 60;
-  const [remaining, setRemaining] = useState(total);
+const RING_R = 54;
+const RING_C = 2 * Math.PI * RING_R;
+
+// ─── Timer presets ────────────────────────────────────────────────────────────
+
+const TIMER_PRESETS = [
+  { id: "pomodoro",  label: "Pomodoro",  workSecs: 25*60, breakSecs: 5*60, longBreakSecs: 15*60, cycles: 4,  pomodoro: true },
+  { id: "flow",      label: "Flow 50/10", workSecs: 50*60, breakSecs: 10*60, longBreakSecs: 20*60, cycles: 3, pomodoro: true },
+  { id: "sprint",    label: "Sprint",    workSecs: 15*60, breakSecs: 5*60,  longBreakSecs: 10*60, cycles: 4, pomodoro: false },
+  { id: "deepwork",  label: "Deep Work", workSecs: 90*60, breakSecs: 20*60, longBreakSecs: 30*60, cycles: 2, pomodoro: true },
+] as const;
+
+const PHASE_LABELS: Record<string, string> = {
+  work: "Focus",
+  break: "Short Break",
+  "long-break": "Long Break",
+};
+
+function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; containerH?: number }) {
+  const mode = item.timerMode ?? "countdown";
+  const total = item.timerSeconds ?? 300;
+  const accent = item.timerAccentColor ?? "var(--accent)";
+  const fontColor = item.timerFontColor ?? "var(--text-primary)";
+  const fontSize = item.timerFontSize ?? 48;
+  const fontFamily = item.timerFontFamily;
+  const bold = item.timerBold !== false;
+  const showLabel = item.timerShowLabel !== false;
+  const labelPos = item.timerLabelPosition ?? "bottom";
+
+  const pomodoroEnabled = !!item.timerPomodoroEnabled && mode === "countdown";
+  const pomodoroWorkSecs = item.timerPomodoroWorkSecs ?? 1500;
+  const pomodoroBreakSecs = item.timerPomodoroBreakSecs ?? 300;
+  const pomodoroLongBreakSecs = item.timerPomodoroLongBreakSecs ?? 900;
+  const cyclesBeforeLong = item.timerPomodoroCyclesBeforeLongBreak ?? 4;
+
+  const [remaining, setRemaining] = useState(pomodoroEnabled ? pomodoroWorkSecs : total);
+  const [elapsed, setElapsed] = useState(0);
   const [running, setRunning] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [now, setNow] = useState(new Date());
+  const [phase, setPhase] = useState<"work" | "break" | "long-break">("work");
+  const [displayCycles, setDisplayCycles] = useState(0);
+  const [phaseAdvance, setPhaseAdvance] = useState(false);
+  const cycleCountRef = useRef(0);
+  // Refs for stable closure access when syncing to store
+  const elapsedRef = useRef(elapsed);
+  const remainingRef = useRef(remaining);
+  elapsedRef.current = elapsed;
+  remainingRef.current = remaining;
+
+  // Sync elapsed/remaining to store when timer pauses — makes values available as variables
+  useEffect(() => {
+    if (!running && item.timerVarName?.trim()) {
+      upd({ timerElapsedSecs: elapsedRef.current, timerRemainingSecs: remainingRef.current });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running]);
+
+  // When pomodoro is toggled or work secs change, reset to work phase
+  useEffect(() => {
+    if (pomodoroEnabled) {
+      setPhase("work");
+      setRemaining(pomodoroWorkSecs);
+      cycleCountRef.current = 0;
+      setDisplayCycles(0);
+      setRunning(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pomodoroEnabled]);
+
+  // When total changes and NOT in pomodoro mode, reset remaining
+  useEffect(() => {
+    if (!pomodoroEnabled) setRemaining(total);
+  }, [total, pomodoroEnabled]);
+
+  // Phase transition effect
+  useEffect(() => {
+    if (!phaseAdvance) return;
+    setPhaseAdvance(false);
+    setPhase((currentPhase) => {
+      let nextPhase: "work" | "break" | "long-break";
+      if (currentPhase === "work") {
+        const newCount = cycleCountRef.current + 1;
+        cycleCountRef.current = newCount;
+        setDisplayCycles(newCount);
+        nextPhase = newCount % cyclesBeforeLong === 0 ? "long-break" : "break";
+      } else {
+        nextPhase = "work";
+      }
+      const nextSecs = nextPhase === "work" ? pomodoroWorkSecs
+        : nextPhase === "long-break" ? pomodoroLongBreakSecs
+        : pomodoroBreakSecs;
+      setRemaining(nextSecs);
+      setRunning(true);
+      return nextPhase;
+    });
+  }, [phaseAdvance, pomodoroWorkSecs, pomodoroBreakSecs, pomodoroLongBreakSecs, cyclesBeforeLong]);
 
   useEffect(() => {
-    if (running && remaining > 0) {
-      intervalRef.current = setInterval(() => setRemaining((r) => r - 1), 1000);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (remaining <= 0) setRunning(false);
+    if (mode === "clock") {
+      const id = setInterval(() => setNow(new Date()), 1000);
+      return () => clearInterval(id);
     }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [running, remaining]);
+    if (!running) return;
+    const id = setInterval(() => {
+      if (mode === "countdown") {
+        setRemaining((r) => {
+          if (r <= 1) {
+            setRunning(false);
+            if (pomodoroEnabled) setPhaseAdvance(true);
+            return 0;
+          }
+          return r - 1;
+        });
+      } else {
+        setElapsed((e) => e + 1);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [running, mode, pomodoroEnabled]);
 
-  const mm = Math.floor(remaining / 60).toString().padStart(2, "0");
-  const ss = (remaining % 60).toString().padStart(2, "0");
+  const fmtSecs = (secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const effectiveTotal = pomodoroEnabled
+    ? (phase === "work" ? pomodoroWorkSecs : phase === "long-break" ? pomodoroLongBreakSecs : pomodoroBreakSecs)
+    : total;
+
+  let displayTime = "";
+  let progress = 1;
+
+  if (mode === "clock") {
+    const use24 = item.timerFormat24h;
+    const showSec = item.timerShowSeconds !== false;
+    const h = use24 ? now.getHours().toString().padStart(2, "0") : ((now.getHours() % 12) || 12).toString().padStart(2, "0");
+    const m = now.getMinutes().toString().padStart(2, "0");
+    const s = now.getSeconds().toString().padStart(2, "0");
+    displayTime = showSec ? `${h}:${m}:${s}` : `${h}:${m}`;
+    if (!use24) displayTime += now.getHours() >= 12 ? " PM" : " AM";
+    progress = 1;
+  } else if (mode === "countdown") {
+    displayTime = fmtSecs(remaining);
+    progress = effectiveTotal > 0 ? remaining / effectiveTotal : 0;
+  } else {
+    displayTime = fmtSecs(elapsed);
+    progress = 1;
+  }
+
+  const dateStr = mode === "clock" && item.timerShowDate
+    ? now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
+    : null;
+
+  const label = item.timerLabel?.trim();
+
+  const handleReset = () => {
+    setRunning(false);
+    if (pomodoroEnabled) {
+      setPhase("work");
+      setRemaining(pomodoroWorkSecs);
+      cycleCountRef.current = 0;
+      setDisplayCycles(0);
+    } else {
+      setRemaining(total);
+      setElapsed(0);
+    }
+    if (item.timerVarName?.trim()) {
+      upd({ timerElapsedSecs: 0, timerRemainingSecs: pomodoroEnabled ? pomodoroWorkSecs : total });
+    }
+  };
 
   if (collapsed) {
+    const collapsedFontSize = containerH ? Math.max(10, Math.round(containerH * 0.44)) : 18;
+    const btnSize = Math.max(10, Math.round(collapsedFontSize * 0.7));
     return (
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-lg font-bold text-[var(--accent)]">{mm}:{ss}</span>
-        <span className="text-xs text-[var(--text-muted)]">{item.timerLabel || "Timer"}</span>
-        <button onClick={() => setRunning((r) => !r)} className="ml-auto rounded-full bg-[var(--accent)]/20 p-1 text-[var(--accent)] hover:bg-[var(--accent)]/30 transition-colors">
-          {running ? <Pause size={12} /> : <Play size={12} />}
-        </button>
+      <div className="flex items-center gap-2 w-full h-full px-2 overflow-hidden">
+        {pomodoroEnabled && <span className="font-medium shrink-0 px-1 py-0.5 rounded" style={{ fontSize: Math.max(8, collapsedFontSize * 0.6), background: accent + "25", color: accent }}>{PHASE_LABELS[phase]}</span>}
+        <span className="font-mono font-bold shrink-0" style={{ fontSize: collapsedFontSize, color: accent }}>{displayTime}</span>
+        {label && <span className="truncate" style={{ fontSize: Math.max(9, collapsedFontSize * 0.65), color: "var(--text-muted)" }}>{label}</span>}
+        {mode !== "clock" && (
+          <button onClick={() => setRunning((r) => !r)} className="ml-auto rounded-full p-1 shrink-0 transition-colors" style={{ color: accent, background: accent + "20" }}>
+            {running ? <Pause size={btnSize} /> : <Play size={btnSize} />}
+          </button>
+        )}
       </div>
     );
   }
 
+  const [hovered, setHovered] = useState(false);
+
+  const bw = item.timerBorderWidth ?? 0;
+  const bc = item.timerBorderColor ?? "var(--accent)";
+  const br = item.timerBorderRadius ?? 0;
+  const bs = item.timerBorderStyle ?? "solid";
+  const borderStyle = bw > 0
+    ? bs === "glow"
+      ? { borderRadius: br, boxShadow: `0 0 ${bw * 3}px ${bw}px ${bc}` }
+      : { border: `${bw}px ${bs} ${bc}`, borderRadius: br }
+    : { borderRadius: br };
+
   return (
-    <div className="flex flex-col items-center gap-3 py-2">
-      {!isFinished && (
+    <div
+      className="relative flex h-full w-full flex-col items-center justify-center gap-3 select-none overflow-hidden"
+      style={borderStyle}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Background color layer */}
+      {item.timerBgColor && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 0,
+          backgroundColor: item.timerBgColor,
+          borderRadius: br,
+          opacity: (item.timerBgOpacity ?? 100) / 100,
+          pointerEvents: "none",
+        }} />
+      )}
+
+      {/* Background image layer */}
+      {item.timerBgImage && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 0,
+          backgroundImage: `url(${item.timerBgImage})`,
+          backgroundSize: item.timerBgImageSize ?? "cover",
+          backgroundPosition: "center",
+          borderRadius: br,
+          opacity: (item.timerBgImageOpacity ?? 80) / 100,
+          pointerEvents: "none",
+        }} />
+      )}
+
+      {/* ── Background-fill progress layer (zIndex 1, between bg and content) ── */}
+      {(() => {
+        const ps = item.timerProgressStyle ?? "bar";
+        const dir = item.timerProgressDir ?? "btt";
+        const pc = item.timerProgressColor ?? accent;
+        const pct = progress * 100;
+        if (mode === "clock" || ps === "none" || ps === "bar" || ps === "thick-bar" || ps === "ring") return null;
+
+        if (ps === "bg-fill") {
+          // Accent-tinted fill that shrinks as time runs out
+          const fillStyle: React.CSSProperties = {
+            position: "absolute", zIndex: 1, transition: "all 1s linear", pointerEvents: "none",
+            background: pc + "40",
+          };
+          if (dir === "ltr")      { fillStyle.left = 0; fillStyle.top = 0; fillStyle.bottom = 0; fillStyle.width = `${pct}%`; }
+          else if (dir === "rtl") { fillStyle.right = 0; fillStyle.top = 0; fillStyle.bottom = 0; fillStyle.width = `${pct}%`; }
+          else if (dir === "ttb") { fillStyle.top = 0; fillStyle.left = 0; fillStyle.right = 0; fillStyle.height = `${pct}%`; }
+          else                    { fillStyle.bottom = 0; fillStyle.left = 0; fillStyle.right = 0; fillStyle.height = `${pct}%`; }
+          return (
+            <div style={{ position: "absolute", inset: 0, zIndex: 1, overflow: "hidden", borderRadius: br, pointerEvents: "none" }}>
+              <div style={fillStyle} />
+            </div>
+          );
+        }
+
+        if (ps === "bg-dim") {
+          // Uniform dark-grey overlay that intensifies as time runs out (1-progress)
+          const alpha = (1 - progress) * 0.78;
+          return (
+            <div style={{
+              position: "absolute", inset: 0, zIndex: 1, borderRadius: br, pointerEvents: "none",
+              background: `rgba(30,30,30,${alpha.toFixed(3)})`,
+              transition: "background 1s linear",
+            }} />
+          );
+        }
+
+        if (ps === "bg-sweep") {
+          // A grey "curtain" sweeps from the expired side — sharp edge between fresh and expired
+          const expiredStyle: React.CSSProperties = {
+            position: "absolute", zIndex: 1, transition: "all 1s linear", pointerEvents: "none",
+            background: "rgba(30,30,30,0.65)",
+            backdropFilter: "grayscale(1) brightness(0.55)",
+            WebkitBackdropFilter: "grayscale(1) brightness(0.55)",
+          };
+          if (dir === "ltr")      { expiredStyle.left = `${pct}%`; expiredStyle.top = 0; expiredStyle.bottom = 0; expiredStyle.right = 0; }
+          else if (dir === "rtl") { expiredStyle.right = `${pct}%`; expiredStyle.top = 0; expiredStyle.bottom = 0; expiredStyle.left = 0; }
+          else if (dir === "ttb") { expiredStyle.top = `${pct}%`; expiredStyle.left = 0; expiredStyle.right = 0; expiredStyle.bottom = 0; }
+          else                    { expiredStyle.bottom = `${pct}%`; expiredStyle.left = 0; expiredStyle.right = 0; expiredStyle.top = 0; }
+          return (
+            <div style={{ position: "absolute", inset: 0, zIndex: 1, overflow: "hidden", borderRadius: br, pointerEvents: "none" }}>
+              <div style={expiredStyle} />
+            </div>
+          );
+        }
+
+        return null;
+      })()}
+
+      {/* Ring progress (SVG, sits above bg layers, below content) */}
+      {mode !== "clock" && (item.timerProgressStyle ?? "bar") === "ring" && (() => {
+        const pc = item.timerProgressColor ?? accent;
+        const r = 46;
+        const circumference = 2 * Math.PI * r;
+        const offset = circumference * (1 - progress);
+        return (
+          <svg
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 1, pointerEvents: "none" }}
+            viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"
+          >
+            <circle cx="50" cy="50" r={r} fill="none" stroke={pc + "28"} strokeWidth="4" />
+            <circle cx="50" cy="50" r={r} fill="none" stroke={pc} strokeWidth="4"
+              strokeDasharray={circumference}
+              strokeDashoffset={offset}
+              strokeLinecap="round"
+              transform="rotate(-90 50 50)"
+              style={{ transition: "stroke-dashoffset 1s linear" }}
+            />
+          </svg>
+        );
+      })()}
+
+      {/* Content above bg */}
+      <div className="relative z-10 flex flex-col items-center gap-3 w-full px-4">
+
+        {/* Pomodoro phase + cycles */}
+        {pomodoroEnabled && (
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-semibold tracking-wide px-2.5 py-0.5 rounded-full"
+              style={{ background: accent + "25", color: accent }}>
+              {PHASE_LABELS[phase]}
+            </span>
+            <span className="text-[10px] tabular-nums" style={{ color: fontColor + "60" }}>
+              {displayCycles % cyclesBeforeLong}/{cyclesBeforeLong} cycles
+            </span>
+          </div>
+        )}
+
+        {/* Label above */}
+        {showLabel && label && labelPos === "top" && (
+          <span className="text-xs font-medium tracking-wide" style={{ color: fontColor + "70" }}>{label}</span>
+        )}
+
+        {/* Number */}
+        <span
+          className="font-mono tabular-nums leading-none"
+          style={{ fontSize, color: fontColor, fontFamily: fontFamily || undefined, fontWeight: bold ? 700 : 400 }}
+        >
+          {displayTime}
+        </span>
+
+        {/* Progress bar — bar / thick-bar styles only */}
+        {mode !== "clock" && (() => {
+          const ps = item.timerProgressStyle ?? "bar";
+          const pc = item.timerProgressColor ?? accent;
+          if (ps === "bar") return (
+            <div className="w-full max-w-[180px] h-1 rounded-full overflow-hidden" style={{ background: pc + "25" }}>
+              <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${progress * 100}%`, background: pc }} />
+            </div>
+          );
+          if (ps === "thick-bar") return (
+            <div className="w-full h-3 rounded-lg overflow-hidden" style={{ background: pc + "25" }}>
+              <div className="h-full rounded-lg transition-all duration-1000" style={{ width: `${progress * 100}%`, background: pc }} />
+            </div>
+          );
+          return null;
+        })()}
+
+        {/* Date (clock only) */}
+        {dateStr && <span className="text-xs" style={{ color: fontColor + "60" }}>{dateStr}</span>}
+
+        {/* Label below */}
+        {showLabel && label && labelPos === "bottom" && (
+          <span className="text-xs font-medium tracking-wide" style={{ color: fontColor + "70" }}>{label}</span>
+        )}
+
+        {/* Controls — fade in on hover */}
+        {mode !== "clock" && (
+          <div
+            className="flex items-center gap-2 transition-opacity duration-150"
+            style={{ opacity: hovered ? 1 : 0, pointerEvents: hovered ? "auto" : "none" }}
+          >
+            <button
+              onMouseDown={(e) => { e.stopPropagation(); setRunning(true); }}
+              title="Start"
+              className="rounded-full p-2 transition-colors"
+              style={{ background: running ? accent : "var(--surface-overlay)", color: running ? "#fff" : "var(--text-muted)" }}
+            >
+              <Play size={13} />
+            </button>
+            <button
+              onMouseDown={(e) => { e.stopPropagation(); setRunning(false); }}
+              title="Pause"
+              className="rounded-full p-2 transition-colors"
+              style={{ background: !running ? accent : "var(--surface-overlay)", color: !running ? "#fff" : "var(--text-muted)" }}
+            >
+              <Pause size={13} />
+            </button>
+            <button
+              onMouseDown={(e) => { e.stopPropagation(); handleReset(); }}
+              title="Reset"
+              className="rounded-full p-2 transition-colors"
+              style={{ background: "var(--surface-overlay)", color: "var(--text-muted)" }}
+            >
+              <RotateCcw size={13} />
+            </button>
+            {item.timerCollabEnabled && (
+              <span className="rounded-full p-2" title="Synced" style={{ color: accent }}>
+                <Radio size={13} />
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Timer Style Panel ────────────────────────────────────────────────────────
+
+export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const mode = item.timerMode ?? "countdown";
+  const total = item.timerSeconds ?? 300;
+  const [openPicker, setOpenPicker] = useState<"font" | "accent" | "bg" | null>(null);
+  const bgFileRef = useRef<HTMLInputElement>(null);
+
+  const totalH = Math.floor(total / 3600);
+  const totalM = Math.floor((total % 3600) / 60);
+  const totalS = total % 60;
+
+  const setDuration = (h: number, m: number, s: number) => {
+    upd({ timerSeconds: Math.max(1, h * 3600 + m * 60 + s) });
+  };
+
+  const PLabel = ({ children }: { children: React.ReactNode }) => (
+    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>
+  );
+
+  const ToggleGroup = ({ options, value, onChange }: { options: { label: string; value: string }[]; value: string; onChange: (v: string) => void }) => (
+    <div className="flex gap-1">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={cn(
+            "flex-1 rounded-md py-1 text-[11px] font-medium transition-colors",
+            value === o.value
+              ? "bg-[var(--accent)] text-white"
+              : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const SliderRow = ({ label, value, min, max, step = 1, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) => (
+    <div className="flex items-center gap-2">
+      <span className="w-20 text-[var(--text-muted)] shrink-0">{label}</span>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="flex-1 accent-[var(--accent)]" />
+      <span className="w-8 text-right tabular-nums text-[var(--text-secondary)]">{value}</span>
+    </div>
+  );
+
+  const accent = item.timerAccentColor ?? "#5865f2";
+
+  return (
+    <div className="flex flex-col gap-5 p-3 text-xs">
+
+      {/* Quick presets */}
+      <section>
+        <PLabel>Quick Presets</PLabel>
+        <div className="grid grid-cols-2 gap-1.5">
+          {TIMER_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => upd({
+                timerMode: "countdown",
+                timerSeconds: p.workSecs,
+                timerLabel: p.label,
+                timerPomodoroEnabled: p.pomodoro,
+                timerPomodoroWorkSecs: p.workSecs,
+                timerPomodoroBreakSecs: p.breakSecs,
+                timerPomodoroLongBreakSecs: p.longBreakSecs,
+                timerPomodoroCyclesBeforeLongBreak: p.cycles,
+              })}
+              className="rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-2 text-[11px] font-medium text-[var(--text-secondary)] hover:border-[var(--accent)]/60 hover:text-[var(--accent)] transition-colors text-left"
+            >
+              <span className="block font-semibold text-[var(--text-primary)]">{p.label}</span>
+              <span className="block text-[10px] text-[var(--text-muted)]">
+                {Math.floor(p.workSecs/60)}m work · {Math.floor(p.breakSecs/60)}m break
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Mode */}
+      <section>
+        <PLabel>Mode</PLabel>
+        <ToggleGroup
+          options={[{ label: "Countdown", value: "countdown" }, { label: "Stopwatch", value: "stopwatch" }, { label: "Clock", value: "clock" }]}
+          value={mode}
+          onChange={(v) => upd({ timerMode: v as BlockItem["timerMode"] })}
+        />
+      </section>
+
+      {/* Pomodoro cycle (countdown only) */}
+      {mode === "countdown" && (
+        <section>
+          <PLabel>Cycle mode</PLabel>
+          <label className="flex items-center gap-2 cursor-pointer mb-3">
+            <input
+              type="checkbox"
+              checked={!!item.timerPomodoroEnabled}
+              onChange={(e) => upd({ timerPomodoroEnabled: e.target.checked })}
+              className="accent-[var(--accent)]"
+            />
+            <span className="text-[var(--text-secondary)]">Auto-cycle work / break</span>
+          </label>
+          {item.timerPomodoroEnabled && (
+            <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 items-center pl-1">
+              {([
+                { label: "Work",       totalSecs: item.timerPomodoroWorkSecs ?? 1500,  onChangeSecs: (s: number) => upd({ timerPomodoroWorkSecs: s, timerSeconds: s }) },
+                { label: "Break",      totalSecs: item.timerPomodoroBreakSecs ?? 300,  onChangeSecs: (s: number) => upd({ timerPomodoroBreakSecs: s }) },
+                { label: "Long break", totalSecs: item.timerPomodoroLongBreakSecs ?? 900, onChangeSecs: (s: number) => upd({ timerPomodoroLongBreakSecs: s }) },
+              ]).map(({ label, totalSecs, onChangeSecs }) => {
+                const m = Math.floor(totalSecs / 60);
+                const s = totalSecs % 60;
+                return (
+                  <>
+                    <span key={label + "-l"} className="text-[var(--text-muted)]">{label}</span>
+                    <div key={label + "-i"} className="flex items-center gap-1">
+                      <input type="number" min={0} value={m}
+                        onChange={(e) => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0) onChangeSecs(Math.max(1, n * 60 + s)); }}
+                        className="w-12 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-center text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+                      />
+                      <span className="text-[var(--text-muted)] text-[11px]">m</span>
+                      <input type="number" min={0} max={59} value={s}
+                        onChange={(e) => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 59) onChangeSecs(Math.max(1, m * 60 + n)); }}
+                        className="w-12 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-center text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+                      />
+                      <span className="text-[var(--text-muted)] text-[11px]">s</span>
+                    </div>
+                  </>
+                );
+              })}
+              <span className="text-[var(--text-muted)]">Cycles</span>
+              <input type="number" min={1} value={item.timerPomodoroCyclesBeforeLongBreak ?? 4}
+                onChange={(e) => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1) upd({ timerPomodoroCyclesBeforeLongBreak: n }); }}
+                className="w-12 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-center text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+              />
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Collaboration sync */}
+      <section>
+        <PLabel>Collaboration</PLabel>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!item.timerCollabEnabled}
+            onChange={(e) => upd({ timerCollabEnabled: e.target.checked })}
+            className="accent-[var(--accent)]"
+          />
+          <span className="text-[var(--text-secondary)]">Sync timer across session</span>
+        </label>
+        {item.timerCollabEnabled && (
+          <p className="mt-1 text-[10px] text-[var(--text-muted)] pl-5">
+            Connect Supabase to enable real-time sync.
+          </p>
+        )}
+      </section>
+
+      {/* Duration (countdown only) */}
+      {mode === "countdown" && !item.timerPomodoroEnabled && (
+        <section>
+          <PLabel>Duration</PLabel>
+          <div className="flex items-center gap-1.5">
+            <input type="number" min={0} value={totalH}
+              onChange={(e) => setDuration(Number(e.target.value), totalM, totalS)}
+              className="w-12 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-center text-xs text-[var(--text-primary)] outline-none"
+            />
+            <span className="text-[var(--text-muted)]">h</span>
+            <input type="number" min={0} max={59} value={totalM}
+              onChange={(e) => setDuration(totalH, Number(e.target.value), totalS)}
+              className="w-12 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-center text-xs text-[var(--text-primary)] outline-none"
+            />
+            <span className="text-[var(--text-muted)]">m</span>
+            <input type="number" min={0} max={59} value={totalS}
+              onChange={(e) => setDuration(totalH, totalM, Number(e.target.value))}
+              className="w-12 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-center text-xs text-[var(--text-primary)] outline-none"
+            />
+            <span className="text-[var(--text-muted)]">s</span>
+          </div>
+        </section>
+      )}
+
+      {/* Clock options */}
+      {mode === "clock" && (
+        <section>
+          <PLabel>Clock format</PLabel>
+          <div className="flex flex-col gap-2">
+            <ToggleGroup
+              options={[{ label: "12 h", value: "12" }, { label: "24 h", value: "24" }]}
+              value={item.timerFormat24h ? "24" : "12"}
+              onChange={(v) => upd({ timerFormat24h: v === "24" })}
+            />
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={item.timerShowSeconds !== false} onChange={(e) => upd({ timerShowSeconds: e.target.checked })} className="accent-[var(--accent)]" />
+              <span className="text-[var(--text-secondary)]">Show seconds</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={!!item.timerShowDate} onChange={(e) => upd({ timerShowDate: e.target.checked })} className="accent-[var(--accent)]" />
+              <span className="text-[var(--text-secondary)]">Show date</span>
+            </label>
+          </div>
+        </section>
+      )}
+
+      {/* Label */}
+      <section>
+        <PLabel>Label</PLabel>
         <input
-          className="w-40 bg-transparent text-center text-sm text-[var(--text-secondary)] outline-none placeholder:text-[var(--text-muted)]"
-          placeholder="Timer label…"
+          className="mb-2 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+          placeholder="Label text…"
           value={item.timerLabel ?? ""}
           onChange={(e) => upd({ timerLabel: e.target.value })}
         />
-      )}
-      <span className="font-mono text-5xl font-bold tabular-nums text-[var(--text-primary)]">{mm}:{ss}</span>
-      <div className="flex items-center gap-2">
-        <button onClick={() => setRunning((r) => !r)} className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors">
-          {running ? <Pause size={14} /> : <Play size={14} />}
-          {running ? "Pause" : "Start"}
-        </button>
-        <button onClick={() => { setRunning(false); setRemaining(total); }} className="rounded-lg border border-[var(--border)] p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
-          <RotateCcw size={14} />
-        </button>
-      </div>
-      {!isFinished && (
-        <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
-          <span>Duration:</span>
-          <input type="number" min={1} value={Math.floor(total / 60)} onChange={(e) => { const s = Number(e.target.value) * 60 + (total % 60); upd({ timerSeconds: s }); setRemaining(s); }} className="w-12 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-xs text-[var(--text-primary)] outline-none" />
-          <span>min</span>
-          <input type="number" min={0} max={59} value={total % 60} onChange={(e) => { const s = Math.floor(total / 60) * 60 + Number(e.target.value); upd({ timerSeconds: s }); setRemaining(s); }} className="w-12 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-xs text-[var(--text-primary)] outline-none" />
-          <span>sec</span>
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={item.timerShowLabel !== false} onChange={(e) => upd({ timerShowLabel: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[var(--text-secondary)]">Show label</span>
+          </label>
+          <ToggleGroup
+            options={[{ label: "Above", value: "top" }, { label: "Below", value: "bottom" }]}
+            value={item.timerLabelPosition ?? "bottom"}
+            onChange={(v) => upd({ timerLabelPosition: v as "top" | "bottom" })}
+          />
         </div>
+      </section>
+
+      {/* Progress indicator */}
+      {mode !== "clock" && (
+        <section>
+          <PLabel>Progress indicator</PLabel>
+          <div className="flex flex-col gap-2">
+            {/* Style grid */}
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { id: "bar",      label: "Bar",        desc: "Thin bar below time" },
+                { id: "thick-bar",label: "Thick bar",  desc: "Tall bar below time" },
+                { id: "ring",     label: "Ring",       desc: "Circular ring border" },
+                { id: "bg-fill",  label: "BG fill",    desc: "Accent tint sweeps background" },
+                { id: "bg-dim",   label: "BG dim",     desc: "Background fades to grey" },
+                { id: "bg-sweep", label: "BG sweep",   desc: "Grey curtain over expired portion" },
+                { id: "none",     label: "None",       desc: "No progress indicator" },
+              ] as { id: string; label: string; desc: string }[]).map((opt) => {
+                const active = (item.timerProgressStyle ?? "bar") === opt.id;
+                return (
+                  <button key={opt.id}
+                    onClick={() => upd({ timerProgressStyle: opt.id as BlockItem["timerProgressStyle"] })}
+                    title={opt.desc}
+                    className={cn("flex flex-col items-center gap-0.5 rounded-lg border px-1 py-2 text-center transition-all",
+                      active
+                        ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                        : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                    )}>
+                    <span className="text-[10px] font-medium leading-tight">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Direction picker (for bg-fill and bg-sweep) */}
+            {(item.timerProgressStyle === "bg-fill" || item.timerProgressStyle === "bg-sweep") && (
+              <div>
+                <p className="text-[10px] text-[var(--text-muted)] mb-1">Direction</p>
+                <div className="grid grid-cols-4 gap-1">
+                  {([
+                    { id: "ltr", label: "→" },
+                    { id: "rtl", label: "←" },
+                    { id: "ttb", label: "↓" },
+                    { id: "btt", label: "↑" },
+                  ] as { id: string; label: string }[]).map((d) => {
+                    const active = (item.timerProgressDir ?? "btt") === d.id;
+                    return (
+                      <button key={d.id}
+                        onClick={() => upd({ timerProgressDir: d.id as BlockItem["timerProgressDir"] })}
+                        className={cn("rounded py-1.5 text-sm font-bold transition-colors",
+                          active ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                        )}>{d.label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Progress color override */}
+            {(item.timerProgressStyle ?? "bar") !== "none" && (
+              <div className="flex items-center gap-2">
+                <span className="text-[var(--text-muted)] shrink-0 text-[11px]">Color</span>
+                <label className="relative h-5 w-5 rounded border border-[var(--border)] overflow-hidden cursor-pointer flex-shrink-0">
+                  <span className="absolute inset-0 rounded" style={{ background: item.timerProgressColor ?? (item.timerAccentColor ?? "#5865f2") }} />
+                  <input type="color"
+                    value={item.timerProgressColor ?? (item.timerAccentColor ?? "#5865f2")}
+                    onChange={(e) => upd({ timerProgressColor: e.target.value })}
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  />
+                </label>
+                {item.timerProgressColor && (
+                  <button onClick={() => upd({ timerProgressColor: undefined })} className="text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">reset</button>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
       )}
+
+      {/* Accent color */}
+      <section>
+        <PLabel>Accent color</PLabel>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setOpenPicker((v) => v === "accent" ? null : "accent")}
+            className="h-6 w-6 rounded border border-[var(--border)] shadow-sm"
+            style={{ background: accent }}
+          />
+          <span className="text-[var(--text-muted)]">{accent}</span>
+        </div>
+        {openPicker === "accent" && (
+          <div className="mt-2">
+            <input type="color" value={accent} onChange={(e) => upd({ timerAccentColor: e.target.value })} className="h-8 w-full cursor-pointer rounded border-0 bg-transparent" />
+          </div>
+        )}
+      </section>
+
+      {/* Font */}
+      <section>
+        <PLabel>Font color</PLabel>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setOpenPicker((v) => v === "font" ? null : "font")}
+            className="h-6 w-6 rounded border border-[var(--border)] shadow-sm"
+            style={{ background: item.timerFontColor ?? "#f2f2f2" }}
+          />
+          <span className="text-[var(--text-muted)]">{item.timerFontColor ?? "default"}</span>
+        </div>
+        {openPicker === "font" && (
+          <div className="mt-2">
+            <input type="color" value={item.timerFontColor ?? "#f2f2f2"} onChange={(e) => upd({ timerFontColor: e.target.value })} className="h-8 w-full cursor-pointer rounded border-0 bg-transparent" />
+          </div>
+        )}
+      </section>
+
+      {/* Typography */}
+      <section>
+        <PLabel>Typography</PLabel>
+        <div className="flex flex-col gap-2">
+          <SliderRow label="Size" value={item.timerFontSize ?? 48} min={20} max={120} onChange={(v) => upd({ timerFontSize: v })} />
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={item.timerBold !== false} onChange={(e) => upd({ timerBold: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[var(--text-secondary)]">Bold</span>
+          </label>
+          <div className="mt-1">
+            <FontPicker value={item.timerFontFamily ?? ""} onChange={(f) => upd({ timerFontFamily: f || undefined })} />
+          </div>
+        </div>
+      </section>
+
+      {/* Shape */}
+      <section>
+        <PLabel>Shape</PLabel>
+        <SliderRow label="Corners" value={item.timerBorderRadius ?? 0} min={0} max={40} onChange={(v) => upd({ timerBorderRadius: v })} />
+      </section>
+
+      {/* Border */}
+      <section>
+        <PLabel>Border</PLabel>
+        <div className="flex flex-col gap-2">
+          <SliderRow label="Width" value={item.timerBorderWidth ?? 0} min={0} max={8} onChange={(v) => upd({ timerBorderWidth: v })} />
+          {(item.timerBorderWidth ?? 0) > 0 && (
+            <>
+              <div className="flex gap-1">
+                {(["solid","dashed","dotted","glow"] as const).map((s) => (
+                  <button key={s} onClick={() => upd({ timerBorderStyle: s })}
+                    className={cn("flex-1 rounded py-1 text-[10px] capitalize transition-colors",
+                      (item.timerBorderStyle ?? "solid") === s
+                        ? "bg-[var(--accent)] text-white"
+                        : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    )}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+                <div className="flex items-center gap-2">
+                  <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.timerBorderColor ?? "#5865f2" }}>
+                    <input type="color" value={item.timerBorderColor ?? "#5865f2"} onChange={(e) => upd({ timerBorderColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                  </span>
+                  <span className="text-xs text-[var(--text-secondary)]">Border color</span>
+                </div>
+              </label>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* Background */}
+      <section>
+        <PLabel>Background</PLabel>
+        <div className="flex flex-col gap-2">
+          {/* Color */}
+          <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.timerBgColor ?? "transparent" }}>
+                <input type="color" value={item.timerBgColor ?? "#1a1b1e"} onChange={(e) => upd({ timerBgColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="text-xs text-[var(--text-secondary)]">Background color</span>
+            </div>
+            {item.timerBgColor && (
+              <button onClick={(e) => { e.stopPropagation(); upd({ timerBgColor: undefined }); }} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>
+            )}
+          </label>
+          {item.timerBgColor && (
+            <div className="flex items-center gap-2">
+              <span className="w-14 shrink-0 text-[var(--text-muted)]">Opacity</span>
+              <input type="range" min={0} max={100} value={item.timerBgOpacity ?? 100}
+                onChange={(e) => upd({ timerBgOpacity: Number(e.target.value) })}
+                className="flex-1 accent-[var(--accent)]" />
+              <span className="w-8 text-right tabular-nums text-[var(--text-secondary)]">{item.timerBgOpacity ?? 100}%</span>
+            </div>
+          )}
+
+          {/* Image */}
+          <div>
+            <div className="flex gap-1.5">
+              <input
+                className="flex-1 min-w-0 rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+                placeholder="Image URL…"
+                value={item.timerBgImage?.startsWith("data:") ? "" : (item.timerBgImage ?? "")}
+                onChange={(e) => upd({ timerBgImage: e.target.value || undefined })}
+              />
+              <label className="flex items-center justify-center gap-1 cursor-pointer rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--text-muted)] transition-colors flex-shrink-0">
+                <Upload size={10} />
+                <input ref={bgFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => upd({ timerBgImage: ev.target?.result as string });
+                  reader.readAsDataURL(file);
+                  e.target.value = "";
+                }} />
+              </label>
+              {item.timerBgImage && (
+                <button onClick={() => upd({ timerBgImage: undefined })} className="flex-shrink-0 text-[var(--text-muted)] hover:text-red-400 transition-colors px-1"><XIcon size={11} /></button>
+              )}
+            </div>
+            {item.timerBgImage?.startsWith("data:") && (
+              <p className="mt-1 text-[9px] text-[var(--text-muted)]">Local file uploaded</p>
+            )}
+          </div>
+
+          {/* Image options */}
+          {item.timerBgImage && (
+            <div className="flex flex-col gap-2 mt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--text-muted)]">Opacity</span>
+                <span className="text-[var(--text-muted)] font-mono">{item.timerBgImageOpacity ?? 80}%</span>
+              </div>
+              <input type="range" min={5} max={100} value={item.timerBgImageOpacity ?? 80}
+                onChange={(e) => upd({ timerBgImageOpacity: Number(e.target.value) })}
+                className="w-full accent-[var(--accent)]" />
+              <div className="flex gap-1">
+                {(["cover", "contain", "fill"] as const).map((s) => (
+                  <button key={s} onClick={() => upd({ timerBgImageSize: s })}
+                    className={cn("flex-1 rounded py-1 text-[10px] capitalize transition-colors",
+                      (item.timerBgImageSize ?? "cover") === s
+                        ? "bg-[var(--accent)] text-white"
+                        : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    )}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Variable export */}
+      <section>
+        <PLabel>Export as variable</PLabel>
+        <div className="flex flex-col gap-2">
+          <input
+            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-muted)]"
+            value={item.timerVarName ?? ""}
+            onChange={(e) => upd({ timerVarName: e.target.value || undefined })}
+            placeholder="Variable name (e.g. focus_time)"
+          />
+          {item.timerVarName?.trim() && (
+            <div className="rounded border border-[var(--border)] bg-[var(--surface-overlay)] p-2 flex flex-col gap-1">
+              <p className="text-[10px] text-[var(--text-muted)]">
+                On pause/stop, exports:
+              </p>
+              <p className="font-mono text-[10px] text-[var(--accent)]">{`{${item.timerVarName.trim()}}`} → elapsed seconds</p>
+              {mode !== "stopwatch" && (
+                <p className="font-mono text-[10px] text-[var(--accent)]">{`{${item.timerVarName.trim()}_remaining}`} → remaining seconds</p>
+              )}
+              <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                Use these in text formulas or graph data fields.
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+
     </div>
   );
 }
@@ -884,85 +2816,3832 @@ function ImageItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
 
 // ─── Graph ────────────────────────────────────────────────────────────────────
 
-function GraphItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
-  const data = item.graphData ?? [{ label: "A", value: 40 }, { label: "B", value: 65 }, { label: "C", value: 30 }];
+const GRAPH_TYPES: { id: BlockItem["graphType"]; label: string; icon: string }[] = [
+  { id: "bar",          label: "Bar",          icon: "▊▋▌" },
+  { id: "bar-h",        label: "Row",          icon: "▬▬▬" },
+  { id: "bar-stacked",  label: "Stacked Bar",  icon: "▊▊▊" },
+  { id: "line",         label: "Line",         icon: "╱‾╲" },
+  { id: "multiline",    label: "Multi-line",   icon: "≈≈≈" },
+  { id: "area",         label: "Area",         icon: "◣◣◣" },
+  { id: "area-stacked", label: "Stacked Area", icon: "◢◣◤" },
+  { id: "pie",          label: "Pie",          icon: "◕" },
+  { id: "donut",        label: "Donut",        icon: "◎" },
+  { id: "scatter",      label: "Scatter",      icon: "∴∵∷" },
+  { id: "radar",        label: "Radar",        icon: "⬡" },
+];
+
+const DEFAULT_GRAPH_DATA: GraphPoint[] = [
+  { label: "Jan", value: 40, value2: 24 },
+  { label: "Feb", value: 65, value2: 38 },
+  { label: "Mar", value: 30, value2: 55 },
+  { label: "Apr", value: 80, value2: 41 },
+  { label: "May", value: 55, value2: 62 },
+];
+
+const TT_STYLE = { background: "var(--surface-raised)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 11 };
+const AXIS_TICK = { fill: "var(--text-muted)", fontSize: 10 };
+
+function resolveGraphValue(val: string | number, vars: Record<string, number>): number {
+  if (typeof val === "number") return val;
+  const str = String(val).trim();
+  // Pure number string
+  const n = Number(str);
+  if (!isNaN(n) && str !== "") return n;
+  // Formula with {varName} references
+  let expr = str;
+  const refs = [...expr.matchAll(/\{([^}]+)\}/g)];
+  for (const [full, name] of refs) {
+    const v = vars[name.trim()];
+    if (v === undefined) return NaN;
+    expr = expr.replace(full, String(v));
+  }
+  try {
+    if (!/^[\d\s+\-*/%.(),]+$/.test(expr)) return NaN;
+    // eslint-disable-next-line no-new-func
+    return Number(Function(`"use strict"; return (${expr})`)());
+  } catch { return NaN; }
+}
+
+function GraphItem({ item, vars = {}, collapsed, containerW, containerH, boardId, boxId }: { item: BlockItem; vars?: Record<string, number>; collapsed?: boolean; containerW?: number; containerH?: number; boardId?: string; boxId?: string }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => setDims({ w: el.offsetWidth || el.getBoundingClientRect().width, h: el.offsetHeight || el.getBoundingClientRect().height });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Also update if container props change (card resize via drag)
+  useEffect(() => { if (wrapRef.current) setDims({ w: wrapRef.current.offsetWidth, h: wrapRef.current.offsetHeight }); }, [containerW, containerH]);
+
+  const data = item.graphData ?? DEFAULT_GRAPH_DATA;
   const type = item.graphType ?? "bar";
+  const colors = item.graphColors ?? CHART_COLORS;
+  const seriesKeys = item.graphSeriesKeys ?? ["value"];
+  const showGrid = item.graphShowGrid ?? true;
+  const showLegend = item.graphShowLegend ?? false;
+  const curve = (item.graphSmooth ?? true) ? "monotone" : "linear";
+  const fontFamily = item.graphFontFamily;
+  const fontSize = item.graphFontSize ?? 10;
+  const fontColor = item.graphFontColor;
+  const barRadius = item.graphBarRadius ?? 3;
+  const strokeWidth = item.graphStrokeWidth ?? 2;
+
+  // If connected to a list, derive data live from its variable entries.
+  // Use getState() (non-reactive) so we don't cause a re-render loop from the selector.
+  // The graph re-derives whenever vars changes (variable values) or the source item ID changes.
+  const listDerivedData: GraphPoint[] | null = useMemo(() => {
+    if (!item.graphListSourceItemId || !boardId || !boxId) return null;
+    const state = useBoardStore.getState();
+    const board = state.boards.find((b) => b.id === boardId);
+    const box = (board as any)?.boxes?.find((b: any) => b.id === boxId);
+    const source: BlockItem | undefined = (box as any)?.items?.find((i: any) => i.id === item.graphListSourceItemId);
+    if (!source) return null;
+    const variableEntries = (source.listItems ?? []).filter((e) => e.isVariable);
+    if (variableEntries.length === 0) return null;
+    return variableEntries.map((e) => {
+      const label = (e.text ?? "").replace(/<[^>]*>/g, "").trim() || e.variableName || "?";
+      const name = e.variableName?.trim();
+      const val = name && name in vars ? vars[name] : Number(e.variableRawValue ?? e.variableValue ?? 0);
+      return { label, value: isNaN(val) ? 0 : val };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.graphListSourceItemId, boardId, boxId, vars]);
+
+  // If connected to a table, derive data reactively using subscribe (not useMemo+getState)
+  // to avoid the re-render loop that crashed the app before.
+  const [tableDerived, setTableDerived] = useState<{ data: GraphPoint[]; seriesKeys: string[] } | null>(null);
+  useEffect(() => {
+    if (!item.graphTableSourceItemId || !boardId || !boxId) { setTableDerived(null); return; }
+    const compute = () => {
+      const state = useBoardStore.getState();
+      const board = state.boards.find((b) => b.id === boardId);
+      const box = (board as any)?.boxes?.find((b: any) => b.id === boxId);
+      const source: BlockItem | undefined = (box as any)?.items?.find((i: any) => i.id === item.graphTableSourceItemId);
+      if (!source) { setTableDerived(null); return; }
+      const cols: TableColumn[] = source.tableColumns ?? [];
+      const rows: TableRow[] = source.tableRows ?? [];
+      const nonCheckCols = cols.filter((c) => c.type !== "checkbox");
+      const labelColId = item.graphTableLabelColId ?? nonCheckCols[0]?.id;
+      const valueColIds = item.graphTableValueColIds?.length ? item.graphTableValueColIds : nonCheckCols.slice(1).map((c) => c.id);
+      if (!labelColId || valueColIds.length === 0) { setTableDerived(null); return; }
+      const sKeys = valueColIds.map((id) => cols.find((c) => c.id === id)?.name ?? id);
+      const points = rows.map((r) => {
+        const pt: GraphPoint = { label: String(r.cells[labelColId] ?? "") };
+        valueColIds.forEach((colId, idx) => { pt[sKeys[idx]] = Number(r.cells[colId] ?? 0) || 0; });
+        return pt;
+      });
+      setTableDerived({ data: points, seriesKeys: sKeys });
+    };
+    compute();
+    return useBoardStore.subscribe(compute);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.graphTableSourceItemId, item.graphTableLabelColId, (item.graphTableValueColIds ?? []).join(","), boardId, boxId]);
+
+  const safeData = listDerivedData
+    ? listDerivedData
+    : tableDerived
+    ? tableDerived.data
+    : data.map((r) => {
+        const row: GraphPoint = { label: r.label };
+        seriesKeys.forEach((k) => { row[k] = resolveGraphValue(r[k] ?? 0, vars); });
+        return row;
+      });
+  const effectiveSeriesKeys = listDerivedData ? ["value"] : tableDerived ? tableDerived.seriesKeys : seriesKeys;
+
+  const w = dims?.w ?? 300;
+  const h = dims?.h ?? (collapsed ? 80 : 220);
+
+  const bgStyle: React.CSSProperties = {
+    width: "100%", height: "100%", minHeight: collapsed ? 80 : 160,
+    position: "relative", overflow: "hidden",
+    backgroundColor: item.graphBgColor,
+    borderRadius: 4,
+  };
 
   return (
-    <div className="flex flex-col gap-1" style={{ height: collapsed ? 80 : 200 }}>
-      {!collapsed && !isFinished && (
-        <div className="flex gap-1">
-          {(["bar", "line", "pie"] as const).map((t) => (
-            <button key={t} onClick={() => upd({ graphType: t })} className={cn("rounded px-2 py-0.5 text-xs capitalize transition-colors", type === t ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]")}>{t}</button>
-          ))}
-        </div>
+    <div ref={wrapRef} style={bgStyle}>
+      {item.graphBgImage && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 0,
+          backgroundImage: `url(${item.graphBgImage})`,
+          backgroundSize: item.graphBgImageSize ?? "cover",
+          backgroundPosition: "center",
+          opacity: (item.graphBgImageOpacity ?? 80) / 100,
+          pointerEvents: "none",
+        }} />
       )}
-      <div className="flex-1 min-h-0">
-        <ResponsiveContainer width="100%" height="100%">
-          {type === "bar" ? (
-            <BarChart data={data}><XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 10 }} hide={collapsed} /><YAxis tick={{ fill: "var(--text-muted)", fontSize: 10 }} hide={collapsed} />{!collapsed && <Tooltip contentStyle={{ background: "var(--surface-raised)", border: "1px solid var(--border)", borderRadius: 6 }} />}<Bar dataKey="value" fill="var(--accent)" radius={[3, 3, 0, 0]} /></BarChart>
-          ) : type === "line" ? (
-            <LineChart data={data}><XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 10 }} hide={collapsed} /><YAxis tick={{ fill: "var(--text-muted)", fontSize: 10 }} hide={collapsed} />{!collapsed && <Tooltip contentStyle={{ background: "var(--surface-raised)", border: "1px solid var(--border)", borderRadius: 6 }} />}<Line type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} dot={!collapsed} /></LineChart>
-          ) : (
-            <PieChart><Pie data={data} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={collapsed ? "90%" : "80%"}>{data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}</Pie>{!collapsed && <Tooltip contentStyle={{ background: "var(--surface-raised)", border: "1px solid var(--border)", borderRadius: 6 }} />}</PieChart>
-          )}
-        </ResponsiveContainer>
+      <div style={{ position: "relative", zIndex: 1, width: "100%", height: "100%" }}>
+        {dims && (
+          <ChartRenderer
+            type={type} data={safeData} seriesKeys={effectiveSeriesKeys} colors={colors}
+            showGrid={showGrid} showLegend={showLegend} curve={curve}
+            collapsed={!!collapsed} width={w} height={h}
+            fontFamily={fontFamily} fontSize={fontSize} fontColor={fontColor}
+            barRadius={barRadius} strokeWidth={strokeWidth}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Gaming ───────────────────────────────────────────────────────────────────
+export function GraphStylePanel({ item, upd, vars = {}, boardId, boxId }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; vars?: Record<string, number>; boardId?: string; boxId?: string }) {
+  const [tab, setTab] = useState<"type" | "data" | "style">("type");
+  const data = item.graphData ?? DEFAULT_GRAPH_DATA;
+  const seriesKeys = item.graphSeriesKeys ?? ["value"];
+  // List items in this box that have variable entries — candidates for data source.
+  // Computed once per render from getState() to avoid reactive selector re-render loops.
+  const listCandidates = useMemo(() => {
+    if (!boardId || !boxId) return [] as BlockItem[];
+    const state = useBoardStore.getState();
+    const board = state.boards.find((b) => b.id === boardId);
+    const box = (board as any)?.boxes?.find((b: any) => b.id === boxId);
+    const items: BlockItem[] = (box as any)?.items ?? [];
+    return items.filter((i) => i.type === "list" && (i.listItems ?? []).some((e) => e.isVariable));
+  // Re-derive when the source selection changes so the UI reflects the connected state
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId, boxId, item.graphListSourceItemId]);
+  const sourceItem = listCandidates.find((i) => i.id === item.graphListSourceItemId);
 
-function GamingItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
-  const game = item.game ?? "valorant";
-  const meta = GAME_META[game];
-  const connected = !!item.gameUsername;
+  // Columns from the linked table item — used for column mapping in table source mode
+  const tableSourceCols = useMemo(() => {
+    if (!item.graphTableSourceItemId || !boardId || !boxId) return [] as TableColumn[];
+    const state = useBoardStore.getState();
+    const board = state.boards.find((b) => b.id === boardId);
+    const box = (board as any)?.boxes?.find((b: any) => b.id === boxId);
+    const source = (box as any)?.items?.find((i: any) => i.id === item.graphTableSourceItemId);
+    return ((source?.tableColumns ?? []) as TableColumn[]).filter((c) => c.type !== "checkbox");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.graphTableSourceItemId, boardId, boxId]);
 
-  if (collapsed) {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: meta.color }} />
-        <span className="text-xs font-semibold" style={{ color: meta.color }}>{meta.name}</span>
-        {connected ? (
-          <div className="ml-auto flex gap-2">
-            {meta.stats.map((s) => (
-              <span key={s.label} className="text-xs font-mono font-semibold" style={{ color: meta.color }}>{s.value}</span>
+  const colors = item.graphColors ?? CHART_COLORS;
+  const showGrid = item.graphShowGrid ?? true;
+  const showLegend = item.graphShowLegend ?? false;
+  const smooth = item.graphSmooth ?? true;
+  const type = item.graphType ?? "bar";
+
+  const addRow = () => {
+    const row: GraphPoint = { label: `Item ${data.length + 1}` };
+    seriesKeys.forEach((k) => { row[k] = 0; });
+    upd({ graphData: [...data, row] });
+  };
+  const updateCell = (ri: number, key: string, val: string | number) =>
+    upd({ graphData: data.map((r, i) => i === ri ? { ...r, [key]: val } : r) });
+  const removeRow = (ri: number) => upd({ graphData: data.filter((_, i) => i !== ri) });
+  const addSeries = () => {
+    const key = `value${seriesKeys.length + 1}`;
+    if (seriesKeys.includes(key)) return;
+    upd({ graphSeriesKeys: [...seriesKeys, key], graphData: data.map((r) => ({ ...r, [key]: 0 })) });
+  };
+  const removeSeries = (k: string) => {
+    if (seriesKeys.length <= 1) return;
+    upd({ graphSeriesKeys: seriesKeys.filter((s) => s !== k), graphData: data.map((r) => { const n = { ...r }; delete n[k]; return n; }) });
+  };
+  const renameSeries = (oldKey: string, newKey: string) => {
+    if (!newKey || newKey === oldKey) return;
+    upd({
+      graphSeriesKeys: seriesKeys.map((s) => s === oldKey ? newKey : s),
+      graphData: data.map((r) => { const n: GraphPoint = { label: r.label }; seriesKeys.forEach((s) => { n[s === oldKey ? newKey : s] = r[s] ?? 0; }); return n; }),
+    });
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Tabs */}
+      <div className="flex gap-0.5 p-3 pb-2 shrink-0">
+        {(["type","data","style"] as const).map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={cn("flex-1 rounded py-1.5 text-[11px] font-medium capitalize transition-colors",
+              tab === t ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            )}>{t}</button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-3 pb-4">
+
+        {/* ── Type ── */}
+        {tab === "type" && (
+          <div className="grid grid-cols-3 gap-1.5 pt-1">
+            {GRAPH_TYPES.map((gt) => (
+              <button key={gt.id} onClick={() => upd({ graphType: gt.id })}
+                className={cn("flex flex-col items-center gap-1 rounded-lg border px-1 py-3 transition-all",
+                  type === gt.id ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                )}>
+                <span className="text-xl leading-none">{gt.icon}</span>
+                <span className="text-[9px] text-center leading-tight">{gt.label}</span>
+              </button>
             ))}
           </div>
-        ) : (
-          <span className="ml-auto text-[10px] text-[var(--text-muted)]">Not connected</span>
         )}
+
+        {/* ── Data ── */}
+        {tab === "data" && (
+          <div className="pt-1">
+            {/* Data source connector */}
+            {listCandidates.length > 0 && (
+              <div className="mb-3 rounded-lg border border-[var(--border)] p-2.5 flex flex-col gap-2">
+                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">Data source</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {listCandidates.map(li => {
+                    const label = li.listTitle || (li.listItems ?? []).find(e => !e.isVariable)?.text?.replace(/<[^>]*>/g, "").trim() || "List";
+                    const active = item.graphListSourceItemId === li.id;
+                    return (
+                      <button key={li.id}
+                        onClick={() => upd({ graphListSourceItemId: active ? undefined : li.id })}
+                        className={cn("px-2 py-1 rounded text-[11px] border transition-colors", active
+                          ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                          : "border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                        )}>
+                        {active ? <span className="mr-1">✓</span> : null}{label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {sourceItem && (
+                  <p className="text-[10px] text-[var(--text-muted)]">
+                    Connected — {(sourceItem.listItems ?? []).filter(e => e.isVariable).length} variables. Manual data editing is disabled while connected.
+                  </p>
+                )}
+              </div>
+            )}
+            {item.graphTableSourceItemId && boardId && boxId && (
+              <div className="mb-3 rounded-lg border border-[var(--border)] p-2.5 flex flex-col gap-2">
+                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">Table source</p>
+                <p className="text-[11px] text-[var(--text-secondary)]">Live data from linked table.</p>
+
+                {/* Column mapping */}
+                {tableSourceCols.length > 0 && (
+                  <div className="flex flex-col gap-2 rounded border border-[var(--border)] bg-[var(--surface-overlay)] p-2">
+                    <div>
+                      <p className="text-[10px] text-[var(--text-muted)] mb-1">Label column</p>
+                      <select
+                        value={item.graphTableLabelColId ?? tableSourceCols[0]?.id ?? ""}
+                        onChange={(e) => upd({ graphTableLabelColId: e.target.value })}
+                        className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+                      >
+                        {tableSourceCols.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[var(--text-muted)] mb-1">Value columns</p>
+                      <div className="flex flex-col gap-1">
+                        {tableSourceCols
+                          .filter((c) => c.id !== (item.graphTableLabelColId ?? tableSourceCols[0]?.id))
+                          .map((c) => {
+                            const selectedIds = item.graphTableValueColIds ?? tableSourceCols.slice(1).map((x) => x.id);
+                            const checked = selectedIds.includes(c.id);
+                            return (
+                              <label key={c.id} className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  className="accent-[var(--accent)]"
+                                  onChange={(e) => {
+                                    const current = item.graphTableValueColIds ?? tableSourceCols.slice(1).map((x) => x.id);
+                                    upd({ graphTableValueColIds: e.target.checked ? [...current, c.id] : current.filter((id) => id !== c.id) });
+                                  }}
+                                />
+                                <span className="text-[11px] text-[var(--text-secondary)]">{c.name}</span>
+                              </label>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    const store = useBoardStore.getState();
+                    store.updateItem(boardId, boxId, item.graphTableSourceItemId!, {
+                      tableChartEnabled: true,
+                      tableChartType: item.graphType ?? "bar",
+                      tableChartColors: item.graphColors,
+                      tableChartShowGrid: item.graphShowGrid ?? true,
+                      tableChartShowLegend: item.graphShowLegend ?? false,
+                      tableChartSmooth: item.graphSmooth ?? true,
+                      tableChartStrokeWidth: item.graphStrokeWidth ?? 2,
+                      tableChartBarRadius: item.graphBarRadius ?? 3,
+                    });
+                    store.removeItem(boardId, boxId, item.id);
+                  }}
+                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-2 text-left text-[11px] hover:border-[var(--accent)]/50 transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                >Merge back into table</button>
+                <button
+                  onClick={() => upd({ graphTableSourceItemId: undefined, graphTableLabelColId: undefined, graphTableValueColIds: undefined })}
+                  className="text-[11px] text-red-400 hover:text-red-300 text-left transition-colors"
+                >Disconnect (keep as manual chart)</button>
+              </div>
+            )}
+            {(item.graphListSourceItemId || item.graphTableSourceItemId) ? null : (() => {
+              const cellCls = "border-b border-r border-[var(--border)] py-1.5 px-2";
+              const hdrCls = `${cellCls} bg-[var(--surface-overlay)] text-[10px] text-[var(--text-muted)] font-semibold`;
+              const valInput = "w-full bg-transparent outline-none text-[var(--text-primary)] text-xs font-mono focus:text-[var(--accent)] transition-colors";
+              const lblInput = "w-full bg-transparent outline-none text-[var(--text-secondary)] text-xs";
+
+              /* helper: formula hint */
+              const hint = (v: string | number) =>
+                typeof v === "string" && v.includes("{") ? (
+                  <span className="text-[9px] font-mono text-[var(--accent)]/70 ml-1 flex-shrink-0">={resolveGraphValue(v, vars)}</span>
+                ) : null;
+
+              /* ── PIE / DONUT ── */
+              if (type === "pie" || type === "donut") {
+                const vKey = seriesKeys[0] ?? "value";
+                return (
+                  <div className="rounded border border-[var(--border)] overflow-hidden">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr>
+                          <th className={cn(hdrCls, "w-8 text-center")} style={{ borderLeft: "none" }}>●</th>
+                          <th className={hdrCls}>Slice</th>
+                          <th className={cn(hdrCls, "text-right")}>Value</th>
+                          <th className="bg-[var(--surface-overlay)] border-b border-[var(--border)] w-7" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.map((row, ri) => (
+                          <tr key={ri} className="group hover:bg-white/[0.025] transition-colors">
+                            <td className={cn(cellCls, "text-center")}>
+                              <label className="relative h-3.5 w-3.5 rounded-full border border-white/20 overflow-hidden cursor-pointer inline-block" style={{ backgroundColor: colors[ri % colors.length] }}>
+                                <input type="color" value={colors[ri % colors.length]} onChange={(e) => { const c = [...colors]; c[ri] = e.target.value; upd({ graphColors: c }); }} className="absolute inset-0 opacity-0 cursor-pointer" />
+                              </label>
+                            </td>
+                            <td className={cellCls}><input className={lblInput} placeholder="Slice name" value={row.label} onChange={(e) => updateCell(ri, "label", e.target.value)} /></td>
+                            <td className={cellCls}>
+                              <div className="flex items-center justify-end">
+                                <input className={cn(valInput, "text-right")} placeholder="0" value={String(row[vKey] ?? 0)} onChange={(e) => updateCell(ri, vKey, e.target.value)} />
+                                {hint(row[vKey] as string)}
+                              </div>
+                            </td>
+                            <td className="border-b border-[var(--border)] px-1">
+                              <button onClick={() => removeRow(ri)} className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-red-400 transition-opacity"><Trash2 size={10} /></button>
+                            </td>
+                          </tr>
+                        ))}
+                        <tr><td colSpan={4} className="px-2 py-1.5">
+                          <button onClick={addRow} className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Plus size={10} /> Add slice</button>
+                        </td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              }
+
+              /* ── SCATTER ── */
+              if (type === "scatter") {
+                const xKey = seriesKeys[0] ?? "x";
+                const yKeys = seriesKeys.length > 1 ? seriesKeys.slice(1) : [];
+                if (seriesKeys.length < 2) {
+                  const init = seriesKeys.length === 0 ? ["x","Dataset 1"] : ["Dataset 1"];
+                  setTimeout(() => upd({ graphSeriesKeys: [...seriesKeys, ...init], graphData: data.map((r) => { const n = {...r}; init.forEach((k) => { n[k] = 0; }); return n; }) }), 0);
+                }
+                const addDs = () => { const k = `Dataset ${yKeys.length + 2}`; upd({ graphSeriesKeys: [...seriesKeys, k], graphData: data.map((r) => ({ ...r, [k]: 0 })) }); };
+                const removeDs = (k: string) => { if (yKeys.length <= 1) return; upd({ graphSeriesKeys: seriesKeys.filter((s) => s !== k), graphData: data.map((r) => { const n={...r}; delete n[k]; return n; }) }); };
+                return (
+                  <div className="rounded border border-[var(--border)] overflow-x-auto">
+                    <table className="w-full text-xs border-collapse" style={{ minWidth: 200 + yKeys.length * 80 }}>
+                      <thead>
+                        <tr>
+                          <th className={cn(hdrCls, "w-6 text-center")}>#</th>
+                          <th className={hdrCls}>Label</th>
+                          <th className={hdrCls}>
+                            <input className="bg-transparent outline-none w-full font-semibold text-[10px] text-[var(--text-muted)]" defaultValue={xKey} onBlur={(e) => renameSeries(xKey, e.target.value || xKey)} />
+                            <span className="text-[8px] text-[var(--text-muted)]/50 block font-normal">X axis →</span>
+                          </th>
+                          {yKeys.map((k, i) => (
+                            <th key={k} className={hdrCls}>
+                              <div className="flex items-center gap-1">
+                                <label className="relative h-2.5 w-2.5 rounded-sm border border-white/20 overflow-hidden flex-shrink-0 cursor-pointer" style={{ backgroundColor: colors[(i+1) % colors.length] }}>
+                                  <input type="color" value={colors[(i+1) % colors.length]} onChange={(e) => { const c=[...colors]; c[i+1]=e.target.value; upd({graphColors:c}); }} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                </label>
+                                <input className="bg-transparent outline-none flex-1 min-w-0 font-semibold text-[10px] text-[var(--text-muted)]" defaultValue={k} onBlur={(e) => renameSeries(k, e.target.value || k)} />
+                                {yKeys.length > 1 && <button onClick={() => removeDs(k)} className="text-[var(--text-muted)] hover:text-red-400 flex-shrink-0"><XIcon size={8} /></button>}
+                              </div>
+                              <span className="text-[8px] text-[var(--text-muted)]/50 block font-normal">Y axis ↑</span>
+                            </th>
+                          ))}
+                          <th className="bg-[var(--surface-overlay)] border-b border-[var(--border)] w-7 px-1">
+                            <button onClick={addDs} className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Plus size={10} /></button>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.map((row, ri) => (
+                          <tr key={ri} className="group hover:bg-white/[0.025] transition-colors">
+                            <td className={cn(cellCls, "text-center text-[10px] text-[var(--text-muted)]")}>{ri+1}</td>
+                            <td className={cellCls}><input className={lblInput} placeholder="label" value={row.label} onChange={(e) => updateCell(ri, "label", e.target.value)} /></td>
+                            <td className={cellCls}>
+                              <div className="flex items-center"><input className={valInput} placeholder="0" value={String(row[xKey] ?? 0)} onChange={(e) => updateCell(ri, xKey, e.target.value)} />{hint(row[xKey] as string)}</div>
+                            </td>
+                            {yKeys.map((k) => (
+                              <td key={k} className={cellCls}>
+                                <div className="flex items-center"><input className={valInput} placeholder="0" value={String(row[k] ?? 0)} onChange={(e) => updateCell(ri, k, e.target.value)} />{hint(row[k] as string)}</div>
+                              </td>
+                            ))}
+                            <td className="border-b border-[var(--border)] px-1">
+                              <button onClick={() => removeRow(ri)} className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-red-400 transition-opacity"><Trash2 size={10} /></button>
+                            </td>
+                          </tr>
+                        ))}
+                        <tr><td colSpan={yKeys.length + 4} className="px-2 py-1.5">
+                          <button onClick={addRow} className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Plus size={10} /> Add point</button>
+                        </td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              }
+
+              /* ── STANDARD: bar, line, area, radar ── */
+              const catLabel = type === "radar" ? "Axis" : type === "bar-h" ? "Category" : "Category";
+              const addBtn = type === "radar" ? "Add axis" : "Add row";
+              return (
+                <div className="rounded border border-[var(--border)] overflow-x-auto">
+                  <table className="w-full text-xs border-collapse" style={{ minWidth: 120 + seriesKeys.length * 80 }}>
+                    <thead>
+                      <tr>
+                        <th className={cn(hdrCls, "w-6 text-center")}>#</th>
+                        <th className={hdrCls}>{catLabel}</th>
+                        {seriesKeys.map((k, ki) => (
+                          <th key={k} className={hdrCls}>
+                            <div className="flex items-center gap-1.5">
+                              <label className="relative h-2.5 w-2.5 rounded-sm border border-white/20 overflow-hidden flex-shrink-0 cursor-pointer" style={{ backgroundColor: colors[ki % colors.length] }}>
+                                <input type="color" value={colors[ki % colors.length]} onChange={(e) => { const c=[...colors]; c[ki]=e.target.value; upd({graphColors:c}); }} className="absolute inset-0 opacity-0 cursor-pointer" />
+                              </label>
+                              <input className="bg-transparent outline-none flex-1 min-w-0 font-semibold text-[10px] text-[var(--text-muted)]" defaultValue={k} onBlur={(e) => renameSeries(k, e.target.value || k)} />
+                              {seriesKeys.length > 1 && <button onClick={() => removeSeries(k)} className="text-[var(--text-muted)] hover:text-red-400 flex-shrink-0"><XIcon size={8} /></button>}
+                            </div>
+                          </th>
+                        ))}
+                        <th className="bg-[var(--surface-overlay)] border-b border-[var(--border)] w-7 px-1">
+                          <button onClick={addSeries} title="Add series" className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Plus size={10} /></button>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.map((row, ri) => (
+                        <tr key={ri} className="group hover:bg-white/[0.025] transition-colors">
+                          <td className={cn(cellCls, "text-center text-[10px] text-[var(--text-muted)]")}>{ri+1}</td>
+                          <td className={cellCls}><input className={lblInput} placeholder="Category" value={row.label} onChange={(e) => updateCell(ri, "label", e.target.value)} /></td>
+                          {seriesKeys.map((k) => (
+                            <td key={k} className={cellCls}>
+                              <div className="flex items-center"><input className={valInput} placeholder="0" value={String(row[k] ?? 0)} onChange={(e) => updateCell(ri, k, e.target.value)} />{hint(row[k] as string)}</div>
+                            </td>
+                          ))}
+                          <td className="border-b border-[var(--border)] px-1">
+                            <button onClick={() => removeRow(ri)} className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-red-400 transition-opacity"><Trash2 size={10} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                      <tr><td colSpan={seriesKeys.length + 3} className="px-2 py-1.5">
+                        <button onClick={addRow} className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"><Plus size={10} /> {addBtn}</button>
+                      </td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* ── Style ── */}
+
+        {tab === "style" && (
+          <div className="pt-1 flex flex-col gap-5">
+
+            {/* Series colors */}
+            <div>
+              <p className="mb-2 text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Series colors</p>
+              <div className="flex flex-col gap-2">
+                {seriesKeys.map((k, ki) => (
+                  <label key={k} className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+                    <span className="relative h-5 w-5 rounded-full border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: colors[ki % colors.length] }}>
+                      <input type="color" value={colors[ki % colors.length]} onChange={(e) => { const c = [...colors]; c[ki] = e.target.value; upd({ graphColors: c }); }} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                    </span>
+                    <span className="text-xs text-[var(--text-secondary)]">{k}</span>
+                    <span className="ml-auto font-mono text-[10px] text-[var(--text-muted)]">{colors[ki % colors.length]}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Background */}
+            <div className="flex flex-col gap-2">
+              <p className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Background</p>
+              <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+                <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.graphBgColor ?? "transparent" }}>
+                  <input type="color" value={item.graphBgColor ?? "#1a1b1e"} onChange={(e) => upd({ graphBgColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                </span>
+                <span className="text-xs text-[var(--text-secondary)]">Background color</span>
+                {item.graphBgColor && (
+                  <button onClick={() => upd({ graphBgColor: undefined })} className="ml-auto text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>
+                )}
+              </label>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] text-[var(--text-muted)]">Image</label>
+                <div className="flex gap-1.5">
+                  <input
+                    className="flex-1 min-w-0 rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+                    placeholder="https://… or upload →"
+                    value={item.graphBgImage?.startsWith("data:") ? "" : (item.graphBgImage ?? "")}
+                    onChange={(e) => upd({ graphBgImage: e.target.value || undefined })}
+                  />
+                  <label className="flex items-center justify-center gap-1 cursor-pointer rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--text-muted)] transition-colors flex-shrink-0">
+                    <Upload size={11} />
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => upd({ graphBgImage: ev.target?.result as string });
+                      reader.readAsDataURL(file);
+                      e.target.value = "";
+                    }} />
+                  </label>
+                  {item.graphBgImage && (
+                    <button onClick={() => upd({ graphBgImage: undefined })} className="flex-shrink-0 text-[var(--text-muted)] hover:text-red-400 transition-colors px-1"><XIcon size={11} /></button>
+                  )}
+                </div>
+                {item.graphBgImage?.startsWith("data:") && (
+                  <p className="text-[9px] text-[var(--text-muted)]">Local file uploaded</p>
+                )}
+              </div>
+              {item.graphBgImage && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] text-[var(--text-muted)]">Image opacity</label>
+                    <span className="text-[10px] text-[var(--text-muted)] font-mono">{item.graphBgImageOpacity ?? 80}%</span>
+                  </div>
+                  <input type="range" min={5} max={100} value={item.graphBgImageOpacity ?? 80}
+                    onChange={(e) => upd({ graphBgImageOpacity: Number(e.target.value) })}
+                    className="w-full accent-[var(--accent)]" />
+                  <div className="flex gap-1.5 mt-0.5">
+                    {["cover","contain","auto"].map((s) => (
+                      <button key={s} onClick={() => upd({ graphBgImageSize: s })}
+                        className={cn("flex-1 rounded py-1 text-[10px] transition-colors",
+                          (item.graphBgImageSize ?? "cover") === s ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                        )}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Font */}
+            <div className="flex flex-col gap-2">
+              <p className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Font</p>
+              <div className="flex gap-2">
+                <div className="flex flex-col gap-1 flex-1">
+                  <label className="text-[10px] text-[var(--text-muted)]">Family</label>
+                  <select
+                    className="w-full rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+                    value={item.graphFontFamily ?? ""}
+                    onChange={(e) => upd({ graphFontFamily: e.target.value || undefined })}
+                  >
+                    <option value="">Default</option>
+                    {["Inter","Roboto","DM Sans","Geist","Space Grotesk","Outfit","Lato","Poppins","JetBrains Mono","Fira Code","IBM Plex Mono","Courier New","Georgia","Times New Roman"].map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 w-16">
+                  <label className="text-[10px] text-[var(--text-muted)]">Size</label>
+                  <input type="number" min={6} max={20}
+                    className="w-full rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+                    value={item.graphFontSize ?? 10}
+                    onChange={(e) => upd({ graphFontSize: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+                <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.graphFontColor ?? "#888" }}>
+                  <input type="color" value={item.graphFontColor ?? "#888888"} onChange={(e) => upd({ graphFontColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                </span>
+                <span className="text-xs text-[var(--text-secondary)]">Label color</span>
+                <span className="ml-auto font-mono text-[10px] text-[var(--text-muted)]">{item.graphFontColor ?? "default"}</span>
+              </label>
+            </div>
+
+            {/* Chart style */}
+            <div className="flex flex-col gap-2">
+              <p className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Chart style</p>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-[var(--text-muted)]">Bar radius</label>
+                  <span className="text-[10px] text-[var(--text-muted)] font-mono">{item.graphBarRadius ?? 3}px</span>
+                </div>
+                <input type="range" min={0} max={20} value={item.graphBarRadius ?? 3}
+                  onChange={(e) => upd({ graphBarRadius: Number(e.target.value) })}
+                  className="w-full accent-[var(--accent)]" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-[var(--text-muted)]">Line / area stroke</label>
+                  <span className="text-[10px] text-[var(--text-muted)] font-mono">{item.graphStrokeWidth ?? 2}px</span>
+                </div>
+                <input type="range" min={1} max={8} value={item.graphStrokeWidth ?? 2}
+                  onChange={(e) => upd({ graphStrokeWidth: Number(e.target.value) })}
+                  className="w-full accent-[var(--accent)]" />
+              </div>
+              {[
+                { label: "Show grid", key: "graphShowGrid" as const, val: showGrid },
+                { label: "Show legend", key: "graphShowLegend" as const, val: showLegend },
+                { label: "Smooth curves", key: "graphSmooth" as const, val: smooth },
+              ].map(({ label, key, val }) => (
+                <label key={key} className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors select-none">
+                  <input type="checkbox" checked={val} onChange={(e) => upd({ [key]: e.target.checked })} className="accent-[var(--accent)]" />
+                  <span className="text-xs text-[var(--text-secondary)]">{label}</span>
+                </label>
+              ))}
+            </div>
+
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChartRenderer({ type, data, seriesKeys, colors, showGrid, showLegend, curve, collapsed, width, height, fontFamily, fontSize, fontColor, barRadius, strokeWidth, showDataLabels, xAxisTitle, yAxisTitle }: {
+  type: BlockItem["graphType"];
+  data: GraphPoint[];
+  seriesKeys: string[];
+  colors: string[];
+  showGrid: boolean;
+  showLegend: boolean;
+  curve: "monotone" | "linear";
+  collapsed: boolean;
+  width: number;
+  height: number;
+  fontFamily?: string;
+  fontSize?: number;
+  fontColor?: string;
+  barRadius?: number;
+  strokeWidth?: number;
+  showDataLabels?: boolean;
+  xAxisTitle?: string;
+  yAxisTitle?: string;
+}) {
+  const dims = { width, height };
+  const tickStyle = { fill: fontColor ?? "var(--text-muted)", fontSize: fontSize ?? 10, fontFamily: fontFamily };
+  const tt = collapsed ? undefined : <Tooltip contentStyle={TT_STYLE} />;
+  const grid = showGrid && !collapsed ? <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /> : null;
+  const legend = showLegend && !collapsed ? <Legend wrapperStyle={{ fontSize: fontSize ?? 10, fontFamily }} /> : null;
+  const xAxis = <XAxis dataKey="label" tick={tickStyle} hide={collapsed} label={xAxisTitle && !collapsed ? { value: xAxisTitle, position: "insideBottom", offset: -4, style: { fontSize: (fontSize ?? 10) - 1, fill: fontColor ?? "var(--text-muted)" } } : undefined} />;
+  const yAxis = <YAxis tick={tickStyle} hide={collapsed} label={yAxisTitle && !collapsed ? { value: yAxisTitle, angle: -90, position: "insideLeft", style: { fontSize: (fontSize ?? 10) - 1, fill: fontColor ?? "var(--text-muted)" } } : undefined} />;
+  const br = barRadius ?? 3;
+  const sw = strokeWidth ?? 2;
+  const lblStyle = { fontSize: (fontSize ?? 10) - 1, fill: fontColor ?? "var(--text-muted)", fontFamily };
+
+  if (type === "bar" || type === "bar-stacked") {
+    const stacked = type === "bar-stacked";
+    return (
+      <BarChart {...dims} data={data}>
+        {grid}{xAxis}{yAxis}{tt}{legend}
+        {seriesKeys.map((k, i) => (
+          <Bar key={k} dataKey={k} fill={colors[i % colors.length]} radius={stacked ? 0 : [br,br,0,0]} stackId={stacked ? "s" : undefined}>
+            {showDataLabels && !collapsed && <LabelList dataKey={k} position="top" style={lblStyle} />}
+          </Bar>
+        ))}
+      </BarChart>
+    );
+  }
+  if (type === "bar-h") {
+    return (
+      <BarChart {...dims} data={data} layout="vertical">
+        {grid}
+        <XAxis type="number" tick={tickStyle} hide={collapsed} />
+        <YAxis type="category" dataKey="label" tick={tickStyle} hide={collapsed} width={40} />
+        {tt}{legend}
+        {seriesKeys.map((k, i) => (
+          <Bar key={k} dataKey={k} fill={colors[i % colors.length]} radius={[0,br,br,0]}>
+            {showDataLabels && !collapsed && <LabelList dataKey={k} position="right" style={lblStyle} />}
+          </Bar>
+        ))}
+      </BarChart>
+    );
+  }
+  if (type === "line" || type === "multiline") {
+    return (
+      <LineChart {...dims} data={data}>
+        {grid}{xAxis}{yAxis}{tt}{legend}
+        {seriesKeys.map((k, i) => (
+          <Line key={k} type={curve} dataKey={k} stroke={colors[i % colors.length]} strokeWidth={sw} dot={!collapsed}>
+            {showDataLabels && !collapsed && <LabelList dataKey={k} position="top" style={lblStyle} />}
+          </Line>
+        ))}
+      </LineChart>
+    );
+  }
+  if (type === "area" || type === "area-stacked") {
+    const stacked = type === "area-stacked";
+    return (
+      <AreaChart {...dims} data={data}>
+        {grid}{xAxis}{yAxis}{tt}{legend}
+        {seriesKeys.map((k, i) => (
+          <Area key={k} type={curve} dataKey={k} stroke={colors[i % colors.length]} fill={colors[i % colors.length]} fillOpacity={0.25} strokeWidth={sw} stackId={stacked ? "s" : undefined}>
+            {showDataLabels && !collapsed && <LabelList dataKey={k} position="top" style={lblStyle} />}
+          </Area>
+        ))}
+      </AreaChart>
+    );
+  }
+  if (type === "pie" || type === "donut") {
+    const inner = type === "donut" ? "45%" : 0;
+    return (
+      <PieChart {...dims}>
+        {tt}{legend}
+        <Pie data={data} dataKey={seriesKeys[0] ?? "value"} nameKey="label" cx="50%" cy="50%" innerRadius={inner} outerRadius={collapsed ? "90%" : "75%"}>
+          {data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
+        </Pie>
+      </PieChart>
+    );
+  }
+  if (type === "scatter") {
+    // seriesKeys[0] = shared X axis; seriesKeys[1..n] = one dataset per Y series
+    const xKey = seriesKeys[0] ?? "x";
+    const yKeys = seriesKeys.length > 1 ? seriesKeys.slice(1) : [seriesKeys[0] ?? "y"];
+    const labelStyle = { fontSize: collapsed ? 0 : (fontSize ?? 9), fill: fontColor ?? "var(--text-muted)", fontFamily };
+    return (
+      <ScatterChart {...dims}>
+        {grid}
+        <XAxis dataKey="x" type="number" name={xKey} tick={tickStyle} hide={collapsed} label={collapsed ? undefined : { value: xKey, position: "insideBottom", offset: -2, style: { fontSize: 9, fill: fontColor ?? "var(--text-muted)" } }} />
+        <YAxis dataKey="y" type="number" tick={tickStyle} hide={collapsed} />
+        <ZAxis range={[sw * 20, sw * 20]} />
+        {tt}
+        {showLegend && !collapsed && <Legend wrapperStyle={{ fontSize: fontSize ?? 10, fontFamily }} />}
+        {yKeys.map((yKey, i) => {
+          const pts = data.map((r) => ({ x: Number(r[xKey] ?? 0), y: Number(r[yKey] ?? 0), label: r.label }));
+          return (
+            <Scatter key={yKey} name={yKey} data={pts} fill={colors[(i + 1) % colors.length]}>
+              {!collapsed && <LabelList dataKey="label" position="top" style={labelStyle} />}
+            </Scatter>
+          );
+        })}
+      </ScatterChart>
+    );
+  }
+  if (type === "radar") {
+    return (
+      <RadarChart {...dims} data={data} cx="50%" cy="50%" outerRadius="70%">
+        <PolarGrid stroke="var(--border)" />
+        <PolarAngleAxis dataKey="label" tick={{ ...tickStyle, fontSize: collapsed ? 8 : (fontSize ?? 10) }} />
+        {tt}{legend}
+        {seriesKeys.map((k, i) => (
+          <Radar key={k} name={k} dataKey={k} stroke={colors[i % colors.length]} fill={colors[i % colors.length]} fillOpacity={0.2} />
+        ))}
+      </RadarChart>
+    );
+  }
+  return (
+    <BarChart {...dims} data={data}>
+      <Bar dataKey={seriesKeys[0] ?? "value"} fill={colors[0]} />
+    </BarChart>
+  );
+}
+
+// ─── Gaming ───────────────────────────────────────────────────────────────────
+
+// ─── API helpers ──────────────────────────────────────────────────────────────
+
+function extractPath(obj: unknown, path: string): unknown {
+  if (!path.trim()) return obj;
+  return path.split(".").reduce((acc: unknown, key) => {
+    if (acc == null) return undefined;
+    const arrMatch = key.match(/^(.+)\[(\d+)\]$/);
+    if (arrMatch) return (acc as Record<string, unknown[]>)[arrMatch[1]]?.[parseInt(arrMatch[2])];
+    return (acc as Record<string, unknown>)[key];
+  }, obj);
+}
+
+function formatValue(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "object") return JSON.stringify(v, null, 2);
+  return String(v);
+}
+
+// ─── API Item ─────────────────────────────────────────────────────────────────
+
+function ApiItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+  const [data, setData] = useState<unknown>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastFetched, setLastFetched] = useState<string | null>(null);
+
+  const doFetch = useCallback(async () => {
+    if (!item.apiUrl) return;
+    setLoading(true); setError(null);
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      try { if (item.apiHeaders) Object.assign(headers, JSON.parse(item.apiHeaders)); } catch {}
+      if (item.apiAuthType === "bearer" && item.apiAuthValue)
+        headers["Authorization"] = `Bearer ${item.apiAuthValue}`;
+      if (item.apiAuthType === "apikey" && item.apiAuthValue)
+        headers[item.apiAuthHeader ?? "X-API-Key"] = item.apiAuthValue;
+      if (item.apiAuthType === "basic" && item.apiAuthValue)
+        headers["Authorization"] = `Basic ${btoa(`${item.apiAuthUser ?? ""}:${item.apiAuthValue}`)}`;
+      const res = await fetch(item.apiUrl, {
+        method: item.apiMethod ?? "GET",
+        headers,
+        body: item.apiMethod !== "GET" && item.apiBody ? item.apiBody : undefined,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      const json = await res.json();
+      setData(json);
+      setLastFetched(new Date().toLocaleTimeString());
+      if (item.apiVarName?.trim()) {
+        const extracted = item.apiResponsePath ? extractPath(json, item.apiResponsePath) : json;
+        const num = typeof extracted === "number" ? extracted : Number(extracted);
+        if (!isNaN(num)) upd({ apiCachedValue: num });
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Request failed");
+    } finally { setLoading(false); }
+  }, [item.apiUrl, item.apiMethod, item.apiHeaders, item.apiBody, item.apiAuthType, item.apiAuthValue, item.apiAuthHeader, item.apiAuthUser]);
+
+  useEffect(() => {
+    if (item.apiUrl) doFetch();
+  }, []);
+
+  useEffect(() => {
+    if (!item.apiRefreshInterval || item.apiRefreshInterval <= 0) return;
+    const id = setInterval(doFetch, item.apiRefreshInterval * 1000);
+    return () => clearInterval(id);
+  }, [item.apiRefreshInterval, doFetch]);
+
+  const extracted = data != null && item.apiResponsePath ? extractPath(data, item.apiResponsePath) : data;
+  const displayMode = item.apiDisplayMode ?? "value";
+
+  if (collapsed) {
+    const val = extracted != null ? formatValue(extracted) : null;
+    return (
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: error ? "#ef4444" : item.apiUrl ? "#22c55e" : "var(--text-muted)" }} />
+        <span className="text-xs text-[var(--text-muted)] truncate">{item.apiLabel || item.apiUrl || "API"}</span>
+        {val && <span className="ml-auto text-xs font-mono font-semibold text-[var(--accent)] truncate max-w-[80px]">{val}</span>}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: meta.color }} />
-        <span className="font-bold text-sm" style={{ color: meta.color }}>{meta.name}</span>
-        <span className="ml-auto flex items-center gap-1 text-[10px]">
-          {connected ? <><Wifi size={10} className="text-green-400" /><span className="text-green-400">Live</span></> : <><WifiOff size={10} className="text-[var(--text-muted)]" /><span className="text-[var(--text-muted)]">Not connected</span></>}
-        </span>
+    <div className="flex h-full flex-col gap-0 text-xs">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2 shrink-0">
+        <span className={cn("h-2 w-2 rounded-full flex-shrink-0", loading ? "animate-pulse bg-yellow-400" : error ? "bg-red-400" : data ? "bg-green-400" : "bg-[var(--text-muted)]")} />
+        <span className="flex-1 truncate text-[var(--text-muted)] font-mono text-[10px]">{item.apiUrl || "No URL set"}</span>
+        <button
+          onClick={doFetch}
+          disabled={!item.apiUrl || loading}
+          className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-40"
+          style={{ background: "var(--accent)", color: "#fff" }}
+        >
+          <RotateCcw size={10} className={loading ? "animate-spin" : ""} />
+          {loading ? "Loading…" : "Fetch"}
+        </button>
       </div>
-      {!isFinished && (
-        <div className="flex gap-1">
-          <input className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors" placeholder="Username" value={item.gameUsername ?? ""} onChange={(e) => upd({ gameUsername: e.target.value })} />
-          <input className="w-16 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors" placeholder="#TAG" value={item.gameTag ?? ""} onChange={(e) => upd({ gameTag: e.target.value })} />
+
+      {/* Response area */}
+      <div className="flex-1 overflow-auto p-3">
+        {error && (
+          <div className="rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-400 font-mono">{error}</div>
+        )}
+        {!error && data == null && !loading && (
+          <p className="text-[var(--text-muted)] text-center mt-4">
+            {item.apiUrl ? "Press Fetch to load data" : "Configure the API in the panel →"}
+          </p>
+        )}
+        {!error && extracted != null && (
+          displayMode === "table" && Array.isArray(extracted) ? (
+            <div className="overflow-auto">
+              <table className="w-full border-collapse text-[10px]">
+                <thead>
+                  <tr>{Object.keys(extracted[0] ?? {}).map(k => (
+                    <th key={k} className="border border-[var(--border)] px-2 py-1 text-left text-[var(--text-muted)] bg-[var(--surface-overlay)]">{k}</th>
+                  ))}</tr>
+                </thead>
+                <tbody>
+                  {(extracted as Record<string, unknown>[]).slice(0, 50).map((row, i) => (
+                    <tr key={i}>{Object.values(row).map((v, j) => (
+                      <td key={j} className="border border-[var(--border)] px-2 py-1 font-mono text-[var(--text-primary)]">{formatValue(v)}</td>
+                    ))}</tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : displayMode === "value" && typeof extracted !== "object" ? (
+            <div className="flex flex-col items-center justify-center h-full gap-1">
+              {item.apiLabel && <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">{item.apiLabel}</p>}
+              <p className="font-mono text-3xl font-bold text-[var(--accent)]">{formatValue(extracted)}</p>
+              {lastFetched && <p className="text-[9px] text-[var(--text-muted)]">Updated {lastFetched}</p>}
+            </div>
+          ) : (
+            <pre className="font-mono text-[10px] text-[var(--text-secondary)] whitespace-pre-wrap break-all leading-relaxed">{JSON.stringify(extracted, null, 2)}</pre>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── API Style Panel ──────────────────────────────────────────────────────────
+
+export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const authType = item.apiAuthType ?? "none";
+  const method = item.apiMethod ?? "GET";
+
+  const PLabel = ({ children }: { children: React.ReactNode }) => (
+    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>
+  );
+
+  const Input = ({ value, onChange, placeholder, mono }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) => (
+    <input
+      className={cn("w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-muted)]", mono && "font-mono")}
+      value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+    />
+  );
+
+  const Btn = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
+    <button onClick={onClick} className={cn("flex-1 rounded py-1 text-[10px] font-medium transition-colors", active ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]")}>{children}</button>
+  );
+
+  return (
+    <div className="flex flex-col gap-4 p-3 text-xs overflow-y-auto">
+
+      {/* Presets */}
+      <section>
+        <PLabel>Quick presets</PLabel>
+        <div className="flex flex-col gap-1">
+          {API_PRESETS.map((p) => (
+            <button key={p.id} onClick={() => upd({ apiUrl: p.url, apiMethod: p.method, apiAuthType: p.authType })}
+              className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 text-left hover:border-[var(--accent)] hover:bg-[var(--accent)]/5 transition-colors">
+              <span className="flex-1 font-medium text-[var(--text-primary)] text-[11px]">{p.label}</span>
+              <span className="text-[9px] text-[var(--text-muted)]">{p.note}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Request */}
+      <section>
+        <PLabel>Request</PLabel>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-1">
+            {(["GET","POST","PUT","PATCH","DELETE"] as const).map((m) => (
+              <Btn key={m} active={method === m} onClick={() => upd({ apiMethod: m })}>{m}</Btn>
+            ))}
+          </div>
+          <Input value={item.apiUrl ?? ""} onChange={(v) => upd({ apiUrl: v })} placeholder="https://api.example.com/endpoint" mono />
+        </div>
+      </section>
+
+      {/* Auth */}
+      <section>
+        <PLabel>Auth</PLabel>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-1">
+            {(["none","bearer","apikey","basic"] as const).map((a) => (
+              <Btn key={a} active={authType === a} onClick={() => upd({ apiAuthType: a })}>{a === "none" ? "None" : a === "bearer" ? "Bearer" : a === "apikey" ? "API Key" : "Basic"}</Btn>
+            ))}
+          </div>
+          {authType === "bearer" && <Input value={item.apiAuthValue ?? ""} onChange={(v) => upd({ apiAuthValue: v })} placeholder="Token / OAuth access token" />}
+          {authType === "apikey" && (
+            <>
+              <Input value={item.apiAuthHeader ?? "X-API-Key"} onChange={(v) => upd({ apiAuthHeader: v })} placeholder="Header name (e.g. X-API-Key)" />
+              <Input value={item.apiAuthValue ?? ""} onChange={(v) => upd({ apiAuthValue: v })} placeholder="Key value" />
+            </>
+          )}
+          {authType === "basic" && (
+            <>
+              <Input value={item.apiAuthUser ?? ""} onChange={(v) => upd({ apiAuthUser: v })} placeholder="Username" />
+              <Input value={item.apiAuthValue ?? ""} onChange={(v) => upd({ apiAuthValue: v })} placeholder="Password" />
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* Body (non-GET) */}
+      {method !== "GET" && (
+        <section>
+          <PLabel>Request body (JSON)</PLabel>
+          <textarea
+            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 font-mono text-[10px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-muted)] resize-none"
+            rows={4}
+            value={item.apiBody ?? ""}
+            onChange={(e) => upd({ apiBody: e.target.value })}
+            placeholder={'{\n  "key": "value"\n}'}
+          />
+        </section>
+      )}
+
+      {/* Extra headers */}
+      <section>
+        <PLabel>Extra headers (JSON)</PLabel>
+        <textarea
+          className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 font-mono text-[10px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-muted)] resize-none"
+          rows={3}
+          value={item.apiHeaders ?? ""}
+          onChange={(e) => upd({ apiHeaders: e.target.value })}
+          placeholder={'{ "Accept": "application/json" }'}
+        />
+      </section>
+
+      {/* Display */}
+      <section>
+        <PLabel>Display</PLabel>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-1">
+            {(["value","json","table"] as const).map((m) => (
+              <Btn key={m} active={(item.apiDisplayMode ?? "value") === m} onClick={() => upd({ apiDisplayMode: m })}>{m === "value" ? "Value" : m === "json" ? "JSON" : "Table"}</Btn>
+            ))}
+          </div>
+          <Input value={item.apiResponsePath ?? ""} onChange={(v) => upd({ apiResponsePath: v })} placeholder="e.g. data.items[0].name" />
+          <p className="text-[9px] text-[var(--text-muted)]">Dot-path to extract a field from the response. Leave blank to use full response.</p>
+          <Input value={item.apiLabel ?? ""} onChange={(v) => upd({ apiLabel: v })} placeholder="Label (shown above value)" />
+        </div>
+      </section>
+
+      {/* Auto-refresh */}
+      <section>
+        <PLabel>Auto-refresh</PLabel>
+        <div className="flex items-center gap-2">
+          <input type="number" min={0} value={item.apiRefreshInterval ?? 0}
+            onChange={(e) => upd({ apiRefreshInterval: Number(e.target.value) })}
+            className="w-16 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none text-center"
+          />
+          <span className="text-[var(--text-muted)]">seconds (0 = manual only)</span>
+        </div>
+      </section>
+
+      {/* Variable export */}
+      <section>
+        <PLabel>Export as variable</PLabel>
+        <div className="flex flex-col gap-2">
+          <Input
+            value={item.apiVarName ?? ""}
+            onChange={(v) => upd({ apiVarName: v || undefined })}
+            placeholder="Variable name (e.g. temperature)"
+          />
+          {item.apiVarName?.trim() && (
+            <div className="rounded border border-[var(--border)] bg-[var(--surface-overlay)] p-2 flex flex-col gap-1">
+              <p className="text-[10px] text-[var(--text-muted)]">
+                After each fetch, the numeric value at the response path is exported as:
+              </p>
+              <p className="font-mono text-[10px] text-[var(--accent)]">{`{${item.apiVarName.trim()}}`}</p>
+              {item.apiCachedValue !== undefined && (
+                <p className="text-[10px] text-[var(--text-muted)]">
+                  Current value: <span className="font-mono text-[var(--text-primary)]">{item.apiCachedValue}</span>
+                </p>
+              )}
+              <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                Use in text formulas, graph data cells, or list variable formulas.
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+
+    </div>
+  );
+}
+
+// ─── Calendar ────────────────────────────────────────────────────────────────
+
+const DAY_LABELS_SUN = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const DAY_LABELS_MON = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const DAY_LABELS_SUN_SHORT = ["S","M","T","W","T","F","S"];
+const DAY_LABELS_MON_SHORT = ["M","T","W","T","F","S","S"];
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const MONTH_NAMES_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function fmtTime(t?: string) { if (!t) return ""; const [h, m] = t.split(":").map(Number); const ampm = h >= 12 ? "pm" : "am"; return `${h % 12 || 12}:${String(m).padStart(2,"0")}${ampm}`; }
+function todayKey() { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`; }
+function dateLabel(key: string) { const [y,m,d] = key.split("-").map(Number); const dt = new Date(y,m-1,d); return dt.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}); }
+
+function parseIcs(text: string, feedId: string, feedColor: string): CalendarEvent[] {
+  const events: CalendarEvent[] = [];
+  const blocks = text.split("BEGIN:VEVENT");
+  for (let i = 1; i < blocks.length; i++) {
+    const block = blocks[i];
+    const get = (key: string) => { const m = block.match(new RegExp(`${key}[^:]*:([^\\r\\n]+)`)); return m ? m[1].trim() : undefined; };
+    const dtstart = get("DTSTART") ?? "";
+    if (!dtstart) continue;
+    const dateStr = dtstart.replace(/T.*/,"").replace(/(\d{4})(\d{2})(\d{2})/,"$1-$2-$3");
+    const timeStr = dtstart.includes("T") ? dtstart.replace(/.*T(\d{2})(\d{2}).*/,"$1:$2") : undefined;
+    const dtend = get("DTEND") ?? "";
+    const endTimeStr = dtend.includes("T") ? dtend.replace(/.*T(\d{2})(\d{2}).*/,"$1:$2") : undefined;
+    const summary = (get("SUMMARY") ?? "Untitled").replace(/\\n/g," ").replace(/\\,/g,",");
+    const desc = get("DESCRIPTION")?.replace(/\\n/g,"\n").replace(/\\,/g,",");
+    const loc = get("LOCATION")?.replace(/\\,/g,",");
+    const uid = get("UID") ?? crypto.randomUUID();
+    events.push({ id: `feed-${feedId}-${uid}`, date: dateStr, title: summary, color: feedColor, startTime: timeStr, endTime: endTimeStr, description: desc, location: loc, feedId, allDay: !dtstart.includes("T") });
+  }
+  return events;
+}
+
+// Event detail popup
+interface EventPopupProps {
+  event: CalendarEvent | null;
+  date: string | null; // for new event
+  accent: string;
+  onSave: (ev: CalendarEvent) => void;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+  isFinished?: boolean;
+}
+function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished }: EventPopupProps) {
+  const isNew = !event;
+  const [title, setTitle] = useState(event?.title ?? "");
+  const [color, setColor] = useState(event?.color ?? accent);
+  const [dateVal, setDateVal] = useState(event?.date ?? date ?? "");
+  const [startTime, setStartTime] = useState(event?.startTime ?? "");
+  const [endTime, setEndTime] = useState(event?.endTime ?? "");
+  const [description, setDescription] = useState(event?.description ?? "");
+  const [location, setLocation] = useState(event?.location ?? "");
+  const [allDay, setAllDay] = useState(event?.allDay ?? !event?.startTime);
+  const readOnly = !!event?.feedId || isFinished;
+
+  const save = () => {
+    if (!title.trim() || !dateVal) return;
+    onSave({ id: event?.id ?? crypto.randomUUID(), date: dateVal, title: title.trim(), color, startTime: allDay ? undefined : startTime || undefined, endTime: allDay ? undefined : endTime || undefined, description: description || undefined, location: location || undefined, allDay, feedId: event?.feedId });
+  };
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="w-72 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Color bar */}
+        <div className="h-1.5 w-full" style={{ background: color }} />
+        <div className="p-4 flex flex-col gap-3">
+          {/* Title */}
+          <input
+            autoFocus
+            readOnly={readOnly}
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") onClose(); }}
+            placeholder="Event title…"
+            className="w-full text-sm font-semibold bg-transparent border-b border-[var(--border)] pb-1 outline-none text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+          />
+
+          {/* Date */}
+          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+            <span className="w-16 text-[var(--text-muted)] shrink-0">Date</span>
+            <input type="date" value={dateVal} readOnly={readOnly} onChange={e => setDateVal(e.target.value)}
+              className="flex-1 bg-transparent outline-none text-[var(--text-primary)] border border-[var(--border)] rounded px-2 py-0.5" />
+          </div>
+
+          {/* All day toggle */}
+          {!readOnly && (
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" checked={allDay} onChange={e => setAllDay(e.target.checked)} className="accent-[var(--accent)]" />
+              <span className="text-[var(--text-secondary)]">All day</span>
+            </label>
+          )}
+
+          {/* Time */}
+          {!allDay && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-16 text-[var(--text-muted)] shrink-0">Time</span>
+              <input type="time" value={startTime} readOnly={readOnly} onChange={e => setStartTime(e.target.value)}
+                className="flex-1 bg-transparent border border-[var(--border)] rounded px-2 py-0.5 outline-none text-[var(--text-primary)]" />
+              <span className="text-[var(--text-muted)]">→</span>
+              <input type="time" value={endTime} readOnly={readOnly} onChange={e => setEndTime(e.target.value)}
+                className="flex-1 bg-transparent border border-[var(--border)] rounded px-2 py-0.5 outline-none text-[var(--text-primary)]" />
+            </div>
+          )}
+
+          {/* Location */}
+          <div className="flex items-center gap-2 text-xs">
+            <span className="w-16 text-[var(--text-muted)] shrink-0">Location</span>
+            <input readOnly={readOnly} value={location} onChange={e => setLocation(e.target.value)}
+              placeholder={readOnly ? "—" : "Add location…"}
+              className="flex-1 bg-transparent border border-[var(--border)] rounded px-2 py-0.5 outline-none text-[var(--text-primary)] placeholder:text-[var(--text-muted)]" />
+          </div>
+
+          {/* Description */}
+          <div className="flex flex-col gap-1 text-xs">
+            <span className="text-[var(--text-muted)]">Notes</span>
+            <textarea readOnly={readOnly} value={description} onChange={e => setDescription(e.target.value)}
+              placeholder={readOnly ? "—" : "Add notes…"} rows={2}
+              className="w-full bg-[var(--surface)] border border-[var(--border)] rounded px-2 py-1 outline-none text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none" />
+          </div>
+
+          {/* Color */}
+          {!readOnly && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="w-16 text-[var(--text-muted)] shrink-0">Color</span>
+              <div className="flex gap-1.5 flex-wrap">
+                {["#5865f2","#e44c4c","#e8a838","#3bba6c","#3b9bba","#9b59b6","#e67e22","#1abc9c"].map(c => (
+                  <button key={c} onClick={() => setColor(c)}
+                    className={cn("h-5 w-5 rounded-full border-2 transition-transform", color === c ? "border-white scale-110" : "border-transparent")}
+                    style={{ background: c }} />
+                ))}
+                <span className="relative h-5 w-5 rounded-full border border-white/30 overflow-hidden">
+                  <input type="color" value={color} onChange={e => setColor(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                  <span className="absolute inset-0 rounded-full" style={{ background: color }} />
+                </span>
+              </div>
+            </div>
+          )}
+
+          {event?.feedId && (
+            <p className="text-[9px] text-[var(--text-muted)] italic">From external calendar feed — read only</p>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            {!readOnly && (
+              <>
+                <button onClick={save} className="flex-1 rounded-lg py-1.5 text-xs font-medium text-white transition-colors" style={{ background: accent }}>
+                  {isNew ? "Add event" : "Save"}
+                </button>
+                {!isNew && (
+                  <button onClick={() => { onDelete(event!.id); onClose(); }}
+                    className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors">
+                    Delete
+                  </button>
+                )}
+              </>
+            )}
+            <button onClick={onClose} className={cn("rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors", readOnly && "flex-1")}>
+              {readOnly ? "Close" : "Cancel"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId?: string; boxId?: string; collapsed?: boolean; isFinished?: boolean }) {
+  const today = new Date();
+  const view = item.calendarView ?? "month";
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [viewWeekStart, setViewWeekStart] = useState(() => {
+    const d = new Date(today); d.setDate(d.getDate() - d.getDay()); return d;
+  });
+  const [popup, setPopup] = useState<{ event: CalendarEvent | null; date: string | null } | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const accent = item.calendarAccentColor ?? "#5865f2";
+  const todayColor = item.calendarTodayColor ?? accent;
+  const mondayFirst = item.calendarFirstDayMonday ?? false;
+  const showWeekends = item.calendarShowWeekends !== false;
+  const fontFamily = item.calendarFontFamily;
+  const fontSize = item.calendarFontSize ?? 11;
+  const fontColor = item.calendarFontColor;
+  const br = item.calendarBorderRadius ?? 0;
+
+  const localEvents: CalendarEvent[] = item.calendarEvents ?? [];
+  const feedEvents: CalendarEvent[] = item.calendarFeedEvents ?? [];
+
+  // Migrate legacy single-link fields into the array format on the fly
+  const links: TableLink[] = useMemo(() => {
+    const arr = item.calendarLinkedTables ?? [];
+    if (arr.length > 0) return arr;
+    // Legacy migration: if old fields are set, surface as a single link
+    if (item.calendarLinkedTableId && item.calendarLinkedDateCol && item.calendarLinkedTitleCol) {
+      return [{ id: "legacy", tableId: item.calendarLinkedTableId, dateCol: item.calendarLinkedDateCol, titleCol: item.calendarLinkedTitleCol, colorCol: item.calendarLinkedColorCol, color: accent }];
+    }
+    return [];
+  }, [item.calendarLinkedTables, item.calendarLinkedTableId, item.calendarLinkedDateCol, item.calendarLinkedTitleCol, item.calendarLinkedColorCol, accent]);
+
+  // Return all linked tables' rows as a stable map (tableId → rows[])
+  const linkedTablesData = useBoardStore(useShallow(s => {
+    if (!boardId || !boxId || links.length === 0) return {} as Record<string, typeof s.boards[0]["boxes"][0]["items"][0]["tableRows"]>;
+    const box = s.boards.find(b => b.id === boardId)?.boxes.find(b => b.id === boxId);
+    const result: Record<string, BlockItem["tableRows"]> = {};
+    for (const lk of links) {
+      const tableItem = box?.items.find(i => i.id === lk.tableId);
+      if (tableItem?.tableRows) result[lk.tableId] = tableItem.tableRows;
+    }
+    return result;
+  }));
+
+  const linkedTableEvents = useMemo<CalendarEvent[]>(() => {
+    const events: CalendarEvent[] = [];
+    for (const lk of links) {
+      const rows = linkedTablesData[lk.tableId];
+      if (!rows) continue;
+      const fallback = lk.color ?? accent;
+      for (const r of rows) {
+        const rawDate = r.cells[lk.dateCol] as string | undefined;
+        if (!rawDate) continue;
+        // Accept YYYY-MM-DD (date input) or try to parse other formats
+        let dateStr = "";
+        if (/^\d{4}-\d{2}-\d{2}/.test(rawDate)) {
+          dateStr = rawDate.slice(0, 10);
+        } else {
+          const parsed = new Date(rawDate);
+          if (!isNaN(parsed.getTime())) dateStr = parsed.toISOString().slice(0, 10);
+        }
+        if (!dateStr) continue;
+        const rawTitle = r.cells[lk.titleCol] as string | undefined;
+        const rawColor = lk.colorCol ? (r.cells[lk.colorCol] as string | undefined) : undefined;
+        events.push({
+          id: `linked-${lk.tableId}-${r.id}`,
+          date: dateStr,
+          title: rawTitle || "(untitled)",
+          color: rawColor || fallback,
+          feedId: `table:${lk.tableId}`,
+        });
+      }
+    }
+    return events;
+  }, [links, linkedTablesData, accent]);
+
+  const allEvents = [...localEvents, ...feedEvents, ...linkedTableEvents];
+
+  const eventsOnDate = (key: string) => allEvents.filter(e => e.date === key).sort((a,b) => (a.startTime ?? "00:00").localeCompare(b.startTime ?? "00:00"));
+
+  const tKey = todayKey();
+  const isToday = (key: string) => key === tKey;
+
+  const saveEvent = (ev: CalendarEvent) => {
+    if (ev.feedId) return;
+    const existing = localEvents.find(e => e.id === ev.id);
+    if (existing) upd({ calendarEvents: localEvents.map(e => e.id === ev.id ? ev : e) });
+    else upd({ calendarEvents: [...localEvents, ev] });
+    setPopup(null);
+  };
+  const deleteEvent = (id: string) => upd({ calendarEvents: localEvents.filter(e => e.id !== id) });
+
+  const navPrev = () => {
+    if (view === "month") { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y-1); } else setViewMonth(m => m-1); }
+    else if (view === "week") { setViewWeekStart(d => { const nd = new Date(d); nd.setDate(nd.getDate()-7); return nd; }); }
+    else { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y-1); } else setViewMonth(m => m-1); }
+  };
+  const navNext = () => {
+    if (view === "month") { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y+1); } else setViewMonth(m => m+1); }
+    else if (view === "week") { setViewWeekStart(d => { const nd = new Date(d); nd.setDate(nd.getDate()+7); return nd; }); }
+    else { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y+1); } else setViewMonth(m => m+1); }
+  };
+  const goToday = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); const d = new Date(today); d.setDate(d.getDate()-d.getDay()); setViewWeekStart(d); };
+
+  const navLabel = () => {
+    if (view === "week") {
+      const end = new Date(viewWeekStart); end.setDate(end.getDate()+6);
+      return `${MONTH_NAMES_SHORT[viewWeekStart.getMonth()]} ${viewWeekStart.getDate()} – ${viewWeekStart.getMonth() !== end.getMonth() ? MONTH_NAMES_SHORT[end.getMonth()]+" " : ""}${end.getDate()}, ${end.getFullYear()}`;
+    }
+    return `${MONTH_NAMES[viewMonth]} ${viewYear}`;
+  };
+
+  const dayKey = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+
+  // Upcoming for collapsed
+  const upcoming = [...allEvents].filter(e => e.date >= tKey).sort((a,b) => a.date.localeCompare(b.date)||((a.startTime??"")<(b.startTime??"") ? -1:1)).slice(0,4);
+
+  if (collapsed) {
+    return (
+      <div className="flex flex-col gap-1" style={{ fontFamily, fontSize, color: fontColor ?? undefined }}>
+        {upcoming.length === 0
+          ? <span className="text-xs text-[var(--text-muted)]">No upcoming events</span>
+          : upcoming.map(e => (
+            <div key={e.id} className="flex items-center gap-1.5 min-w-0">
+              <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: e.color ?? accent }} />
+              <span className="text-xs truncate text-[var(--text-primary)]">{e.title}</span>
+              {e.startTime && <span className="text-[9px] text-[var(--text-muted)] shrink-0">{fmtTime(e.startTime)}</span>}
+              <span className="ml-auto text-[10px] text-[var(--text-muted)] flex-shrink-0">{e.date.slice(5)}</span>
+            </div>
+          ))
+        }
+      </div>
+    );
+  }
+
+  // ── Month view ──
+  const dayLabels = mondayFirst ? DAY_LABELS_MON : DAY_LABELS_SUN;
+  const firstOfMonth = new Date(viewYear, viewMonth, 1);
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  let startDow = firstOfMonth.getDay();
+  if (mondayFirst) startDow = (startDow + 6) % 7;
+  const totalCells = Math.ceil((startDow + daysInMonth) / 7) * 7;
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < totalCells; i++) { const d = i - startDow + 1; cells.push(d >= 1 && d <= daysInMonth ? d : null); }
+  const isWeekendCell = (i: number) => { const dow = i % 7; return mondayFirst ? dow >= 5 : dow === 0 || dow === 6; };
+  const colCount = showWeekends ? 7 : 5;
+  const visibleDayLabels = showWeekends ? dayLabels : dayLabels.filter((_,i) => !(mondayFirst ? i >= 5 : i === 0 || i === 6));
+  const visibleCells = showWeekends ? cells.map((d,i) => ({d,i})) : cells.map((d,i) => ({d,i})).filter(({i}) => !isWeekendCell(i));
+
+  // ── Week view ──
+  const weekDays: Date[] = [];
+  for (let i = 0; i < 7; i++) { const d = new Date(viewWeekStart); d.setDate(d.getDate()+i); weekDays.push(d); }
+  const visibleWeekDays = showWeekends ? weekDays : weekDays.filter(d => d.getDay() !== 0 && d.getDay() !== 6);
+
+  // ── Agenda view ──
+  const agendaStart = new Date(viewYear, viewMonth, 1);
+  const agendaEnd = new Date(viewYear, viewMonth + 1, 0);
+  const agendaDays: string[] = [];
+  for (let d = new Date(agendaStart); d <= agendaEnd; d.setDate(d.getDate()+1)) agendaDays.push(dayKey(new Date(d)));
+  const agendaEvents = agendaDays.map(k => ({ key: k, events: eventsOnDate(k) })).filter(x => x.events.length > 0);
+
+  const containerStyle: React.CSSProperties = { fontFamily: fontFamily ?? "inherit", fontSize, color: fontColor ?? "var(--text-primary)", borderRadius: br };
+
+  const CellBg = ({ weekend }: { weekend?: boolean }) => {
+    const bgImg = weekend ? (item.calendarWeekendBgImage ?? item.calendarCellBgImage) : item.calendarCellBgImage;
+    const bgSize = weekend ? (item.calendarWeekendBgImageSize ?? item.calendarCellBgImageSize ?? "cover") : (item.calendarCellBgImageSize ?? "cover");
+    const bgOpacity = weekend ? (item.calendarWeekendBgImageOpacity ?? item.calendarCellBgImageOpacity ?? 100) : (item.calendarCellBgImageOpacity ?? 100);
+    if (!bgImg) return null;
+    return (
+      <div style={{ position: "absolute", inset: 0, zIndex: 0, backgroundImage: `url(${bgImg})`, backgroundSize: bgSize, backgroundPosition: "center", opacity: bgOpacity / 100, pointerEvents: "none" }} />
+    );
+  };
+
+  return (
+    <div className="relative flex h-full flex-col select-none overflow-hidden" style={containerStyle} onClick={() => setShowDatePicker(false)}>
+      {/* Background */}
+      {item.calendarBgColor && <div style={{ position:"absolute", inset:0, zIndex:0, backgroundColor: item.calendarBgColor, borderRadius: br, opacity: (item.calendarBgOpacity??100)/100, pointerEvents:"none" }} />}
+      {item.calendarBgImage && <div style={{ position:"absolute", inset:0, zIndex:0, backgroundImage:`url(${item.calendarBgImage})`, backgroundSize: item.calendarBgImageSize??"cover", backgroundPosition:"center", borderRadius: br, opacity:(item.calendarBgImageOpacity??100)/100, pointerEvents:"none" }} />}
+
+      {/* Popup */}
+      {popup && <EventPopup event={popup.event} date={popup.date} accent={accent} onSave={saveEvent} onDelete={deleteEvent} onClose={() => setPopup(null)} isFinished={isFinished} />}
+
+      {/* Month/year picker — rendered at container level to escape nav overflow:hidden */}
+      {showDatePicker && (
+        <div className="absolute top-9 left-1/2 -translate-x-1/2 z-[60] rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] shadow-xl p-3 w-56" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-2">
+            <button onClick={() => setViewYear(y => y - 1)} className="rounded p-1 hover:bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">‹</button>
+            <span className="font-semibold text-sm text-[var(--text-primary)]">{viewYear}</span>
+            <button onClick={() => setViewYear(y => y + 1)} className="rounded p-1 hover:bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">›</button>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {MONTH_NAMES_SHORT.map((m, mi) => (
+              <button key={m} onClick={() => { setViewMonth(mi); setShowDatePicker(false); }}
+                className={cn("rounded py-1 text-xs transition-colors", viewMonth === mi ? "text-white font-semibold" : "text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)]")}
+                style={viewMonth === mi ? { background: accent } : {}}>
+                {m}
+              </button>
+            ))}
+          </div>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-1.5">
-        {[...meta.stats, ...meta.detailStats].map((s) => (
-          <div key={s.label} className="flex flex-col gap-0.5 rounded p-2" style={{ background: meta.bg }}>
-            <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">{s.label}</span>
-            <span className="text-base font-bold" style={{ color: meta.color }}>{connected ? s.value : "—"}</span>
+
+      {/* Nav bar */}
+      <div className="relative flex items-center gap-1 px-2 py-1.5 shrink-0 border-b border-[var(--border)] overflow-hidden" style={{ zIndex:1, background: item.calendarHeaderBgColor ?? "transparent" }}>
+        {item.calendarHeaderBgImage && <div style={{ position:"absolute", inset:0, zIndex:0, backgroundImage:`url(${item.calendarHeaderBgImage})`, backgroundSize: item.calendarHeaderBgImageSize ?? "cover", backgroundPosition:"center", opacity:(item.calendarHeaderBgImageOpacity??100)/100, pointerEvents:"none" }} />}
+        <button onClick={navPrev} className="relative z-[1] rounded p-1 hover:bg-[var(--surface-overlay)] transition-colors text-sm leading-none" style={{ color: fontColor ? fontColor+"99" : "var(--text-muted)" }}>‹</button>
+        <button onClick={navNext} className="relative z-[1] rounded p-1 hover:bg-[var(--surface-overlay)] transition-colors text-sm leading-none" style={{ color: fontColor ? fontColor+"99" : "var(--text-muted)" }}>›</button>
+        <div className="relative z-[1] flex-1 flex justify-center">
+          <button onClick={e => { e.stopPropagation(); setShowDatePicker(v => !v); }}
+            className="font-semibold rounded px-2 py-0.5 hover:bg-[var(--surface-overlay)] transition-colors flex items-center gap-1"
+            style={{ color: fontColor ?? "var(--text-primary)" }}>
+            {navLabel()} <span style={{ fontSize: 8, opacity: 0.6 }}>▾</span>
+          </button>
+        </div>
+        <button onClick={goToday} className="relative z-[1] rounded px-1.5 py-0.5 text-[9px] border transition-colors" style={{ color: fontColor ? fontColor+"99" : "var(--text-muted)", borderColor: fontColor ? fontColor+"30" : "var(--border)" }}>Today</button>
+        {/* View switcher */}
+        <div className="relative z-[1] flex rounded border overflow-hidden text-[9px]" style={{ borderColor: fontColor ? fontColor+"30" : "var(--border)" }}>
+          {(["month","week","agenda"] as const).map(v => (
+            <button key={v} onClick={() => upd({ calendarView: v })}
+              className="px-1.5 py-0.5 capitalize transition-colors"
+              style={view === v ? { background: accent, color: "#fff" } : { color: fontColor ? fontColor+"80" : "var(--text-muted)" }}>
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Month ── */}
+      {view === "month" && (() => {
+        const numWeeks = visibleCells.length / colCount;
+        const rowTemplate = `auto repeat(${numWeeks}, 1fr)`;
+        const sepColor = `color-mix(in srgb, ${fontColor ?? "#ffffff"} 12%, transparent)`;
+        return (
+          <div className="relative flex-1 min-h-0" style={{ zIndex: 1 }}>
+            <div className="h-full grid" style={{ gridTemplateColumns: `repeat(${colCount}, 1fr)`, gridTemplateRows: rowTemplate }}>
+              {/* Day-of-week headers */}
+              {visibleDayLabels.map((l, hi) => (
+                <div key={l} className="flex items-center justify-center py-1 font-semibold uppercase tracking-wide"
+                  style={{ fontSize: fontSize - 2, color: fontColor ? fontColor+"99" : "var(--text-muted)", borderRight: hi < colCount - 1 ? `1px solid ${sepColor}` : undefined, borderBottom: `1px solid ${sepColor}`, background: item.calendarHeaderBgColor ?? "transparent" }}>
+                  {l}
+                </div>
+              ))}
+              {/* Day cells */}
+              {visibleCells.map(({ d, i }) => {
+                const key = d ? `${viewYear}-${String(viewMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}` : `empty-${i}`;
+                const dayEvs = d ? eventsOnDate(key) : [];
+                const weekend = isWeekendCell(i);
+                const col = (i % colCount);
+                const isLastCol = col === colCount - 1;
+                const row = Math.floor(i / colCount);
+                const isLastRow = row === numWeeks - 1;
+                return (
+                  <div key={key}
+                    className={cn("relative flex flex-col overflow-hidden cursor-pointer group/day transition-colors", !d && "pointer-events-none")}
+                    style={{
+                      background: d ? (weekend && item.calendarWeekendBgColor ? item.calendarWeekendBgColor : (item.calendarCellBgColor ?? "transparent")) : "transparent",
+                      opacity: d ? 1 : 0,
+                      borderRight: !isLastCol ? `1px solid ${sepColor}` : undefined,
+                      borderBottom: !isLastRow ? `1px solid ${sepColor}` : undefined,
+                    }}
+                    onClick={() => { if (!d || isFinished) return; setPopup({ event: null, date: key }); }}
+                  >
+                    {d && <CellBg weekend={weekend} />}
+                    {d && (
+                      <>
+                        <div className="relative z-[1] flex items-center justify-between px-1 pt-0.5 shrink-0">
+                          <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full font-medium"
+                            style={{ fontSize: fontSize - 1, background: isToday(key) ? todayColor : "transparent", color: isToday(key) ? "#fff" : (fontColor ?? "var(--text-secondary)") }}>
+                            {d}
+                          </span>
+                          {!isFinished && <span className="opacity-0 group-hover/day:opacity-100 transition-opacity" style={{ fontSize: 12, color: accent, lineHeight: 1 }}>+</span>}
+                        </div>
+                        <div className="relative z-[1] flex flex-col gap-px px-0.5 pb-0.5 flex-1 overflow-hidden">
+                          {dayEvs.slice(0, 3).map(e => (
+                            <button key={e.id} onClick={ev => { ev.stopPropagation(); setPopup({ event: e, date: null }); }}
+                              className="flex items-center gap-0.5 w-full rounded px-1 text-left leading-tight hover:brightness-110 transition-all truncate shrink-0"
+                              style={{ background: (e.color??accent)+"28", color: e.color??accent, fontSize: fontSize - 2, paddingTop: 1, paddingBottom: 1 }}>
+                              {e.startTime && <span className="shrink-0" style={{ fontSize: fontSize - 3 }}>{fmtTime(e.startTime)}</span>}
+                              <span className="truncate">{e.title}</span>
+                            </button>
+                          ))}
+                          {dayEvs.length > 3 && <span className="shrink-0" style={{ fontSize: fontSize - 3, color: fontColor ? fontColor+"70" : "var(--text-muted)" }}>+{dayEvs.length - 3} more</span>}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Week ── */}
+      {view === "week" && (() => {
+        const sepColor = `color-mix(in srgb, ${fontColor ?? "#ffffff"} 12%, transparent)`;
+        return (
+          <div className="relative flex-1 min-h-0" style={{ zIndex: 1 }}>
+            <div className="h-full grid" style={{ gridTemplateColumns: `repeat(${visibleWeekDays.length}, 1fr)`, gridTemplateRows: "auto 1fr" }}>
+              {/* Headers row */}
+              {visibleWeekDays.map((dt, wi) => {
+                const key = dayKey(dt);
+                const isTod = isToday(key);
+                const isLastCol = wi === visibleWeekDays.length - 1;
+                return (
+                  <div key={`h-${key}`} className="flex flex-col items-center py-1 shrink-0"
+                    style={{ background: item.calendarHeaderBgColor ?? "transparent", borderRight: !isLastCol ? `1px solid ${sepColor}` : undefined, borderBottom: `1px solid ${sepColor}` }}>
+                    <span style={{ fontSize: fontSize - 2, color: fontColor ? fontColor+"80" : "var(--text-muted)" }}>{DAY_LABELS_SUN_SHORT[dt.getDay()]}</span>
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full font-semibold"
+                      style={{ fontSize: fontSize + 1, background: isTod ? todayColor : "transparent", color: isTod ? "#fff" : (fontColor ?? "var(--text-primary)") }}>
+                      {dt.getDate()}
+                    </span>
+                  </div>
+                );
+              })}
+              {/* Content row */}
+              {visibleWeekDays.map((dt, wi) => {
+                const key = dayKey(dt);
+                const dayEvs = eventsOnDate(key);
+                const isTod = isToday(key);
+                const isWknd = dt.getDay() === 0 || dt.getDay() === 6;
+                const isLastCol = wi === visibleWeekDays.length - 1;
+                return (
+                  <div key={`c-${key}`} className="relative flex flex-col overflow-y-auto cursor-pointer group/wday"
+                    style={{ background: isWknd && item.calendarWeekendBgColor ? item.calendarWeekendBgColor : (item.calendarCellBgColor ?? "transparent"), borderRight: !isLastCol ? `1px solid ${sepColor}` : undefined }}
+                    onClick={() => { if (isFinished) return; setPopup({ event: null, date: key }); }}>
+                    <CellBg weekend={isWknd} />
+                    <div className="relative z-[1] flex flex-col gap-0.5 p-1">
+                      {dayEvs.map(e => (
+                        <button key={e.id} onClick={ev => { ev.stopPropagation(); setPopup({ event: e, date: null }); }}
+                          className="w-full text-left rounded px-1.5 py-1 leading-tight hover:brightness-110 transition-all"
+                          style={{ background: (e.color??accent)+"28", color: e.color??accent, fontSize: fontSize - 1 }}>
+                          {e.startTime && <span className="block" style={{ fontSize: fontSize - 2 }}>{fmtTime(e.startTime)}{e.endTime ? ` – ${fmtTime(e.endTime)}` : ""}</span>}
+                          <span className="font-medium truncate block">{e.title}</span>
+                        </button>
+                      ))}
+                      {!isFinished && <div className="opacity-0 group-hover/wday:opacity-100 transition-opacity flex justify-center pt-1" style={{ fontSize: fontSize - 1, color: accent }}>+</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Agenda ── */}
+      {view === "agenda" && (
+        <div className="relative flex-1 overflow-auto p-2 flex flex-col gap-3" style={{ zIndex:1 }}>
+          {agendaEvents.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2" style={{ color: fontColor ? fontColor+"60" : "var(--text-muted)" }}>
+              <span style={{ fontSize: 28 }}>📅</span>
+              <span style={{ fontSize }}>No events in {MONTH_NAMES[viewMonth]}</span>
+            </div>
+          ) : agendaEvents.map(({ key, events: evs }) => (
+            <div key={key}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={cn("font-semibold")} style={{ fontSize: fontSize + 1, color: isToday(key) ? todayColor : (fontColor ?? "var(--text-primary)") }}>{dateLabel(key)}</span>
+                {isToday(key) && <span className="rounded-full px-1.5 py-0 text-white text-[9px] font-medium" style={{ background: todayColor }}>Today</span>}
+              </div>
+              <div className="flex flex-col gap-1 pl-2 border-l-2" style={{ borderColor: accent+"40" }}>
+                {evs.map(e => (
+                  <button key={e.id} onClick={() => setPopup({ event: e, date: null })}
+                    className="flex items-start gap-2 w-full text-left rounded-lg px-2 py-1.5 hover:bg-[var(--surface-overlay)] transition-colors group/ev">
+                    <span className="h-2 w-2 rounded-full mt-1 shrink-0" style={{ background: e.color ?? accent }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate" style={{ fontSize, color: fontColor ?? "var(--text-primary)" }}>{e.title}</p>
+                      {(e.startTime || e.location) && (
+                        <p style={{ fontSize: fontSize - 1, color: fontColor ? fontColor+"80" : "var(--text-muted)" }}>
+                          {e.startTime && fmtTime(e.startTime)}{e.endTime && ` – ${fmtTime(e.endTime)}`}{e.location && ` · ${e.location}`}
+                        </p>
+                      )}
+                      {e.description && <p className="truncate" style={{ fontSize: fontSize - 1, color: fontColor ? fontColor+"60" : "var(--text-muted)" }}>{e.description}</p>}
+                    </div>
+                    {!isFinished && !e.feedId && <span className="opacity-0 group-hover/ev:opacity-100 text-red-400 text-xs transition-opacity" onClick={ev => { ev.stopPropagation(); deleteEvent(e.id); }}>✕</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {!isFinished && (
+            <button onClick={() => setPopup({ event: null, date: tKey })} className="flex items-center gap-1.5 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors mt-1" style={{ fontSize }}>
+              <Plus size={12} /> Add event
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Calendar Style Panel ─────────────────────────────────────────────────────
+
+function useCalendarFeedSync(item: BlockItem, upd: (p: Partial<BlockItem>) => void) {
+  const feeds: CalendarFeed[] = item.calendarFeeds ?? [];
+  const [syncing, setSyncing] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const syncFeed = useCallback(async (feed: CalendarFeed) => {
+    setSyncing(s => ({ ...s, [feed.id]: true }));
+    setErrors(e => { const n = { ...e }; delete n[feed.id]; return n; });
+    try {
+      // Try direct fetch first; CORS proxy as fallback
+      let text: string | null = null;
+      try {
+        const r = await fetch(feed.url, { cache: "no-cache" });
+        if (r.ok) text = await r.text();
+      } catch {}
+      if (!text) {
+        const proxy = `https://corsproxy.io/?${encodeURIComponent(feed.url)}`;
+        const r = await fetch(proxy, { cache: "no-cache" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        text = await r.text();
+      }
+      const parsed = parseIcs(text, feed.id, feed.color);
+      const otherFeeds = (item.calendarFeedEvents ?? []).filter(e => e.feedId !== feed.id);
+      upd({ calendarFeedEvents: [...otherFeeds, ...parsed] });
+    } catch (err: unknown) {
+      setErrors(e => ({ ...e, [feed.id]: err instanceof Error ? err.message : "Failed" }));
+    } finally {
+      setSyncing(s => ({ ...s, [feed.id]: false }));
+    }
+  }, [feeds, item.calendarFeedEvents, upd]);
+
+  return { syncing, errors, syncFeed };
+}
+
+export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId?: string; boxId?: string }) {
+  const events: CalendarEvent[] = item.calendarEvents ?? [];
+  const feeds: CalendarFeed[] = item.calendarFeeds ?? [];
+  const accent = item.calendarAccentColor ?? "#5865f2";
+  const { syncing, errors, syncFeed } = useCalendarFeedSync(item, upd);
+  const [newFeedUrl, setNewFeedUrl] = useState("");
+  const [newFeedName, setNewFeedName] = useState("");
+  const [newFeedColor, setNewFeedColor] = useState("#5865f2");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // All table items in this box — top-level hook
+  const tableItems = useBoardStore(useShallow(s => {
+    if (!boardId || !boxId) return [] as BlockItem[];
+    const box = s.boards.find(b => b.id === boardId)?.boxes.find(b => b.id === boxId);
+    return (box?.items ?? []).filter(i => i.type === "table");
+  }));
+
+  // Current multi-link config (migrate legacy single-link on the fly)
+  const links: TableLink[] = useMemo(() => {
+    const arr = item.calendarLinkedTables ?? [];
+    if (arr.length > 0) return arr;
+    if (item.calendarLinkedTableId && item.calendarLinkedDateCol && item.calendarLinkedTitleCol) {
+      return [{ id: "legacy", tableId: item.calendarLinkedTableId, dateCol: item.calendarLinkedDateCol, titleCol: item.calendarLinkedTitleCol, colorCol: item.calendarLinkedColorCol, color: accent }];
+    }
+    return [];
+  }, [item.calendarLinkedTables, item.calendarLinkedTableId, item.calendarLinkedDateCol, item.calendarLinkedTitleCol, item.calendarLinkedColorCol, accent]);
+
+  const updLinks = (next: TableLink[]) => upd({ calendarLinkedTables: next, calendarLinkedTableId: undefined, calendarLinkedDateCol: undefined, calendarLinkedTitleCol: undefined, calendarLinkedColorCol: undefined });
+  const addLink = () => updLinks([...links, { id: crypto.randomUUID(), tableId: "", dateCol: "", titleCol: "", color: accent }]);
+  const removeLink = (id: string) => updLinks(links.filter(l => l.id !== id));
+  const patchLink = (id: string, patch: Partial<TableLink>) => updLinks(links.map(l => l.id === id ? { ...l, ...patch } : l));
+
+  const addFeed = () => {
+    if (!newFeedUrl.trim()) return;
+    const feed: CalendarFeed = { id: crypto.randomUUID(), name: newFeedName.trim() || "Calendar", url: newFeedUrl.trim(), color: newFeedColor, enabled: true };
+    const updated = [...feeds, feed];
+    upd({ calendarFeeds: updated });
+    setNewFeedUrl(""); setNewFeedName("");
+    // Auto-sync new feed
+    setTimeout(() => syncFeed(feed), 100);
+  };
+
+  const removeFeed = (id: string) => {
+    upd({ calendarFeeds: feeds.filter(f => f.id !== id), calendarFeedEvents: (item.calendarFeedEvents ?? []).filter(e => e.feedId !== id) });
+  };
+
+  const handleBgFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => upd({ calendarBgImage: ev.target?.result as string });
+    reader.readAsDataURL(file); e.target.value = "";
+  };
+
+  return (
+    <div className="flex flex-col gap-4 p-3 text-xs">
+
+      {/* Linked Tables */}
+      <section>
+        <div className="mb-1 flex items-center justify-between">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Linked Tables</p>
+          {boardId && boxId && tableItems.length > 0 && (
+            <button onClick={addLink}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] bg-[var(--accent)] text-white hover:opacity-80 transition-opacity">
+              <Plus size={9} /> Add link
+            </button>
+          )}
+        </div>
+        <p className="mb-2 text-[9px] text-[var(--text-muted)]">Show rows from one or more tables as calendar events. Tables must be in the same block.</p>
+        {!boardId || !boxId ? (
+          <p className="text-[9px] text-orange-400/80">Open the block to enable table linking.</p>
+        ) : tableItems.length === 0 ? (
+          <p className="text-[9px] text-orange-400/80">No table items in this block yet. Add a Table item first.</p>
+        ) : links.length === 0 ? (
+          <button onClick={addLink}
+            className="w-full rounded border border-dashed border-[var(--border)] py-2 text-[9px] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors">
+            + Link a table
+          </button>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {links.map((lk, idx) => {
+              const linkedTable = tableItems.find(t => t.id === lk.tableId);
+              const cols = linkedTable?.tableColumns ?? [];
+              const dateCols = cols.filter(c => c.type === "date" || c.type === "text");
+              const textCols = cols.filter(c => c.type === "text" || c.type === "select");
+              const colorCols = cols.filter(c => c.type === "text" || c.type === "select");
+              return (
+                <div key={lk.id} className="rounded-lg border border-[var(--border)] p-2 flex flex-col gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] text-[var(--text-muted)] font-semibold shrink-0">#{idx + 1}</span>
+                    <select value={lk.tableId}
+                      onChange={e => patchLink(lk.id, { tableId: e.target.value, dateCol: "", titleCol: "", colorCol: undefined })}
+                      className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none">
+                      <option value="">— Pick table —</option>
+                      {tableItems.map(t => <option key={t.id} value={t.id}>{t.tableTitle || "Untitled table"}</option>)}
+                    </select>
+                    <button onClick={() => removeLink(lk.id)} className="text-[var(--text-muted)] hover:text-red-400 transition-colors shrink-0"><XIcon size={11} /></button>
+                  </div>
+                  {linkedTable && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[var(--text-muted)] w-10 shrink-0 text-[10px]">Date</span>
+                        <select value={lk.dateCol} onChange={e => patchLink(lk.id, { dateCol: e.target.value })}
+                          className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none">
+                          <option value="">— Pick —</option>
+                          {dateCols.map(c => <option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[var(--text-muted)] w-10 shrink-0 text-[10px]">Title</span>
+                        <select value={lk.titleCol} onChange={e => patchLink(lk.id, { titleCol: e.target.value })}
+                          className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none">
+                          <option value="">— Pick —</option>
+                          {textCols.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[var(--text-muted)] w-10 shrink-0 text-[10px]">Color</span>
+                        <select value={lk.colorCol ?? ""} onChange={e => patchLink(lk.id, { colorCol: e.target.value || undefined })}
+                          className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none">
+                          <option value="">— None —</option>
+                          {colorCols.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        <input type="color" value={lk.color ?? accent} onChange={e => patchLink(lk.id, { color: e.target.value })}
+                          title="Fallback color" className="h-6 w-6 shrink-0 cursor-pointer rounded border border-[var(--border)] bg-transparent p-0.5" />
+                      </div>
+                      {lk.dateCol && lk.titleCol && (
+                        <p className="text-[9px] text-green-400/80">✓ {(linkedTable.tableRows ?? []).length} row(s)</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* External Calendars */}
+      <section>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">External Calendars</p>
+        <p className="mb-2 text-[9px] text-[var(--text-muted)]">Paste a public iCal (.ics) URL — works with Google Calendar, Apple Calendar, Outlook, and any iCal source.</p>
+
+        {feeds.map(f => (
+          <div key={f.id} className="mb-2 rounded-lg border border-[var(--border)] p-2 flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <span className="h-3 w-3 rounded-full shrink-0" style={{ background: f.color }} />
+              <span className="flex-1 font-medium text-[var(--text-primary)] truncate">{f.name}</span>
+              <button onClick={() => syncFeed(f)} disabled={syncing[f.id]}
+                className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors disabled:opacity-40 text-[9px]">
+                {syncing[f.id] ? "⟳" : "↻"} Sync
+              </button>
+              <button onClick={() => removeFeed(f.id)} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>
+            </div>
+            <p className="text-[9px] text-[var(--text-muted)] truncate">{f.url}</p>
+            {errors[f.id] && <p className="text-[9px] text-red-400">{errors[f.id]}</p>}
+            {(item.calendarFeedEvents ?? []).filter(e => e.feedId === f.id).length > 0 && (
+              <p className="text-[9px] text-[var(--text-muted)]">{(item.calendarFeedEvents ?? []).filter(e => e.feedId === f.id).length} events loaded</p>
+            )}
           </div>
         ))}
+
+        <div className="flex flex-col gap-1.5 rounded-lg border border-dashed border-[var(--border)] p-2">
+          <input value={newFeedName} onChange={e => setNewFeedName(e.target.value)} placeholder="Calendar name"
+            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]" />
+          <input value={newFeedUrl} onChange={e => setNewFeedUrl(e.target.value)} placeholder="iCal URL (https://…)"
+            onKeyDown={e => e.key === "Enter" && addFeed()}
+            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]" />
+          <div className="flex items-center gap-2">
+            <span className="relative h-5 w-5 rounded-full border border-white/20 overflow-hidden shrink-0" style={{ background: newFeedColor }}>
+              <input type="color" value={newFeedColor} onChange={e => setNewFeedColor(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+            </span>
+            <button onClick={addFeed} disabled={!newFeedUrl.trim()}
+              className="flex-1 rounded py-1 text-[10px] font-medium text-white disabled:opacity-40 transition-colors" style={{ background: accent }}>
+              + Add calendar
+            </button>
+          </div>
+        </div>
+
+        <details className="mt-2">
+          <summary className="cursor-pointer text-[9px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">How to get your iCal URL ▾</summary>
+          <div className="mt-1.5 rounded border border-[var(--border)] p-2 flex flex-col gap-1.5 text-[9px] text-[var(--text-muted)]">
+            <p><strong className="text-[var(--text-secondary)]">Google Calendar:</strong> Settings → your calendar → "Secret address in iCal format"</p>
+            <p><strong className="text-[var(--text-secondary)]">Apple Calendar:</strong> File → Export, or share a public calendar to get its URL</p>
+            <p><strong className="text-[var(--text-secondary)]">Outlook:</strong> Settings → Calendar → Shared calendars → Publish → ICS link</p>
+            <p className="text-orange-400/80">Note: Calendar must be public or use a secret key URL. Private calendars require authentication not supported here.</p>
+          </div>
+        </details>
+      </section>
+
+      {/* Display */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Display</p>
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={item.calendarFirstDayMonday ?? false} onChange={e => upd({ calendarFirstDayMonday: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[var(--text-secondary)]">Week starts Monday</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={item.calendarShowWeekends !== false} onChange={e => upd({ calendarShowWeekends: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[var(--text-secondary)]">Show weekends</span>
+          </label>
+        </div>
+      </section>
+
+      {/* Colors */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Colors</p>
+        <div className="flex flex-col gap-2">
+          {[
+            { label: "Accent / today", key: "calendarAccentColor" as const, default: "#5865f2" },
+            { label: "Today highlight", key: "calendarTodayColor" as const, default: accent },
+            { label: "Header background", key: "calendarHeaderBgColor" as const, default: "#1e1f24" },
+            { label: "Cell background", key: "calendarCellBgColor" as const, default: "#1e1f24" },
+            { label: "Weekend background", key: "calendarWeekendBgColor" as const, default: "#1a1b20" },
+          ].map(({ label, key, default: def }) => (
+            <label key={key} className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="relative h-5 w-5 rounded border border-white/15 overflow-hidden shrink-0" style={{ backgroundColor: (item[key] as string | undefined) ?? def }}>
+                  <input type="color" value={(item[key] as string | undefined) ?? def} onChange={e => upd({ [key]: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                </span>
+                <span className="text-[var(--text-secondary)]">{label}</span>
+              </div>
+              {item[key] && <button onClick={() => upd({ [key]: undefined })} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>}
+            </label>
+          ))}
+        </div>
+      </section>
+
+      {/* Header image */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Header image</p>
+        {(() => {
+          const headerFileRef = { current: null as HTMLInputElement | null };
+          return (
+            <div className="flex flex-col gap-1.5">
+              <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+                placeholder="Image URL…" value={item.calendarHeaderBgImage?.startsWith("data:") ? "" : (item.calendarHeaderBgImage ?? "")}
+                onChange={e => upd({ calendarHeaderBgImage: e.target.value || undefined })} />
+              <div className="flex gap-1.5">
+                <button onClick={() => headerFileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+                  <Upload size={10} /> Upload
+                </button>
+                {item.calendarHeaderBgImage && <button onClick={() => upd({ calendarHeaderBgImage: undefined })} className="rounded border border-[var(--border)] px-2 text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>}
+              </div>
+              <input ref={headerFileRef} type="file" accept="image/*" className="hidden" onChange={e => {
+                const f = e.target.files?.[0]; if (!f) return;
+                const r = new FileReader(); r.onload = ev => upd({ calendarHeaderBgImage: ev.target?.result as string }); r.readAsDataURL(f); e.target.value = "";
+              }} />
+              {item.calendarHeaderBgImage && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[var(--text-muted)] w-14 shrink-0 text-[10px]">Opacity</span>
+                    <input type="range" min={0} max={100} value={item.calendarHeaderBgImageOpacity ?? 100} onChange={e => upd({ calendarHeaderBgImageOpacity: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+                    <span className="w-8 text-right text-[var(--text-muted)] text-[10px]">{item.calendarHeaderBgImageOpacity ?? 100}%</span>
+                  </div>
+                  <div className="flex gap-1">
+                    {(["cover","contain","fill"] as const).map(s => (
+                      <button key={s} onClick={() => upd({ calendarHeaderBgImageSize: s })}
+                        className={cn("flex-1 rounded py-0.5 text-[9px] border transition-colors", (item.calendarHeaderBgImageSize ?? "cover") === s ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)]")}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </section>
+
+      {/* Cell image */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Cell image</p>
+        {([
+          { label: "All cells", imgKey: "calendarCellBgImage" as const, sizeKey: "calendarCellBgImageSize" as const, opacityKey: "calendarCellBgImageOpacity" as const },
+          { label: "Weekend cells", imgKey: "calendarWeekendBgImage" as const, sizeKey: "calendarWeekendBgImageSize" as const, opacityKey: "calendarWeekendBgImageOpacity" as const },
+        ] as const).map(({ label, imgKey, sizeKey, opacityKey }) => {
+          const cellFileRef = { current: null as HTMLInputElement | null };
+          return (
+            <div key={imgKey} className="mb-3">
+              <p className="text-[9px] text-[var(--text-muted)] mb-1">{label}</p>
+              <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] mb-1"
+                placeholder="Image URL…" value={item[imgKey]?.startsWith("data:") ? "" : (item[imgKey] ?? "")}
+                onChange={e => upd({ [imgKey]: e.target.value || undefined })} />
+              <div className="flex gap-1.5 mb-1">
+                <button onClick={() => cellFileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+                  <Upload size={10} /> Upload
+                </button>
+                {item[imgKey] && <button onClick={() => upd({ [imgKey]: undefined })} className="rounded border border-[var(--border)] px-2 text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>}
+              </div>
+              <input ref={cellFileRef} type="file" accept="image/*" className="hidden" onChange={e => {
+                const f = e.target.files?.[0]; if (!f) return;
+                const r = new FileReader(); r.onload = ev => upd({ [imgKey]: ev.target?.result as string }); r.readAsDataURL(f); e.target.value = "";
+              }} />
+              {item[imgKey] && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[var(--text-muted)] w-14 shrink-0 text-[10px]">Opacity</span>
+                    <input type="range" min={0} max={100} value={item[opacityKey] ?? 100} onChange={e => upd({ [opacityKey]: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+                    <span className="w-8 text-right text-[var(--text-muted)] text-[10px]">{item[opacityKey] ?? 100}%</span>
+                  </div>
+                  <div className="flex gap-1">
+                    {(["cover","contain","fill"] as const).map(s => (
+                      <button key={s} onClick={() => upd({ [sizeKey]: s })}
+                        className={cn("flex-1 rounded py-0.5 text-[9px] border transition-colors", (item[sizeKey] ?? "cover") === s ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)]")}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </section>
+
+      {/* Font */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <FontPicker compact value={item.calendarFontFamily ?? "Inter"} onChange={f => { loadGoogleFont(f); upd({ calendarFontFamily: f }); }} />
+            <input type="number" min={8} max={20} value={item.calendarFontSize ?? 11}
+              onChange={e => upd({ calendarFontSize: Number(e.target.value) })}
+              onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
+              className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none" />
+            <span className="text-[10px] text-[var(--text-muted)]">px</span>
+          </div>
+          <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="relative h-5 w-5 rounded border border-white/15 overflow-hidden shrink-0" style={{ backgroundColor: item.calendarFontColor ?? "#f2f2f2" }}>
+                <input type="color" value={item.calendarFontColor ?? "#f2f2f2"} onChange={e => upd({ calendarFontColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="text-[var(--text-secondary)]">Text color</span>
+            </div>
+            {item.calendarFontColor && <button onClick={() => upd({ calendarFontColor: undefined })} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>}
+          </label>
+        </div>
+      </section>
+
+      {/* Background */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background</p>
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden shrink-0" style={{ backgroundColor: item.calendarBgColor ?? "transparent" }}>
+                <input type="color" value={item.calendarBgColor ?? "#1e1f24"} onChange={e => upd({ calendarBgColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="text-[var(--text-secondary)]">Fill color</span>
+            </div>
+            {item.calendarBgColor && <button onClick={() => upd({ calendarBgColor: undefined })} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>}
+          </label>
+          {item.calendarBgColor && (
+            <div className="flex items-center gap-2">
+              <span className="text-[var(--text-muted)] w-16 shrink-0">Opacity</span>
+              <input type="range" min={0} max={100} value={item.calendarBgOpacity ?? 100} onChange={e => upd({ calendarBgOpacity: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+              <span className="w-8 text-right text-[var(--text-muted)]">{item.calendarBgOpacity ?? 100}%</span>
+            </div>
+          )}
+          <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+            placeholder="Wallpaper URL…" value={item.calendarBgImage?.startsWith("data:") ? "" : (item.calendarBgImage ?? "")}
+            onChange={e => upd({ calendarBgImage: e.target.value || undefined })} />
+          <div className="flex gap-1.5">
+            <button onClick={() => fileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1.5 rounded border border-dashed border-[var(--border)] py-1.5 text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+              <Upload size={11} /> Upload
+            </button>
+            {item.calendarBgImage && <button onClick={() => upd({ calendarBgImage: undefined })} className="rounded border border-[var(--border)] px-2.5 text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleBgFile} />
+          {item.calendarBgImage && (
+            <WallpaperEditor url={item.calendarBgImage} size={item.calendarBgImageSize ?? "cover"} position="center" opacity={(item.calendarBgImageOpacity ?? 100) / 100}
+              onSizeChange={v => upd({ calendarBgImageSize: v })} onPositionChange={() => {}} onOpacityChange={v => upd({ calendarBgImageOpacity: Math.round(v * 100) })} />
+          )}
+        </div>
+      </section>
+
+      {/* Shape */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shape</p>
+        <div className="flex items-center gap-2">
+          <span className="text-[var(--text-muted)] w-20 shrink-0">Corner radius</span>
+          <input type="range" min={0} max={24} value={item.calendarBorderRadius ?? 0} onChange={e => upd({ calendarBorderRadius: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+          <span className="w-6 text-right text-[var(--text-muted)]">{item.calendarBorderRadius ?? 0}</span>
+        </div>
+      </section>
+
+      {/* Events list */}
+      <section>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Local events ({events.length})</p>
+        {events.length === 0
+          ? <p className="text-[var(--text-muted)]">Click a day to add events.</p>
+          : (
+            <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+              {[...events].sort((a,b) => a.date.localeCompare(b.date)||(a.startTime??"")<(b.startTime??"") ? -1:1).map(e => (
+                <div key={e.id} className="flex items-center gap-2 rounded border border-[var(--border)] px-2 py-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: e.color ?? accent }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate text-[var(--text-primary)]">{e.title}</p>
+                    <p className="text-[9px] text-[var(--text-muted)]">{e.date}{e.startTime ? ` · ${fmtTime(e.startTime)}` : ""}</p>
+                  </div>
+                  <button onClick={() => upd({ calendarEvents: events.filter(ev => ev.id !== e.id) })} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>
+                </div>
+              ))}
+            </div>
+          )
+        }
+      </section>
+
+    </div>
+  );
+}
+
+// ─── Table ───────────────────────────────────────────────────────────────────
+
+const COL_TYPE_ICONS: Record<string, string> = { text: "T", number: "#", checkbox: "☑", select: "▾", date: "📅", url: "🔗" };
+
+function idxToColLetter(idx: number): string {
+  let result = '';
+  let i = idx + 1;
+  while (i > 0) {
+    result = String.fromCharCode(64 + (i % 26 || 26)) + result;
+    i = Math.floor((i - 1) / 26);
+  }
+  return result;
+}
+const DEFAULT_COL_TYPES = ["text","number","checkbox","select","date","url"] as const;
+
+// ── Formula evaluation engine ─────────────────────────────────────────────────
+
+function colLetterToIndex(s: string): number {
+  let n = 0;
+  for (const c of s.toUpperCase()) n = n * 26 + (c.charCodeAt(0) - 64);
+  return n - 1;
+}
+
+function getFormulaCell(ci: number, ri: number, cols: TableColumn[], rows: TableRow[], depth: number): number | string {
+  if (depth > 30) return '#CIRC!';
+  if (ci < 0 || ci >= cols.length || ri < 0 || ri >= rows.length) return '#REF!';
+  const raw = rows[ri].cells[cols[ci].id];
+  if (typeof raw === 'boolean') return raw ? 1 : 0;
+  const s = String(raw ?? '');
+  if (s.startsWith('=')) return evalFormula(s.slice(1), cols, rows, depth + 1);
+  const n = parseFloat(s);
+  return isNaN(n) ? s : n;
+}
+
+function expandFormulaRange(token: string, cols: TableColumn[], rows: TableRow[], depth: number): (number | string)[] {
+  const r = token.toUpperCase().match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
+  if (r) {
+    const c1 = colLetterToIndex(r[1]), r1 = parseInt(r[2]) - 1;
+    const c2 = colLetterToIndex(r[3]), r2 = parseInt(r[4]) - 1;
+    const vals: (number | string)[] = [];
+    for (let ri = Math.min(r1, r2); ri <= Math.max(r1, r2); ri++)
+      for (let ci = Math.min(c1, c2); ci <= Math.max(c1, c2); ci++)
+        vals.push(getFormulaCell(ci, ri, cols, rows, depth));
+    return vals;
+  }
+  const s = token.toUpperCase().match(/^([A-Z]+)(\d+)$/);
+  if (s) return [getFormulaCell(colLetterToIndex(s[1]), parseInt(s[2]) - 1, cols, rows, depth)];
+  return [];
+}
+
+function evalFormulaFn(name: string, args: (number | string)[]): number | string {
+  const nums = args.map(a => parseFloat(String(a)));
+  const validNums = nums.filter(n => !isNaN(n));
+  switch (name.toUpperCase()) {
+    case 'SUM':         return validNums.reduce((a, b) => a + b, 0);
+    case 'AVERAGE': case 'AVG': return validNums.length ? validNums.reduce((a, b) => a + b, 0) / validNums.length : 0;
+    case 'COUNT':       return validNums.length;
+    case 'COUNTA':      return args.filter(a => String(a).trim() !== '').length;
+    case 'MAX':         return validNums.length ? Math.max(...validNums) : 0;
+    case 'MIN':         return validNums.length ? Math.min(...validNums) : 0;
+    case 'ABS':         return Math.abs(nums[0] || 0);
+    case 'ROUND':       return Math.round((nums[0] || 0) * Math.pow(10, nums[1] ?? 0)) / Math.pow(10, nums[1] ?? 0);
+    case 'FLOOR':       return Math.floor(nums[0] || 0);
+    case 'CEILING': case 'CEIL': return Math.ceil(nums[0] || 0);
+    case 'SQRT':        return Math.sqrt(Math.abs(nums[0] || 0));
+    case 'POWER':       return Math.pow(nums[0] || 0, nums[1] ?? 1);
+    case 'MOD':         return (nums[0] || 0) % (nums[1] || 1);
+    case 'INT':         return Math.trunc(nums[0] || 0);
+    case 'LEN':         return String(args[0] ?? '').length;
+    case 'UPPER':       return String(args[0] ?? '').toUpperCase();
+    case 'LOWER':       return String(args[0] ?? '').toLowerCase();
+    case 'TRIM':        return String(args[0] ?? '').trim();
+    case 'CONCAT': case 'CONCATENATE': return args.map(a => String(a)).join('');
+    case 'IF':          return (nums[0] !== 0 && !isNaN(nums[0])) ? (args[1] ?? 0) : (args[2] ?? 0);
+    case 'AND':         return validNums.every(n => n !== 0) ? 1 : 0;
+    case 'OR':          return validNums.some(n => n !== 0) ? 1 : 0;
+    case 'NOT':         return nums[0] !== 0 ? 0 : 1;
+    case 'PI':          return Math.PI;
+    default:            return '#NAME?';
+  }
+}
+
+function tokenizeFormula(expr: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < expr.length) {
+    const ch = expr[i];
+    if (ch === ' ') { i++; continue; }
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < expr.length && expr[j] !== '"') j++;
+      tokens.push(expr.slice(i, j + 1)); i = j + 1; continue;
+    }
+    if (/\d/.test(ch) || (ch === '.' && /\d/.test(expr[i + 1] ?? ''))) {
+      let j = i;
+      while (j < expr.length && /[\d.]/.test(expr[j])) j++;
+      tokens.push(expr.slice(i, j)); i = j; continue;
+    }
+    const two = expr.slice(i, i + 2);
+    if (['<>', '<=', '>='].includes(two)) { tokens.push(two); i += 2; continue; }
+    if (/[A-Za-z]/.test(ch)) {
+      let j = i;
+      while (j < expr.length && /[A-Za-z]/.test(expr[j])) j++;
+      let k = j;
+      while (k < expr.length && /\d/.test(expr[k])) k++;
+      if (k > j && expr[k] === ':') {
+        let m = k + 1;
+        while (m < expr.length && /[A-Za-z]/.test(expr[m])) m++;
+        while (m < expr.length && /\d/.test(expr[m])) m++;
+        tokens.push(expr.slice(i, m)); i = m;
+      } else if (k > j) {
+        tokens.push(expr.slice(i, k)); i = k;
+      } else {
+        tokens.push(expr.slice(i, j)); i = j;
+      }
+      continue;
+    }
+    tokens.push(ch); i++;
+  }
+  return tokens;
+}
+
+function evalFormula(expr: string, cols: TableColumn[], rows: TableRow[], depth = 0): number | string {
+  if (depth > 30) return '#CIRC!';
+  try {
+    const tokens = tokenizeFormula(expr.trim());
+    let pos = 0;
+    const cur = () => tokens[pos] ?? '';
+    const eat = () => tokens[pos++] ?? '';
+    const eatIf = (v: string) => { if (cur() === v) { pos++; return true; } return false; };
+
+    function parseExpr(): number | string { return parseCmp(); }
+    function parseCmp(): number | string {
+      let l = parseAdd();
+      while (['>', '<', '>=', '<=', '=', '<>'].includes(cur())) {
+        const op = eat(); const r = parseAdd();
+        const ln = Number(l), rn = Number(r);
+        if (op === '>') l = ln > rn ? 1 : 0;
+        else if (op === '<') l = ln < rn ? 1 : 0;
+        else if (op === '>=') l = ln >= rn ? 1 : 0;
+        else if (op === '<=') l = ln <= rn ? 1 : 0;
+        else if (op === '=') l = (String(l) === String(r)) ? 1 : 0;
+        else if (op === '<>') l = (String(l) !== String(r)) ? 1 : 0;
+      }
+      return l;
+    }
+    function parseAdd(): number | string {
+      let l = parseMul();
+      while (['+', '-', '&'].includes(cur())) {
+        const op = eat(); const r = parseMul();
+        if (op === '&') l = String(l) + String(r);
+        else l = op === '+' ? Number(l) + Number(r) : Number(l) - Number(r);
+      }
+      return l;
+    }
+    function parseMul(): number | string {
+      let l = parseUnary();
+      while (['*', '/', '^', '%'].includes(cur())) {
+        const op = eat(); const r = parseUnary();
+        if (op === '*') l = Number(l) * Number(r);
+        else if (op === '/') { if (Number(r) === 0) return '#DIV/0!'; l = Number(l) / Number(r); }
+        else if (op === '^') l = Math.pow(Number(l), Number(r));
+        else l = Number(l) % Number(r);
+      }
+      return l;
+    }
+    function parseUnary(): number | string {
+      if (cur() === '-') { eat(); return -Number(parsePrimary()); }
+      if (cur() === '+') { eat(); return Number(parsePrimary()); }
+      return parsePrimary();
+    }
+    function parsePrimary(): number | string {
+      const t = cur();
+      if (!t || t === ')' || t === ',') return 0;
+      if (t === '(') { eat(); const v = parseExpr(); eatIf(')'); return v; }
+      if (t.startsWith('"')) { eat(); return t.slice(1, t.endsWith('"') ? -1 : undefined); }
+      if (/^\d/.test(t) || (t.startsWith('.') && t.length > 1 && /\d/.test(t[1]))) { eat(); return parseFloat(t); }
+      if (/^[A-Z]+\d+:[A-Z]+\d+$/i.test(t)) {
+        eat();
+        const vals = expandFormulaRange(t, cols, rows, depth + 1);
+        const n = parseFloat(String(vals[0] ?? 0));
+        return isNaN(n) ? String(vals[0] ?? '') : n;
+      }
+      if (/^[A-Z]+\d+$/i.test(t)) {
+        eat();
+        const m = t.match(/^([A-Z]+)(\d+)$/i)!;
+        return getFormulaCell(colLetterToIndex(m[1]), parseInt(m[2]) - 1, cols, rows, depth + 1);
+      }
+      if (/^[A-Za-z]/.test(t)) {
+        eat();
+        if (cur() === '(') {
+          eat();
+          const fnArgs: (number | string)[] = [];
+          while (cur() !== ')' && cur() !== '') {
+            const tok = cur();
+            if (/^[A-Z]+\d+:[A-Z]+\d+$/i.test(tok)) {
+              eat();
+              fnArgs.push(...expandFormulaRange(tok, cols, rows, depth + 1).map(v => {
+                const n = parseFloat(String(v)); return isNaN(n) ? v : n;
+              }));
+            } else {
+              fnArgs.push(parseExpr());
+            }
+            eatIf(',');
+          }
+          eatIf(')');
+          return evalFormulaFn(t, fnArgs);
+        }
+        const up = t.toUpperCase();
+        if (up === 'TRUE') return 1;
+        if (up === 'FALSE') return 0;
+        if (up === 'PI') return Math.PI;
+        return '#NAME?';
+      }
+      eat(); return 0;
+    }
+
+    const result = parseExpr();
+    if (typeof result === 'number' && !isFinite(result)) return '#NUM!';
+    return result;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '';
+    return msg.startsWith('#') ? msg : '#ERR!';
+  }
+}
+
+function formatFormulaResult(v: number | string): string {
+  if (typeof v === 'number') {
+    if (!isFinite(v)) return String(v);
+    // Limit to 10 significant figures to avoid float noise
+    return parseFloat(v.toPrecision(10)).toString();
+  }
+  return String(v);
+}
+
+function TableCell({ col, value, onChange, isFinished, onKeyDown, fontColor, fontSize, fontFamily, cellKey, onHTMLInput, dismissSel, cols, rows, cellRef, onCellFocus, onCellBlur }: {
+  col: TableColumn; value: string | boolean; onChange: (v: string | boolean) => void;
+  isFinished?: boolean; onKeyDown?: (e: React.KeyboardEvent) => void;
+  fontColor?: string; fontSize?: number; fontFamily?: string;
+  cellKey?: string; onHTMLInput?: (el: HTMLDivElement) => void; dismissSel?: () => void;
+  cols?: TableColumn[]; rows?: TableRow[];
+  cellRef?: string;
+  onCellFocus?: (ref: string, formula?: string) => void; onCellBlur?: () => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const base = "w-full bg-transparent outline-none placeholder:text-[var(--text-muted)]";
+  const cellStyle: React.CSSProperties = {
+    color: fontColor ?? "var(--text-primary)",
+    fontSize: fontSize ?? 12,
+    fontFamily: fontFamily ?? "inherit",
+  };
+
+  if (col.type === "checkbox") {
+    const checked = !!value;
+    return (
+      <button
+        onMouseDown={e => e.stopPropagation()}
+        onClick={e => { e.stopPropagation(); if (!isFinished) onChange(!checked); }}
+        className={cn("flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors",
+          checked ? "border-transparent" : "border-[var(--border)] hover:border-[var(--accent)]")}
+        style={checked ? { backgroundColor: "var(--accent)", borderColor: "var(--accent)" } : undefined}
+      >
+        {checked && <Check size={10} className="text-white" />}
+      </button>
+    );
+  }
+  if (col.type === "select") {
+    return (
+      <select value={value as string} disabled={isFinished} onChange={e => onChange(e.target.value)} onKeyDown={onKeyDown}
+        style={cellStyle} className={cn(base, "cursor-pointer appearance-none")}>
+        {(col.options ?? []).map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    );
+  }
+  if (col.type === "date") {
+    return <input type="date" value={value as string} readOnly={isFinished} onChange={e => onChange(e.target.value)} onKeyDown={onKeyDown} style={cellStyle} className={base} />;
+  }
+
+  // Formula detection — works for text and number cells
+  const strValue = value as string;
+  const isFormula = typeof strValue === 'string' && strValue.startsWith('=');
+  const formulaResult = isFormula && cols && rows
+    ? formatFormulaResult(evalFormula(strValue.slice(1), cols, rows))
+    : null;
+  const isErrorResult = formulaResult?.startsWith('#') ?? false;
+
+  // Rich-text contenteditable for non-formula text cells
+  if (col.type === "text" && !isFinished && onHTMLInput && !isFormula) {
+    return (
+      <div
+        data-cell-key={cellKey}
+        contentEditable
+        suppressContentEditableWarning
+        className="w-full outline-none"
+        style={{ ...cellStyle, wordBreak: "break-word", whiteSpace: "pre-wrap", minHeight: "1em" }}
+        onInput={(e) => { dismissSel?.(); onHTMLInput(e.currentTarget as HTMLDivElement); }}
+        onKeyDown={onKeyDown}
+      />
+    );
+  }
+
+  // Number, URL, formula cells — plain input with formula display
+  const displayValue = !focused && formulaResult !== null ? formulaResult : strValue;
+
+  return (
+    <div className="relative flex items-center w-full">
+      <input
+        type={col.type === "url" ? "url" : "text"}
+        inputMode={col.type === "number" && !isFormula ? "decimal" : undefined}
+        value={displayValue ?? ""}
+        readOnly={isFinished}
+        onChange={e => {
+          const v = e.target.value;
+          if (col.type === "number" && !v.startsWith('=')) {
+            // allow partial input while typing (e.g. "-", "1.", "1.0")
+            onChange(v);
+          } else {
+            onChange(v);
+          }
+        }}
+        onFocus={() => {
+          setFocused(true);
+          onCellFocus?.(cellRef ?? '', isFormula ? strValue : undefined);
+        }}
+        onBlur={() => {
+          setFocused(false);
+          onCellBlur?.();
+        }}
+        onKeyDown={onKeyDown}
+        placeholder={col.type === "url" ? "https://…" : col.type === "number" ? "" : ""}
+        style={{
+          ...cellStyle,
+          color: isErrorResult ? "#f87171" : (cellStyle.color),
+          fontStyle: isErrorResult ? "italic" : undefined,
+        }}
+        className={base}
+      />
+      {isFormula && !focused && !isErrorResult && (
+        <span
+          title="Formula cell"
+          className="absolute right-0 top-0 bottom-0 flex items-center pr-0.5 pointer-events-none"
+          style={{ fontSize: 8, color: "var(--accent)", opacity: 0.7 }}
+        >
+          fx
+        </span>
+      )}
+    </div>
+  );
+}
+
+const TEXT_OPS: { value: FilterOp; label: string }[] = [
+  { value: "contains",     label: "contains" },
+  { value: "not_contains", label: "not contains" },
+  { value: "equals",       label: "equals" },
+  { value: "not_equals",   label: "not equals" },
+  { value: "is_empty",     label: "is empty" },
+  { value: "is_not_empty", label: "is not empty" },
+];
+const NUMBER_OPS: { value: FilterOp; label: string }[] = [
+  { value: "equals",       label: "=" },
+  { value: "not_equals",   label: "≠" },
+  { value: "gt",           label: ">" },
+  { value: "lt",           label: "<" },
+  { value: "is_empty",     label: "is empty" },
+  { value: "is_not_empty", label: "is not empty" },
+];
+const CHECKBOX_OPS: { value: FilterOp; label: string }[] = [
+  { value: "equals", label: "is" },
+];
+const SELECT_OPS: { value: FilterOp; label: string }[] = [
+  { value: "equals",       label: "is" },
+  { value: "not_equals",   label: "is not" },
+  { value: "is_empty",     label: "is empty" },
+  { value: "is_not_empty", label: "is not empty" },
+];
+function getFilterOps(col: TableColumn | undefined): { value: FilterOp; label: string }[] {
+  if (!col) return TEXT_OPS;
+  if (col.type === "number") return NUMBER_OPS;
+  if (col.type === "checkbox") return CHECKBOX_OPS;
+  if (col.type === "select") return SELECT_OPS;
+  return TEXT_OPS;
+}
+
+function FilterPanel({ cols, filters, onChange }: {
+  cols: TableColumn[];
+  filters: TableFilter[];
+  onChange: (f: TableFilter[]) => void;
+}) {
+  const addFilter = () =>
+    onChange([...filters, { id: crypto.randomUUID(), colId: cols[0]?.id ?? "", op: "contains", value: "" }]);
+  const updateFilter = (id: string, patch: Partial<TableFilter>) =>
+    onChange(filters.map(f => f.id === id ? { ...f, ...patch } : f));
+  const removeFilter = (id: string) => onChange(filters.filter(f => f.id !== id));
+
+  return (
+    <div
+      className="absolute top-full right-0 mt-1 z-50 w-72 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] shadow-xl p-2.5 flex flex-col gap-2"
+      onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Filters</p>
+        {filters.length > 0 && (
+          <button onClick={() => onChange([])} className="text-[10px] text-red-400 hover:underline">Clear all</button>
+        )}
       </div>
-      <p className="text-center text-[10px] text-[var(--text-muted)] rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1">
-        {connected ? `Preview for ${item.gameUsername}${item.gameTag ? `#${item.gameTag}` : ""} · API coming soon` : "Enter username to preview · API integration coming soon"}
-      </p>
+      {filters.length === 0 && (
+        <p className="text-[11px] text-[var(--text-muted)] px-1">No active filters.</p>
+      )}
+      {filters.map(f => {
+        const col = cols.find(c => c.id === f.colId);
+        const ops = getFilterOps(col);
+        const needsValue = f.op !== "is_empty" && f.op !== "is_not_empty";
+        return (
+          <div key={f.id} className="flex items-start gap-1.5">
+            <div className="flex flex-col gap-1 flex-1 min-w-0">
+              <div className="flex gap-1">
+                <select
+                  value={f.colId}
+                  onChange={e => updateFilter(f.id, { colId: e.target.value, op: "contains", value: "" })}
+                  className="flex-1 min-w-0 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)] outline-none"
+                >
+                  {cols.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <select
+                  value={f.op}
+                  onChange={e => updateFilter(f.id, { op: e.target.value as FilterOp })}
+                  className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)] outline-none"
+                >
+                  {ops.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              {needsValue && (
+                col?.type === "select" ? (
+                  <select
+                    value={f.value}
+                    onChange={e => updateFilter(f.id, { value: e.target.value })}
+                    className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)] outline-none"
+                  >
+                    <option value="">Any</option>
+                    {(col.options ?? []).map(o => <option key={o} value={o.toLowerCase()}>{o}</option>)}
+                  </select>
+                ) : col?.type === "checkbox" ? (
+                  <select
+                    value={f.value}
+                    onChange={e => updateFilter(f.id, { value: e.target.value })}
+                    className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)] outline-none"
+                  >
+                    <option value="true">Checked</option>
+                    <option value="false">Unchecked</option>
+                  </select>
+                ) : (
+                  <input
+                    value={f.value}
+                    onChange={e => updateFilter(f.id, { value: e.target.value })}
+                    onClick={e => e.stopPropagation()}
+                    onMouseDown={e => e.stopPropagation()}
+                    placeholder="Value…"
+                    className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+                  />
+                )
+              )}
+            </div>
+            <button
+              onClick={() => removeFilter(f.id)}
+              className="mt-0.5 shrink-0 text-[var(--text-muted)] hover:text-red-400 transition-colors p-0.5"
+            >
+              <XIcon size={12} />
+            </button>
+          </div>
+        );
+      })}
+      <button
+        onClick={addFilter}
+        className="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:opacity-80 transition-opacity mt-0.5"
+      >
+        <Plus size={11} /> Add filter
+      </button>
+    </div>
+  );
+}
+
+function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+  const cols: TableColumn[] = item.tableColumns ?? [{ id: "c1", name: "Name", type: "text" }];
+  const rows: TableRow[] = item.tableRows ?? [];
+  const striped = item.tableStriped ?? false;
+  const headerColor = item.tableHeaderColor;
+  const headerFontColor = item.tableHeaderFontColor;
+  const cellBgColor = item.tableCellBgColor;
+  const stripedColor = item.tableStripedColor;
+  const borderColor = item.tableBorderColor ?? "var(--border)";
+  const bw = item.tableBorderWidth ?? 1;
+  const br = item.tableBorderRadius ?? 0;
+  const fontColor = item.tableFontColor;
+  const fontSize = item.tableFontSize ?? 12;
+  const fontFamily = item.tableFontFamily;
+  const rowH = item.tableRowHeight ?? 28;
+
+  const [splitRatio, setSplitRatio] = useState(item.tableChartSplitRatio ?? 0.5);
+  const isDraggingSplit = useRef(false);
+  const [editingCol, setEditingCol] = useState<string | null>(null);
+  const [colMenu, setColMenu] = useState<string | null>(null);
+  const [activeCell, setActiveCell] = useState<{ ref: string; formula?: string } | null>(null);
+  const [locked, setLocked] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const cellsReadOnly = isFinished && locked;
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<TableFilter[]>([]);
+  const [sortBy, setSortBy] = useState<{ colId: string; dir: "asc" | "desc" } | null>(null);
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [showSortPanel, setShowSortPanel] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [resizingColId, setResizingColId] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const resizeRef = useRef<{ colId: string; startX: number; startW: number } | null>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [contextMenu]);
+
+  const startColResize = (e: React.MouseEvent, col: TableColumn) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setResizingColId(col.id);
+    resizeRef.current = { colId: col.id, startX: e.clientX, startW: col.width ?? 140 };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const delta = ev.clientX - resizeRef.current.startX;
+      const newW = Math.max(60, resizeRef.current.startW + delta);
+      upd({ tableColumns: cols.map(c => c.id === resizeRef.current!.colId ? { ...c, width: newW } : c) });
+    };
+    const onUp = () => {
+      setResizingColId(null);
+      resizeRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const updCols = (c: TableColumn[]) => upd({ tableColumns: c });
+  const updRows = (r: TableRow[]) => upd({ tableRows: r });
+
+  const addRow = () => {
+    const cells: Record<string, string | boolean> = {};
+    cols.forEach(c => { cells[c.id] = c.type === "checkbox" ? false : c.type === "select" ? (c.options?.[0] ?? "") : ""; });
+    updRows([...rows, { id: crypto.randomUUID(), cells }]);
+  };
+
+  const addCol = () => {
+    const id = crypto.randomUUID();
+    const col: TableColumn = { id, name: "Column", type: "text" };
+    updCols([...cols, col]);
+    const newRows = rows.map(r => ({ ...r, cells: { ...r.cells, [id]: "" } }));
+    updRows(newRows);
+  };
+
+  const setCell = (rowId: string, colId: string, v: string | boolean) => {
+    updRows(rows.map(r => r.id === rowId ? { ...r, cells: { ...r.cells, [colId]: v } } : r));
+  };
+
+  const deleteRow = (rowId: string) => updRows(rows.filter(r => r.id !== rowId));
+
+  const deleteCol = (colId: string) => {
+    updCols(cols.filter(c => c.id !== colId));
+    updRows(rows.map(r => { const cells = { ...r.cells }; delete cells[colId]; return { ...r, cells }; }));
+  };
+
+  const renameCol = (colId: string, name: string) => updCols(cols.map(c => c.id === colId ? { ...c, name } : c));
+
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const cellHTMLRef = useRef<Map<string, string>>(new Map());
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(300);
+  const [chartHeight, setChartHeight] = useState(200);
+
+  useEffect(() => {
+    const el = chartContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => { setChartWidth(e.contentRect.width); setChartHeight(e.contentRect.height); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const startSplitDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingSplit.current = true;
+    const onMove = (ev: MouseEvent) => {
+      if (!isDraggingSplit.current || !tableContainerRef.current) return;
+      const rect = tableContainerRef.current.getBoundingClientRect();
+      const ratio = Math.max(0.15, Math.min(0.85, (ev.clientY - rect.top) / rect.height));
+      setSplitRatio(ratio);
+    };
+    const onUp = (ev: MouseEvent) => {
+      isDraggingSplit.current = false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (!tableContainerRef.current) return;
+      const rect = tableContainerRef.current.getBoundingClientRect();
+      const ratio = Math.max(0.15, Math.min(0.85, (ev.clientY - rect.top) / rect.height));
+      upd({ tableChartSplitRatio: ratio });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+
+  const chartData = useMemo(() => {
+    if (!item.tableChartEnabled) return null;
+    const usable = cols.filter((c) => c.type !== "checkbox");
+    const labelColId = item.tableChartLabelColId ?? usable[0]?.id;
+    const valueColIds = item.tableChartValueColIds?.length
+      ? item.tableChartValueColIds
+      : usable.slice(1).map((c) => c.id);
+    if (!labelColId || valueColIds.length === 0) return null;
+    const sKeys = valueColIds.map((id) => cols.find((c) => c.id === id)?.name ?? id);
+    const points: GraphPoint[] = rows.map((r) => {
+      const pt: GraphPoint = { label: String(r.cells[labelColId] ?? "") };
+      valueColIds.forEach((colId, idx) => { pt[sKeys[idx]] = Number(r.cells[colId] ?? 0) || 0; });
+      return pt;
+    });
+    return { points, seriesKeys: sKeys };
+  }, [item.tableChartEnabled, item.tableChartLabelColId, item.tableChartValueColIds, cols, rows]);
+
+  function handleCellHTMLChange(el: HTMLElement) {
+    const key = el.dataset.cellKey;
+    if (!key) return;
+    const [rowId, colId] = key.split(":");
+    const html = el.innerHTML;
+    cellHTMLRef.current.set(key, html);
+    updRows(rows.map(r => r.id === rowId ? { ...r, cells: { ...r.cells, [colId]: html } } : r));
+  }
+
+  const { selRect: tableSelRect, selState: tableSelState, withSavedRange: tableWithSavedRange, wrapSelectionSpan: tableWrapSpan, dismissSelToolbar: tableDismissSel } = useRichSel(
+    tableContainerRef,
+    handleCellHTMLChange,
+  );
+
+  // Initialize text cell divs on mount
+  useEffect(() => {
+    if (!tableContainerRef.current) return;
+    for (const row of rows) {
+      for (const col of cols) {
+        if (col.type !== "text") continue;
+        const key = `${row.id}:${col.id}`;
+        const el = tableContainerRef.current.querySelector<HTMLElement>(`[data-cell-key="${key}"]`);
+        if (el) {
+          el.innerHTML = String(row.cells[col.id] ?? "");
+          cellHTMLRef.current.set(key, String(row.cells[col.id] ?? ""));
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync external changes without disrupting active editing
+  useEffect(() => {
+    if (!tableContainerRef.current) return;
+    for (const row of rows) {
+      for (const col of cols) {
+        if (col.type !== "text") continue;
+        const key = `${row.id}:${col.id}`;
+        const el = tableContainerRef.current.querySelector<HTMLElement>(`[data-cell-key="${key}"]`);
+        const stored = String(row.cells[col.id] ?? "");
+        if (el && document.activeElement !== el && stored !== cellHTMLRef.current.get(key)) {
+          el.innerHTML = stored;
+          cellHTMLRef.current.set(key, stored);
+        }
+      }
+    }
+  }, [rows, cols]);
+  const setColType = (colId: string, type: TableColumn["type"]) => {
+    updCols(cols.map(c => c.id === colId ? { ...c, type, options: type === "select" && !c.options?.length ? ["Option 1","Option 2"] : c.options } : c));
+    updRows(rows.map(r => ({ ...r, cells: { ...r.cells, [colId]: type === "checkbox" ? false : "" } })));
+    setColMenu(null);
+  };
+
+  const visibleRows = useMemo(() => {
+    let result = rows;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(r =>
+        cols.some(c => {
+          const v = r.cells[c.id];
+          return typeof v === "boolean"
+            ? (v ? "true" : "false").includes(q)
+            : ((v as string) ?? "").toLowerCase().includes(q);
+        })
+      );
+    }
+    for (const f of filters) {
+      const col = cols.find(c => c.id === f.colId);
+      if (!col) continue;
+      result = result.filter(r => {
+        const raw = r.cells[f.colId];
+        const str = typeof raw === "boolean" ? (raw ? "true" : "false") : ((raw as string) ?? "").toLowerCase();
+        const fv = f.value.toLowerCase();
+        switch (f.op) {
+          case "contains":     return str.includes(fv);
+          case "not_contains": return !str.includes(fv);
+          case "equals":       return str === fv;
+          case "not_equals":   return str !== fv;
+          case "is_empty":     return !str;
+          case "is_not_empty": return !!str;
+          case "gt":           return parseFloat(str) > parseFloat(fv);
+          case "lt":           return parseFloat(str) < parseFloat(fv);
+          default:             return true;
+        }
+      });
+    }
+    if (sortBy) {
+      const { colId, dir } = sortBy;
+      const col = cols.find(c => c.id === colId);
+      result = [...result].sort((a, b) => {
+        const av = a.cells[colId]; const bv = b.cells[colId];
+        if (col?.type === "number") {
+          const an = parseFloat(av as string ?? "0");
+          const bn = parseFloat(bv as string ?? "0");
+          return dir === "asc" ? an - bn : bn - an;
+        }
+        const as_ = typeof av === "boolean" ? (av ? "1" : "0") : ((av as string) ?? "");
+        const bs_ = typeof bv === "boolean" ? (bv ? "1" : "0") : ((bv as string) ?? "");
+        return dir === "asc" ? as_.localeCompare(bs_) : bs_.localeCompare(as_);
+      });
+    }
+    return result;
+  }, [rows, search, filters, sortBy, cols]);
+
+  const cellBorder = `${bw}px solid ${borderColor}`;
+
+  if (collapsed) {
+    return (
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <div className="flex gap-2 text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide border-b border-[var(--border)] pb-1">
+          {cols.slice(0, 3).map(c => <span key={c.id} className="flex-1 truncate">{c.name}</span>)}
+        </div>
+        {rows.slice(0, 3).map(r => (
+          <div key={r.id} className="flex gap-2 text-[10px] text-[var(--text-primary)]">
+            {cols.slice(0, 3).map(c => (
+              <span key={c.id} className="flex-1 truncate">
+                {c.type === "checkbox" ? (r.cells[c.id] ? "✓" : "—") : (r.cells[c.id] as string) || "—"}
+              </span>
+            ))}
+          </div>
+        ))}
+        {rows.length > 3 && <span className="text-[9px] text-[var(--text-muted)]">+{rows.length - 3} more rows</span>}
+      </div>
+    );
+  }
+
+  const showTitle = item.tableShowTitle !== false && (item.tableTitle || !isFinished);
+
+  return (
+    <div ref={tableContainerRef} className="relative flex h-full flex-col overflow-hidden" style={{ borderRadius: br }}
+      onClick={() => { setColMenu(null); setShowFilterPanel(false); setShowSortPanel(false); }}
+      onContextMenu={(e) => { if (isFinished) { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }); } }}
+    >
+      {/* Background layers */}
+      {item.tableBgColor && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 0, backgroundColor: item.tableBgColor, borderRadius: br, opacity: (item.tableBgOpacity ?? 100) / 100, pointerEvents: "none" }} />
+      )}
+      {item.tableBgImage && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 0, backgroundImage: `url(${item.tableBgImage})`, backgroundSize: item.tableBgImageSize ?? "cover", backgroundPosition: "center", borderRadius: br, opacity: (item.tableBgImageOpacity ?? 100) / 100, pointerEvents: "none" }} />
+      )}
+
+      {/* Table content — split height when chart is embedded, full height otherwise */}
+      <div className="flex flex-col overflow-hidden min-h-0" style={
+        item.tableChartEnabled && chartData
+          ? { flex: `0 0 calc(${splitRatio * 100}% - 5px)` }
+          : { flex: 1 }
+      }>
+
+      {/* Title */}
+      {showTitle && (
+        <div className="relative shrink-0 px-3 pt-2 pb-1" style={{ zIndex: 1 }}>
+          {isFinished ? (
+            item.tableTitle && <p style={{ fontFamily: fontFamily ?? "inherit", fontSize: (fontSize ?? 12) + 2, color: fontColor ?? "var(--text-primary)", fontWeight: 600 }}>{item.tableTitle}</p>
+          ) : (
+            <input
+              value={item.tableTitle ?? ""}
+              onChange={e => upd({ tableTitle: e.target.value })}
+              onMouseDown={e => e.stopPropagation()}
+              placeholder="Table title…"
+              className="w-full bg-transparent outline-none font-semibold placeholder:text-[var(--text-muted)] placeholder:opacity-40"
+              style={{ fontFamily: fontFamily ?? "inherit", fontSize: (fontSize ?? 12) + 2, color: fontColor ?? "var(--text-primary)" }}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Search + Filter + Sort toolbar */}
+      <div
+        className="relative shrink-0 px-2 py-1.5 flex items-center gap-1.5 border-b border-[var(--border)]"
+        style={{ zIndex: 2 }}
+        onClick={e => e.stopPropagation()}
+      >
+        {searchOpen ? (
+          <div className="flex-1 flex items-center gap-1.5 rounded bg-[var(--surface-overlay)] px-2 py-1 min-w-0">
+            <Search size={11} className="shrink-0 text-[var(--text-muted)]" />
+            <input
+              ref={searchInputRef}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onMouseDown={e => e.stopPropagation()}
+              onBlur={() => { if (!search) setSearchOpen(false); }}
+              placeholder="Search…"
+              className="flex-1 min-w-0 bg-transparent outline-none text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+            />
+            <button
+              onClick={() => { setSearch(""); setSearchOpen(false); }}
+              className="shrink-0 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              <XIcon size={10} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={e => { e.stopPropagation(); setSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 0); }}
+            className={cn(
+              "flex items-center justify-center rounded p-1.5 transition-colors shrink-0",
+              search ? "text-[var(--accent)] bg-[var(--accent)]/15" : "text-[var(--text-muted)] hover:bg-[var(--surface-overlay)]"
+            )}
+            title="Search rows"
+          >
+            <Search size={13} />
+          </button>
+        )}
+        {/* Sort button */}
+        <div className="relative">
+          <button
+            onClick={e => { e.stopPropagation(); setShowSortPanel(v => !v); setShowFilterPanel(false); }}
+            className={cn(
+              "flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors shrink-0",
+              sortBy ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "text-[var(--text-muted)] hover:bg-[var(--surface-overlay)]"
+            )}
+          >
+            <ArrowUpDown size={11} />
+            {sortBy ? (cols.find(c => c.id === sortBy.colId)?.name ?? "Sort") : "Sort"}
+            {sortBy && <span className="text-[9px] ml-0.5">{sortBy.dir === "asc" ? "↑" : "↓"}</span>}
+          </button>
+          {showSortPanel && (
+            <div
+              className="absolute top-full right-0 mt-1 z-50 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] shadow-xl p-2 flex flex-col gap-0.5"
+              onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}
+            >
+              <p className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)] px-1 mb-1">Sort by</p>
+              {cols.map(c => (
+                <button key={c.id}
+                  onClick={() => {
+                    setSortBy(prev => {
+                      if (prev?.colId === c.id) return prev.dir === "asc" ? { colId: c.id, dir: "desc" } : null;
+                      return { colId: c.id, dir: "asc" };
+                    });
+                    setShowSortPanel(false);
+                  }}
+                  className={cn(
+                    "flex items-center justify-between rounded px-2 py-1 text-[11px] transition-colors hover:bg-[var(--surface-overlay)]",
+                    sortBy?.colId === c.id ? "text-[var(--accent)]" : "text-[var(--text-secondary)]"
+                  )}
+                >
+                  <span className="truncate">{c.name}</span>
+                  {sortBy?.colId === c.id && <span className="shrink-0 text-[9px]">{sortBy.dir === "asc" ? "↑ A→Z" : "↓ Z→A"}</span>}
+                </button>
+              ))}
+              {sortBy && (
+                <button
+                  onClick={() => { setSortBy(null); setShowSortPanel(false); }}
+                  className="flex items-center gap-1 mt-1 px-2 py-1 text-[11px] text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                >
+                  <XIcon size={10} /> Clear sort
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        {/* Filter button */}
+        <div className="relative">
+          <button
+            onClick={e => { e.stopPropagation(); setShowFilterPanel(v => !v); setShowSortPanel(false); }}
+            className={cn(
+              "flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors shrink-0",
+              filters.length > 0 ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "text-[var(--text-muted)] hover:bg-[var(--surface-overlay)]"
+            )}
+          >
+            <Filter size={11} />
+            Filter
+            {filters.length > 0 && (
+              <span className="ml-0.5 rounded-full bg-[var(--accent)] text-white w-4 h-4 text-[9px] flex items-center justify-center shrink-0 leading-none">
+                {filters.length}
+              </span>
+            )}
+          </button>
+          {showFilterPanel && (
+            <FilterPanel cols={cols} filters={filters} onChange={setFilters} />
+          )}
+        </div>
+      </div>
+
+      {/* Active filter chips */}
+      {filters.length > 0 && (
+        <div
+          className="relative shrink-0 px-2 py-1 flex flex-wrap gap-1 border-b border-[var(--border)]"
+          style={{ zIndex: 2 }}
+          onClick={e => e.stopPropagation()}
+        >
+          {filters.map(f => {
+            const col = cols.find(c => c.id === f.colId);
+            const op = getFilterOps(col).find(o => o.value === f.op);
+            const hasValue = f.op !== "is_empty" && f.op !== "is_not_empty";
+            return (
+              <span key={f.id} className="flex items-center gap-1 rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] text-[var(--accent)]">
+                <span className="font-medium">{col?.name ?? "?"}</span>
+                <span className="opacity-60">{op?.label}</span>
+                {hasValue && f.value && <span className="font-semibold">"{f.value}"</span>}
+                <button
+                  onClick={() => setFilters(filters.filter(fi => fi.id !== f.id))}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-[var(--accent)]/20 transition-colors"
+                >
+                  <XIcon size={8} />
+                </button>
+              </span>
+            );
+          })}
+          {filters.length > 1 && (
+            <button onClick={() => setFilters([])} className="text-[10px] text-[var(--text-muted)] hover:text-red-400 px-1 transition-colors">
+              Clear all
+            </button>
+          )}
+        </div>
+      )}
+
+      {activeCell && (
+        <div className="relative shrink-0 flex items-center gap-0 border-b border-[var(--border)] bg-[var(--surface-overlay)]" style={{ zIndex: 2 }}>
+          <span className="shrink-0 px-2 py-1 text-[10px] font-mono font-semibold text-[var(--text-secondary)] border-r border-[var(--border)] select-none min-w-[2.5rem] text-center">{activeCell.ref || "–"}</span>
+          {activeCell.formula != null && (
+            <>
+              <span className="shrink-0 px-1.5 text-[9px] font-semibold text-[var(--accent)] select-none border-r border-[var(--border)] py-1">fx</span>
+              <span className="flex-1 min-w-0 px-2 py-1 text-[11px] text-[var(--text-primary)] font-mono truncate">
+                {activeCell.formula.startsWith('=') ? activeCell.formula.slice(1) : activeCell.formula}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+      <div className="relative flex-1 overflow-auto" style={{ zIndex: 1 }}>
+        <table className="border-collapse" style={{
+          tableLayout: "fixed",
+          width: Math.max(cols.reduce((s, c) => s + (c.width ?? 140), 0) + (isFinished ? 0 : 44), 0),
+          minWidth: "100%",
+        }}>
+          <thead>
+            <tr style={{ background: headerColor ?? "var(--surface-overlay)" }}>
+              {cols.map((col, ci) => (
+                <th key={col.id} style={{ borderRight: resizingColId === col.id ? "2px solid var(--accent)" : cellBorder, borderBottom: cellBorder, color: headerFontColor ?? "var(--text-secondary)", fontFamily: fontFamily ?? "inherit", fontSize: (fontSize ?? 12) - 1, width: col.width ?? 140, minWidth: 60 }} className="relative px-2 py-1.5 text-left font-semibold group/th">
+                  <div
+                    className="flex items-center gap-1 cursor-pointer select-none overflow-hidden"
+                    onClick={e => { if (!isFinished && editingCol !== col.id) { e.stopPropagation(); setColMenu(v => v === col.id ? null : col.id); } }}
+                  >
+                    <span className="text-[9px] opacity-50 shrink-0">{COL_TYPE_ICONS[col.type]}</span>
+                    {editingCol === col.id ? (
+                      <input autoFocus value={col.name}
+                        onChange={e => renameCol(col.id, e.target.value)}
+                        onBlur={() => setEditingCol(null)}
+                        onKeyDown={e => { if (e.key === "Enter" || e.key === "Escape") setEditingCol(null); }}
+                        onClick={e => e.stopPropagation()}
+                        className="flex-1 min-w-0 bg-transparent outline-none font-semibold"
+                        style={{ color: headerFontColor ?? "var(--text-primary)", fontFamily: fontFamily ?? "inherit", fontSize: (fontSize ?? 12) - 1 }}
+                      />
+                    ) : (
+                      <span className="flex-1 truncate">{col.name}</span>
+                    )}
+                    {sortBy?.colId === col.id && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setSortBy(prev => prev?.dir === "asc" ? { colId: col.id, dir: "desc" } : null); }}
+                        className="shrink-0 text-[var(--accent)] hover:opacity-60 transition-opacity"
+                      >
+                        {sortBy.dir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
+                      </button>
+                    )}
+                    {!isFinished && !sortBy?.colId && <span className="text-[9px] opacity-0 group-hover/th:opacity-40 transition-opacity shrink-0">▾</span>}
+                    {!isFinished && sortBy?.colId !== col.id && sortBy?.colId && <span className="text-[9px] opacity-40 shrink-0">▾</span>}
+                  </div>
+                  {/* Column resize handle — blue pill indicator */}
+                  {!isFinished && (
+                    <div
+                      onMouseDown={e => startColResize(e, col)}
+                      onDoubleClick={e => { e.stopPropagation(); upd({ tableColumns: cols.map(c => c.id === col.id ? { ...c, width: 140 } : c) }); }}
+                      onClick={e => e.stopPropagation()}
+                      className="absolute top-0 right-0 h-full w-3 cursor-col-resize z-10 flex items-center justify-end pr-px group/resize"
+                    >
+                      <div className={cn(
+                        "rounded-full transition-all duration-150",
+                        resizingColId === col.id
+                          ? "w-0.5 h-full bg-[var(--accent)] opacity-100"
+                          : "w-0.5 h-[55%] bg-[var(--accent)] opacity-0 group-hover/resize:opacity-50"
+                      )} />
+                    </div>
+                  )}
+                  {colMenu === col.id && (
+                    <div className="absolute top-full left-0 z-50 mt-0.5 w-40 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] shadow-lg p-1" onClick={e => e.stopPropagation()}>
+                      <p className="px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Type</p>
+                      {DEFAULT_COL_TYPES.map(t => (
+                        <button key={t} onClick={() => setColType(col.id, t)}
+                          className={cn("flex w-full items-center gap-2 rounded px-2 py-1 text-[11px] transition-colors hover:bg-[var(--surface-overlay)]", col.type === t ? "text-[var(--accent)]" : "text-[var(--text-secondary)]")}>
+                          <span className="w-4 text-center">{COL_TYPE_ICONS[t]}</span>{t}
+                        </button>
+                      ))}
+                      <hr className="my-1 border-[var(--border)]" />
+                      <button onClick={e => { e.stopPropagation(); setColMenu(null); setEditingCol(col.id); }}
+                        className="flex w-full items-center gap-2 rounded px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] transition-colors">
+                        ✏️ Rename
+                      </button>
+                      {col.type === "select" && (
+                        <div className="px-2 py-1 flex flex-col gap-1">
+                          <p className="text-[9px] text-[var(--text-muted)] mb-0.5">Options</p>
+                          {(col.options ?? []).map((opt, oi) => (
+                            <div key={oi} className="flex items-center gap-1">
+                              <input
+                                value={opt}
+                                onChange={e => {
+                                  const opts = [...(col.options ?? [])];
+                                  opts[oi] = e.target.value;
+                                  updCols(cols.map(c => c.id === col.id ? { ...c, options: opts } : c));
+                                }}
+                                onClick={e => e.stopPropagation()}
+                                className="flex-1 min-w-0 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)] outline-none"
+                              />
+                              <button
+                                onClick={e => { e.stopPropagation(); const opts = (col.options ?? []).filter((_, i) => i !== oi); updCols(cols.map(c => c.id === col.id ? { ...c, options: opts } : c)); }}
+                                className="text-[var(--text-muted)] hover:text-red-400 transition-colors shrink-0"
+                              ><XIcon size={10} /></button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={e => { e.stopPropagation(); const opts = [...(col.options ?? []), "Option " + ((col.options?.length ?? 0) + 1)]; updCols(cols.map(c => c.id === col.id ? { ...c, options: opts } : c)); }}
+                            className="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:opacity-80 transition-opacity mt-0.5"
+                          ><Plus size={10} /> Add option</button>
+                        </div>
+                      )}
+                      {cols.length > 1 && (
+                        <button onClick={() => { deleteCol(col.id); setColMenu(null); }}
+                          className="flex w-full items-center gap-2 rounded px-2 py-1 text-[11px] text-red-400 hover:bg-red-500/10 transition-colors">
+                          🗑 Delete column
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </th>
+              ))}
+              {!isFinished && (
+                <th style={{ borderBottom: cellBorder }} className="px-1">
+                  <button onClick={addCol} className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors text-base leading-none">+</button>
+                </th>
+              )}
+              {!isFinished && <th style={{ borderBottom: cellBorder }} className="w-5" />}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.length === 0 && (
+              <tr>
+                <td colSpan={cols.length + (isFinished ? 0 : 2)} style={{ padding: "32px 0", textAlign: "center" }}>
+                  {rows.length === 0 ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                      <div style={{ fontSize: 20, opacity: 0.18 }}>⬚</div>
+                      <p style={{ fontSize: 11, color: "var(--text-muted)" }}>No rows yet</p>
+                      {!isFinished && (
+                        <button onClick={addRow} style={{ fontSize: 11, color: "var(--accent)", cursor: "pointer", background: "none", border: "none", padding: 0 }}>
+                          + Add first row
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                      <div style={{ fontSize: 16, opacity: 0.22 }}>⌕</div>
+                      <p style={{ fontSize: 11, color: "var(--text-muted)" }}>No rows match</p>
+                      <button
+                        onClick={() => { setSearch(""); setFilters([]); setSearchOpen(false); }}
+                        style={{ fontSize: 11, color: "var(--accent)", cursor: "pointer", background: "none", border: "none", padding: 0 }}
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            )}
+            {visibleRows.map((row, ri) => {
+              const rowBg = striped && ri % 2 === 1 ? (stripedColor ?? "var(--surface-overlay)") : (cellBgColor ?? "transparent");
+              return (
+                <tr key={row.id} className="group/row" style={{ background: rowBg, height: rowH }}>
+                  {cols.map((col, ci) => {
+                    const ref = `${idxToColLetter(ci)}${ri + 1}`;
+                    return (
+                      <td key={col.id} title={ref} style={{ borderRight: cellBorder, borderBottom: cellBorder, paddingLeft: 8, paddingRight: 8, textAlign: col.type === "checkbox" ? "center" : undefined }}>
+                        <TableCell col={col} value={row.cells[col.id] ?? (col.type === "checkbox" ? false : "")}
+                          onChange={v => setCell(row.id, col.id, v)} isFinished={cellsReadOnly}
+                          fontColor={fontColor} fontSize={fontSize} fontFamily={fontFamily}
+                          cellKey={`${row.id}:${col.id}`}
+                          onHTMLInput={(el) => handleCellHTMLChange(el)}
+                          dismissSel={tableDismissSel}
+                          cols={cols} rows={rows}
+                          cellRef={ref}
+                          onCellFocus={(r, f) => setActiveCell({ ref: r, formula: f })}
+                          onCellBlur={() => setActiveCell(null)}
+                          onKeyDown={e => { if (e.key === "Tab" && col.id === cols[cols.length-1].id) { e.preventDefault(); if (ri === rows.length - 1) addRow(); } }}
+                        />
+                      </td>
+                    );
+                  })}
+                  {!isFinished && <td style={{ borderBottom: cellBorder }} />}
+                  {!isFinished && (
+                    <td style={{ borderBottom: cellBorder }} className="w-5">
+                      <button onClick={() => deleteRow(row.id)} className="opacity-0 group-hover/row:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-red-400 text-[10px]">✕</button>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="relative shrink-0 flex items-center" style={{ borderTop: cellBorder, zIndex: 1 }}>
+        {!isFinished && (
+          <button
+            onClick={addRow}
+            style={{ fontFamily: fontFamily ?? "inherit", fontSize: fontSize ?? 12, color: fontColor ?? "var(--text-muted)" }}
+            className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-[var(--surface-overlay)] transition-colors"
+          >
+            <Plus size={11} /> Add row
+          </button>
+        )}
+        {(search || filters.length > 0) && (
+          <span className="px-3 py-1.5 text-[10px] text-[var(--text-muted)] shrink-0">
+            {visibleRows.length} / {rows.length} rows
+          </span>
+        )}
+      </div>
+      </div>{/* end table content wrapper */}
+
+      {/* Chart — split mode: divider + panel below table */}
+      {item.tableChartEnabled && chartData && (
+        <>
+          <div
+            onMouseDown={startSplitDrag}
+            className="group relative shrink-0 flex items-center justify-center cursor-row-resize select-none"
+            style={{ flex: "0 0 10px", zIndex: 3 }}
+          >
+            <div className="w-full h-px bg-[var(--border)] group-hover:bg-[var(--accent)] transition-colors" />
+            <div className="absolute px-2 py-0.5 rounded bg-[var(--surface-overlay)] border border-[var(--border)] group-hover:border-[var(--accent)] transition-colors" style={{ top: "50%", left: "50%", transform: "translate(-50%,-50%)" }}>
+              <div className="w-8 h-0.5 rounded bg-[var(--text-muted)] group-hover:bg-[var(--accent)] transition-colors" />
+            </div>
+          </div>
+          <div ref={chartContainerRef} className="relative overflow-hidden min-h-0"
+            style={{ flex: `0 0 calc(${(1 - splitRatio) * 100}% - 5px)`, backgroundColor: item.tableChartBgColor ?? "transparent" }}>
+            {item.tableChartTitle && (
+              <p className="absolute top-1 left-0 right-0 text-center text-[11px] font-semibold pointer-events-none" style={{ color: item.tableChartFontColor ?? "var(--text-muted)", fontFamily: item.tableChartFontFamily }}>
+                {item.tableChartTitle}
+              </p>
+            )}
+            <ChartRenderer
+              type={(item.tableChartType ?? "bar") as BlockItem["graphType"]}
+              data={chartData.points} seriesKeys={chartData.seriesKeys}
+              colors={item.tableChartColors ?? CHART_COLORS}
+              showGrid={item.tableChartShowGrid ?? true} showLegend={item.tableChartShowLegend ?? true}
+              curve={item.tableChartSmooth !== false ? "monotone" : "linear"}
+              collapsed={false} width={chartWidth || 300} height={chartHeight || 200}
+              fontFamily={item.tableChartFontFamily} fontSize={item.tableChartFontSize ?? 10}
+              fontColor={item.tableChartFontColor} barRadius={item.tableChartBarRadius ?? 3}
+              strokeWidth={item.tableChartStrokeWidth ?? 2}
+              showDataLabels={item.tableChartShowDataLabels}
+              xAxisTitle={item.tableChartXAxisTitle} yAxisTitle={item.tableChartYAxisTitle}
+            />
+          </div>
+        </>
+      )}
+
+
+      {tableSelRect && !cellsReadOnly && createPortal(
+        <RichSelToolbar
+          cx={tableSelRect.cx}
+          top={tableSelRect.top}
+          selState={tableSelState}
+          onExecCmd={(cmd) => tableWithSavedRange(() => document.execCommand(cmd))}
+          onFontFamily={(font) => { loadGoogleFont(font); tableWrapSpan({ fontFamily: font }); }}
+          onFontSize={(size) => tableWrapSpan({ fontSize: `${size}px` })}
+          onColor={(color) => tableWithSavedRange(() => document.execCommand("foreColor", false, color))}
+          onHighlight={(color) => tableWithSavedRange(() => document.execCommand("hiliteColor", false, color))}
+          onClearFormat={() => { tableWithSavedRange(() => document.execCommand("removeFormat")); tableDismissSel(); }}
+          onDismiss={tableDismissSel}
+        />,
+        document.body
+      )}
+      {contextMenu && createPortal(
+        <div
+          style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
+          className="bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-xl py-1 min-w-[168px] text-[13px]"
+          onMouseDown={e => e.stopPropagation()}
+        >
+          <button onClick={() => { setLocked(v => !v); setContextMenu(null); }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
+            {locked ? <LockOpen size={12} /> : <Lock size={12} />}
+            {locked ? "Unlock editing" : "Lock editing"}
+          </button>
+          <div className="my-1 border-t border-[var(--border)]" />
+          <button onClick={() => {
+            const header = cols.map(c => c.name).join(",");
+            const body = rows.map(r => cols.map(c => {
+              const v = String(r.cells[c.id] ?? "");
+              return v.includes(",") ? `"${v}"` : v;
+            }).join(",")).join("\n");
+            navigator.clipboard.writeText(header + "\n" + body);
+            setContextMenu(null);
+          }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
+            <FileDown size={12} /> Copy as CSV
+          </button>
+          <button onClick={() => {
+            upd({ tableRows: rows.map(r => ({ ...r, cells: Object.fromEntries(cols.map(c => [c.id, c.type === "checkbox" ? false : ""])) })) });
+            setContextMenu(null);
+          }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-red-400 hover:text-red-300">
+            <Square size={12} /> Clear all cells
+          </button>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+// ─── Table Style Panel ────────────────────────────────────────────────────────
+
+export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId?: string; boxId?: string }) {
+  const cols: TableColumn[] = item.tableColumns ?? [];
+  const rows: TableRow[] = item.tableRows ?? [];
+  const hasBorder = (item.tableBorderWidth ?? 1) > 0;
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => upd({ tableBgImage: ev.target?.result as string });
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  return (
+    <div className="flex flex-col gap-4 p-3 text-xs">
+
+      {/* Title */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Title</p>
+        <label className="flex items-center gap-2 cursor-pointer mb-2">
+          <input type="checkbox" checked={item.tableShowTitle !== false} onChange={e => upd({ tableShowTitle: e.target.checked })} className="accent-[var(--accent)]" />
+          <span className="text-[var(--text-secondary)]">Show title</span>
+        </label>
+        {item.tableShowTitle !== false && (
+          <input
+            value={item.tableTitle ?? ""}
+            onChange={e => upd({ tableTitle: e.target.value })}
+            placeholder="Enter title…"
+            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+          />
+        )}
+      </section>
+
+      {/* Background */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background</p>
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.tableBgColor ?? "transparent" }}>
+                <input type="color" value={item.tableBgColor ?? "#1e1f24"} onChange={e => upd({ tableBgColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="text-[var(--text-secondary)]">Fill color</span>
+            </div>
+            {item.tableBgColor && <button onClick={() => upd({ tableBgColor: undefined })} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>}
+          </label>
+          {item.tableBgColor && (
+            <div className="flex items-center gap-2">
+              <span className="text-[var(--text-muted)] w-16 shrink-0">Opacity</span>
+              <input type="range" min={0} max={100} value={item.tableBgOpacity ?? 100}
+                onChange={e => upd({ tableBgOpacity: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+              <span className="w-8 text-right text-[var(--text-muted)]">{item.tableBgOpacity ?? 100}%</span>
+            </div>
+          )}
+          {/* Wallpaper */}
+          <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+            placeholder="Wallpaper URL…" value={item.tableBgImage?.startsWith("data:") ? "" : (item.tableBgImage ?? "")}
+            onChange={e => upd({ tableBgImage: e.target.value || undefined })} />
+          <div className="flex gap-1.5">
+            <button onClick={() => fileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1.5 rounded border border-dashed border-[var(--border)] py-1.5 text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+              <Upload size={11} /> Upload
+            </button>
+            {item.tableBgImage && <button onClick={() => upd({ tableBgImage: undefined })} className="rounded border border-[var(--border)] px-2.5 text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          {item.tableBgImage && (
+            <WallpaperEditor
+              url={item.tableBgImage}
+              size={item.tableBgImageSize ?? "cover"}
+              position="center"
+              opacity={item.tableBgImageOpacity !== undefined ? item.tableBgImageOpacity / 100 : 1}
+              onSizeChange={v => upd({ tableBgImageSize: v })}
+              onPositionChange={() => {}}
+              onOpacityChange={v => upd({ tableBgImageOpacity: Math.round(v * 100) })}
+            />
+          )}
+        </div>
+      </section>
+
+      {/* Font */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <FontPicker compact value={item.tableFontFamily ?? "Inter"} onChange={f => { loadGoogleFont(f); upd({ tableFontFamily: f }); }} />
+            <input type="number" min={8} max={72} value={item.tableFontSize ?? 12}
+              onChange={e => upd({ tableFontSize: Number(e.target.value) })}
+              onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
+              className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none" title="Font size" />
+            <span className="text-[10px] text-[var(--text-muted)]">px</span>
+          </div>
+          <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="relative h-5 w-5 rounded border border-white/15 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.tableFontColor ?? "#f2f2f2" }}>
+                <input type="color" value={item.tableFontColor ?? "#f2f2f2"} onChange={e => upd({ tableFontColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="text-[var(--text-secondary)]">Cell text color</span>
+            </div>
+            <span className="font-mono text-[10px] text-[var(--text-muted)]">{item.tableFontColor ?? "default"}</span>
+          </label>
+          <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="relative h-5 w-5 rounded border border-white/15 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.tableHeaderFontColor ?? "#a0a0a0" }}>
+                <input type="color" value={item.tableHeaderFontColor ?? "#a0a0a0"} onChange={e => upd({ tableHeaderFontColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="text-[var(--text-secondary)]">Header text color</span>
+            </div>
+            <span className="font-mono text-[10px] text-[var(--text-muted)]">{item.tableHeaderFontColor ?? "default"}</span>
+          </label>
+        </div>
+      </section>
+
+      {/* Rows */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Rows</p>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[var(--text-muted)] w-20 shrink-0">Row height</span>
+            <input type="number" min={20} max={80} value={item.tableRowHeight ?? 28}
+              onChange={e => upd({ tableRowHeight: Number(e.target.value) })}
+              onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
+              className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none" />
+            <span className="text-[10px] text-[var(--text-muted)]">px</span>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={item.tableStriped ?? false} onChange={e => upd({ tableStriped: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[var(--text-secondary)]">Striped rows</span>
+          </label>
+          {item.tableStriped && (
+            <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.tableStripedColor ?? "#ffffff10" }}>
+                  <input type="color" value={item.tableStripedColor ?? "#2a2b30"} onChange={e => upd({ tableStripedColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                </span>
+                <span className="text-[var(--text-secondary)]">Stripe color</span>
+              </div>
+            </label>
+          )}
+          <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.tableCellBgColor ?? "transparent" }}>
+                <input type="color" value={item.tableCellBgColor ?? "#1e1f24"} onChange={e => upd({ tableCellBgColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="text-[var(--text-secondary)]">Cell background</span>
+            </div>
+            {item.tableCellBgColor && <button onClick={() => upd({ tableCellBgColor: undefined })} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>}
+          </label>
+          <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.tableHeaderColor ?? "#2a2b30" }}>
+                <input type="color" value={item.tableHeaderColor ?? "#2a2b30"} onChange={e => upd({ tableHeaderColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="text-[var(--text-secondary)]">Header background</span>
+            </div>
+            {item.tableHeaderColor && <button onClick={() => upd({ tableHeaderColor: undefined })} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>}
+          </label>
+        </div>
+      </section>
+
+      {/* Border */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Grid lines</p>
+          <button onClick={() => upd({ tableBorderWidth: hasBorder ? 0 : 1, tableBorderColor: item.tableBorderColor ?? "#ffffff20" })}
+            className={cn("rounded px-2 py-0.5 text-[10px] transition-colors border", hasBorder ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]")}>
+            {hasBorder ? "On" : "Off"}
+          </button>
+        </div>
+        {hasBorder && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[var(--text-muted)] w-12 shrink-0">Width</span>
+              <input type="range" min={1} max={6} value={item.tableBorderWidth ?? 1}
+                onChange={e => upd({ tableBorderWidth: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+              <span className="w-6 text-right text-[var(--text-muted)]">{item.tableBorderWidth ?? 1}px</span>
+            </div>
+            <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="relative h-5 w-5 rounded border border-white/15 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.tableBorderColor ?? "#ffffff20" }}>
+                  <input type="color" value={item.tableBorderColor ?? "#ffffff20"} onChange={e => upd({ tableBorderColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                </span>
+                <span className="text-[var(--text-secondary)]">Line color</span>
+              </div>
+            </label>
+          </div>
+        )}
+      </section>
+
+      {/* Shape */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shape</p>
+        <div className="flex items-center gap-2">
+          <span className="text-[var(--text-muted)] w-20 shrink-0">Corner radius</span>
+          <input type="range" min={0} max={24} value={item.tableBorderRadius ?? 0}
+            onChange={e => upd({ tableBorderRadius: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+          <span className="w-6 text-right text-[var(--text-muted)]">{item.tableBorderRadius ?? 0}</span>
+        </div>
+      </section>
+
+      {/* Columns info */}
+      <section>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Columns ({cols.length}) · {rows.length} rows</p>
+        <p className="text-[9px] text-[var(--text-muted)]">Double-click a column header to rename. Click ▾ to change type or delete.</p>
+      </section>
+
+      {/* Session log preset */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Presets</p>
+        <button
+          onClick={() => upd({
+            tableColumns: [
+              { id: nanoid(), name: "Time",     type: "text"     },
+              { id: nanoid(), name: "Tag",       type: "select",  options: ["Work", "Break", "Note", "Milestone"] },
+              { id: nanoid(), name: "Notes",     type: "text"     },
+              { id: nanoid(), name: "Duration",  type: "text"     },
+              { id: nanoid(), name: "Done",      type: "checkbox" },
+            ],
+            tableRows: [{ id: nanoid(), cells: {} }],
+            tableTitle: "Session Log",
+            tableShowTitle: true,
+          })}
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-2 text-left text-[11px] hover:border-[var(--accent)]/50 transition-colors"
+        >
+          <span className="block font-semibold text-[var(--text-primary)]">Session Log</span>
+          <span className="block text-[10px] text-[var(--text-muted)]">Time · Tag · Notes · Duration · Done</span>
+        </button>
+      </section>
+
+      {/* Chart */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Chart</p>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked={!!item.tableChartEnabled} onChange={e => upd({ tableChartEnabled: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[10px] text-[var(--text-secondary)]">Show</span>
+          </label>
+        </div>
+        {item.tableChartEnabled && (() => {
+          const usable = cols.filter((c) => c.type !== "checkbox");
+          const labelColId = item.tableChartLabelColId ?? usable[0]?.id;
+          const valueColIds = item.tableChartValueColIds?.length ? item.tableChartValueColIds : usable.slice(1).map((c) => c.id);
+          const chartColors = item.tableChartColors ?? CHART_COLORS;
+          const inputCls = "w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]";
+          return (
+            <div className="flex flex-col gap-4">
+
+              {/* Extract chart */}
+              {boardId && boxId && (
+                <div>
+                  <p className="text-[10px] text-[var(--text-muted)] mb-1.5 font-medium">As block item</p>
+                  <button
+                    onClick={() => {
+                      useBoardStore.getState().addItem(boardId, boxId, {
+                        type: "graph",
+                        graphTableSourceItemId: item.id,
+                        graphType: (item.tableChartType ?? "bar") as BlockItem["graphType"],
+                        graphColors: item.tableChartColors,
+                        graphShowGrid: item.tableChartShowGrid ?? true,
+                        graphShowLegend: item.tableChartShowLegend ?? true,
+                        graphSmooth: item.tableChartSmooth ?? true,
+                        graphStrokeWidth: item.tableChartStrokeWidth ?? 2,
+                        graphBarRadius: item.tableChartBarRadius ?? 3,
+                      } as Omit<BlockItem, "id">);
+                      upd({ tableChartEnabled: false });
+                    }}
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-2 text-left text-[11px] hover:border-[var(--accent)]/50 transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  >
+                    Extract chart → new block item
+                  </button>
+                  <p className="mt-1 text-[9px] text-[var(--text-muted)]">Creates a standalone chart item in this block, linked to the table data.</p>
+                </div>
+              )}
+
+              {/* Chart type */}
+              <div>
+                <p className="text-[10px] text-[var(--text-muted)] mb-1.5">Type</p>
+                <div className="grid grid-cols-4 gap-1">
+                  {GRAPH_TYPES.filter(gt => gt.id !== "scatter").map((gt) => (
+                    <button key={gt.id} onClick={() => upd({ tableChartType: gt.id })}
+                      className={cn("flex flex-col items-center gap-0.5 rounded border px-1 py-2 text-[9px] transition-all",
+                        (item.tableChartType ?? "bar") === gt.id
+                          ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                          : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]"
+                      )}>
+                      <span className="text-base leading-none">{gt.icon}</span>
+                      <span className="leading-tight text-center">{gt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Data mapping */}
+              {usable.length > 1 && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-[10px] text-[var(--text-muted)] font-medium">Data</p>
+                  <div>
+                    <p className="text-[9px] text-[var(--text-muted)] mb-1 uppercase tracking-wide">Label column</p>
+                    <div className="flex flex-wrap gap-1">
+                      {usable.map((c) => (
+                        <button key={c.id} onClick={() => upd({ tableChartLabelColId: c.id, tableChartValueColIds: undefined })}
+                          className={cn("px-2 py-0.5 rounded text-[11px] border transition-colors", labelColId === c.id
+                            ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                            : "border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                          )}>{c.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-[var(--text-muted)] mb-1 uppercase tracking-wide">Value columns</p>
+                    <div className="flex flex-wrap gap-1">
+                      {usable.filter((c) => c.id !== labelColId).map((c) => {
+                        const checked = valueColIds.includes(c.id);
+                        return (
+                          <button key={c.id}
+                            onClick={() => { const next = checked ? valueColIds.filter((id) => id !== c.id) : [...valueColIds, c.id]; if (next.length > 0) upd({ tableChartValueColIds: next }); }}
+                            className={cn("px-2 py-0.5 rounded text-[11px] border transition-colors", checked
+                              ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                              : "border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                            )}>{c.name}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Series colors */}
+              <div>
+                <p className="text-[10px] text-[var(--text-muted)] mb-1.5 font-medium">Series colors</p>
+                <div className="flex flex-col gap-1.5">
+                  {valueColIds.map((colId, i) => {
+                    const col = cols.find((c) => c.id === colId);
+                    return (
+                      <label key={colId} className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+                        <span className="relative h-5 w-5 rounded-full border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: chartColors[i % chartColors.length] }}>
+                          <input type="color" value={chartColors[i % chartColors.length]} onChange={(e) => { const c = [...chartColors]; c[i] = e.target.value; upd({ tableChartColors: c }); }} className="absolute inset-0 opacity-0 cursor-pointer" />
+                        </span>
+                        <span className="text-xs text-[var(--text-secondary)]">{col?.name ?? colId}</span>
+                        <span className="ml-auto font-mono text-[10px] text-[var(--text-muted)]">{chartColors[i % chartColors.length]}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Titles */}
+              <div className="flex flex-col gap-2">
+                <p className="text-[10px] text-[var(--text-muted)] font-medium">Labels</p>
+                <input className={inputCls} placeholder="Chart title…" value={item.tableChartTitle ?? ""} onChange={e => upd({ tableChartTitle: e.target.value || undefined })} onMouseDown={e => e.stopPropagation()} />
+                <div className="flex gap-2">
+                  <input className={cn(inputCls, "flex-1")} placeholder="X axis label…" value={item.tableChartXAxisTitle ?? ""} onChange={e => upd({ tableChartXAxisTitle: e.target.value || undefined })} onMouseDown={e => e.stopPropagation()} />
+                  <input className={cn(inputCls, "flex-1")} placeholder="Y axis label…" value={item.tableChartYAxisTitle ?? ""} onChange={e => upd({ tableChartYAxisTitle: e.target.value || undefined })} onMouseDown={e => e.stopPropagation()} />
+                </div>
+              </div>
+
+              {/* Font */}
+              <div className="flex flex-col gap-2">
+                <p className="text-[10px] text-[var(--text-muted)] font-medium">Font</p>
+                <div className="flex items-center gap-2">
+                  <FontPicker compact value={item.tableChartFontFamily ?? "Inter"} onChange={f => { loadGoogleFont(f); upd({ tableChartFontFamily: f }); }} />
+                  <input type="number" min={8} max={20} value={item.tableChartFontSize ?? 10}
+                    onChange={e => upd({ tableChartFontSize: Number(e.target.value) })}
+                    onMouseDown={e => e.stopPropagation()}
+                    className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs outline-none" />
+                  <span className="text-[10px] text-[var(--text-muted)]">px</span>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+                  <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.tableChartFontColor ?? "#888888" }}>
+                    <input type="color" value={item.tableChartFontColor ?? "#888888"} onChange={e => upd({ tableChartFontColor: e.target.value })} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  </span>
+                  <span className="text-xs text-[var(--text-secondary)]">Axis / label color</span>
+                  {item.tableChartFontColor && <button onClick={() => upd({ tableChartFontColor: undefined })} className="ml-auto text-[var(--text-muted)] hover:text-red-400"><XIcon size={11} /></button>}
+                </label>
+              </div>
+
+              {/* Background */}
+              <div>
+                <p className="text-[10px] text-[var(--text-muted)] mb-1.5 font-medium">Background</p>
+                <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+                  <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.tableChartBgColor ?? "transparent" }}>
+                    <input type="color" value={item.tableChartBgColor ?? "#1a1b1e"} onChange={e => upd({ tableChartBgColor: e.target.value })} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  </span>
+                  <span className="text-xs text-[var(--text-secondary)]">Chart background</span>
+                  {item.tableChartBgColor && <button onClick={() => upd({ tableChartBgColor: undefined })} className="ml-auto text-[var(--text-muted)] hover:text-red-400"><XIcon size={11} /></button>}
+                </label>
+              </div>
+
+              {/* Stroke / radius */}
+              <div className="flex flex-col gap-2">
+                <p className="text-[10px] text-[var(--text-muted)] font-medium">Shape</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[var(--text-muted)] w-20 shrink-0">Bar radius</span>
+                  <input type="range" min={0} max={16} value={item.tableChartBarRadius ?? 3} onChange={e => upd({ tableChartBarRadius: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+                  <span className="w-6 text-right text-[10px] text-[var(--text-muted)]">{item.tableChartBarRadius ?? 3}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[var(--text-muted)] w-20 shrink-0">Stroke width</span>
+                  <input type="range" min={1} max={8} value={item.tableChartStrokeWidth ?? 2} onChange={e => upd({ tableChartStrokeWidth: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+                  <span className="w-6 text-right text-[10px] text-[var(--text-muted)]">{item.tableChartStrokeWidth ?? 2}</span>
+                </div>
+              </div>
+
+              {/* Toggles */}
+              <div className="grid grid-cols-2 gap-1.5">
+                {([
+                  ["tableChartShowGrid", "Grid lines", item.tableChartShowGrid ?? true],
+                  ["tableChartShowLegend", "Legend", item.tableChartShowLegend ?? true],
+                  ["tableChartShowDataLabels", "Data labels", !!item.tableChartShowDataLabels],
+                  ["tableChartSmooth", "Smooth curves", item.tableChartSmooth !== false],
+                ] as [keyof BlockItem, string, boolean][]).map(([key, label, val]) => (
+                  <label key={key} className="flex items-center gap-1.5 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors select-none">
+                    <input type="checkbox" checked={val} onChange={e => upd({ [key]: e.target.checked })} className="accent-[var(--accent)]" />
+                    <span className="text-[11px] text-[var(--text-secondary)]">{label}</span>
+                  </label>
+                ))}
+              </div>
+
+            </div>
+          );
+        })()}
+      </section>
+
+      {/* Collaboration */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Collaboration</p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!item.tableCollabEnabled}
+            onChange={(e) => upd({ tableCollabEnabled: e.target.checked })}
+            className="accent-[var(--accent)]"
+          />
+          <span className="text-[var(--text-secondary)]">Shared table (real-time)</span>
+        </label>
+        {item.tableCollabEnabled && (
+          <div className="mt-2 flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] pl-5">
+            <Users size={10} />
+            <span>Connect Supabase to enable live row sync.</span>
+          </div>
+        )}
+      </section>
+
     </div>
   );
 }
@@ -1074,6 +6753,939 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished }: {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Playlist ─────────────────────────────────────────────────────────────────
+
+
+// ─── Multi-platform embed resolver ───────────────────────────────────────────
+
+interface EmbedResult {
+  kind: "iframe" | "audio" | "link";
+  url: string;
+  platform: string;
+  /** CSS aspect-ratio string for the player container, e.g. "16/9" or undefined for fixed-height */
+  aspectRatio?: string;
+  /** Fixed pixel height (use instead of aspectRatio for compact embeds like Spotify track) */
+  fixedHeight?: number;
+  /** True when the URL is a playlist/album (not a single track) */
+  isPlaylist?: boolean;
+}
+
+function resolveEmbed(raw: string, autoplay: boolean): EmbedResult {
+  const url = raw.trim();
+
+  // YouTube playlist
+  const ytPlaylistMatch = url.match(/youtube\.com\/(?:playlist\?|watch\?[^#]*)list=([A-Za-z0-9_-]+)/);
+  if (ytPlaylistMatch) return {
+    kind: "iframe",
+    url: `https://www.youtube.com/embed/videoseries?list=${ytPlaylistMatch[1]}&autoplay=${autoplay ? 1 : 0}&rel=0&enablejsapi=1`,
+    platform: "YouTube",
+    aspectRatio: "16/9",
+    isPlaylist: true,
+  };
+
+  // YouTube / YouTube Music (individual videos)
+  const ytPats = [
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /(?:youtube\.com|music\.youtube\.com)\/watch\?(?:.*&)?v=([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+  ];
+  for (const p of ytPats) {
+    const m = url.match(p);
+    if (m) return {
+      kind: "iframe",
+      url: `https://www.youtube.com/embed/${m[1]}?autoplay=${autoplay ? 1 : 0}&rel=0&enablejsapi=1`,
+      platform: "YouTube",
+      aspectRatio: "16/9",
+    };
+  }
+
+  // Spotify (track / album / playlist / episode / show / artist)
+  const spMatch = url.match(/open\.spotify\.com\/(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]+)/);
+  if (spMatch) {
+    const isTrack = spMatch[1] === "track" || spMatch[1] === "episode";
+    return {
+      kind: "iframe",
+      url: `https://open.spotify.com/embed/${spMatch[1]}/${spMatch[2]}?utm_source=generator${autoplay ? "&autoplay=1" : ""}`,
+      platform: "Spotify",
+      fixedHeight: isTrack ? 152 : 380,
+      isPlaylist: !isTrack,
+    };
+  }
+
+  // SoundCloud
+  if (/soundcloud\.com/.test(url)) return {
+    kind: "iframe",
+    url: `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=${autoplay}&hide_related=true&show_comments=false&visual=true&color=%235865f2`,
+    platform: "SoundCloud",
+    fixedHeight: 166,
+  };
+
+  // Apple Music
+  const amMatch = url.match(/music\.apple\.com\/([a-z]{2})\/(album|playlist|song|artist)\/([^/?]+)(?:\/([^/?]+))?/);
+  if (amMatch) return {
+    kind: "iframe",
+    url: `https://embed.music.apple.com/${amMatch[1]}/${amMatch[2]}/${amMatch[3]}${amMatch[4] ? "/" + amMatch[4] : ""}`,
+    platform: "Apple Music",
+    fixedHeight: 175,
+  };
+
+  // Deezer
+  const dzMatch = url.match(/deezer\.com\/(?:[a-z]{2}\/)?(track|album|playlist|artist)\/(\d+)/);
+  if (dzMatch) return {
+    kind: "iframe",
+    url: `https://widget.deezer.com/widget/dark/${dzMatch[1]}/${dzMatch[2]}${autoplay ? "?autoplay=true" : ""}`,
+    platform: "Deezer",
+    fixedHeight: 300,
+  };
+
+  // Tidal (no public embed — link out)
+  if (/tidal\.com/.test(url)) return { kind: "link", url, platform: "Tidal" };
+
+  // Bandcamp (no reliable embed URL from page URL — link out)
+  if (/bandcamp\.com/.test(url)) return { kind: "link", url, platform: "Bandcamp" };
+
+  // Amazon Music (no embed — link out)
+  if (/music\.amazon/.test(url)) return { kind: "link", url, platform: "Amazon Music" };
+
+  // Direct audio file
+  if (/\.(mp3|ogg|wav|m4a|flac|aac|opus)(\?.*)?$/i.test(url)) return {
+    kind: "audio",
+    url,
+    platform: "Audio file",
+  };
+
+  // Generic iframe attempt for everything else
+  if (url.startsWith("http")) return { kind: "iframe", url, platform: "Web", aspectRatio: "16/9" };
+
+  return { kind: "link", url, platform: "Unknown" };
+}
+
+const PLATFORM_COLORS: Record<string, string> = {
+  YouTube: "#ff0000",
+  Spotify: "#1db954",
+  SoundCloud: "#ff5500",
+  "Apple Music": "#fc3c44",
+  Deezer: "#a238ff",
+  Tidal: "#00ffff",
+  Bandcamp: "#1da0c3",
+  "Amazon Music": "#00a8e0",
+};
+
+function PlatformBadge({ platform }: { platform: string }) {
+  const color = PLATFORM_COLORS[platform];
+  return (
+    <span
+      className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+      style={{ background: color ? color + "25" : "var(--surface-overlay)", color: color ?? "var(--text-muted)" }}
+    >
+      {platform}
+    </span>
+  );
+}
+
+function getStaticThumbnail(trackUrl: string): string | null {
+  const ytId = trackUrl.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/
+  )?.[1];
+  if (ytId) return `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`;
+  return null;
+}
+
+function PlaylistItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+  const tracks = item.playlistTracks ?? [];
+  const currentIdx = Math.min(item.playlistCurrentIndex ?? 0, Math.max(0, tracks.length - 1));
+  const [urlInput, setUrlInput] = useState("");
+  const [titleInput, setTitleInput] = useState("");
+  const [showVol, setShowVol] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const scWidgetRef = useRef<{ setVolume: (v: number) => void; bind: (ev: string, cb: () => void) => void } | null>(null);
+  const ytReadyRef = useRef(false);
+  const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
+
+  const currentTrack = tracks[currentIdx] ?? null;
+  const embed = currentTrack ? resolveEmbed(currentTrack.url, !!item.playlistAutoplay) : null;
+
+  const vol = item.playlistVolume ?? 80;
+  const accent = item.playlistAccentColor || "var(--accent)";
+  const showList = item.playlistShowList !== false;
+  const volSupported = !embed || embed.kind === "audio" || embed.platform === "YouTube" || embed.platform === "SoundCloud";
+  const layout = item.playlistLayout ?? (item.playlistCompact ? "minimal" : "stack");
+  const br = item.playlistBorderRadius ?? 0;
+  const bw = item.playlistBorderWidth ?? 0;
+  const bc = item.playlistBorderColor ?? "#ffffff";
+  const hasBg = !!(item.playlistBgColor || item.playlistBgGradient);
+  const blur = item.playlistBgBlur ?? 0;
+  // blur applied directly to bg layers (backdrop-filter breaks inside CSS transforms)
+  const blurFilter = blur > 0 ? `blur(${blur}px)` : undefined;
+  const bgLayerStyle: React.CSSProperties = hasBg ? {
+    background: item.playlistBgGradient
+      ? `linear-gradient(${item.playlistBgGradientAngle ?? 135}deg, ${item.playlistBgColor ?? "#1a1a2e"}, ${item.playlistBgGradientTo ?? "#000000"})`
+      : item.playlistBgColor,
+    opacity: (item.playlistBgOpacity ?? 100) / 100,
+    filter: blurFilter,
+    // expand beyond bounds so blur edge-fade is hidden
+    inset: blur > 0 ? -blur * 1.5 : 0,
+  } : {};
+  const containerStyle: React.CSSProperties = {
+    border: bw > 0 ? `${bw}px solid ${bc}` : undefined,
+    borderRadius: br > 0 ? br : undefined,
+  };
+
+  // Sync volume → audio element
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = vol / 100;
+  }, [vol]);
+
+  // YouTube: listen for onReady then apply volume; re-register on track change
+  useEffect(() => {
+    if (embed?.platform !== "YouTube") return;
+    ytReadyRef.current = false;
+    const sendVol = (v: number) => iframeRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: "command", func: "setVolume", args: [v] }), "*"
+    );
+    const onMsg = (e: MessageEvent) => {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      try {
+        const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        if (d?.event === "onReady" || d?.info === 1) { ytReadyRef.current = true; sendVol(vol); }
+      } catch {}
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embed?.url]);
+
+  // YouTube: push volume changes after player is ready
+  useEffect(() => {
+    if (embed?.platform !== "YouTube" || !ytReadyRef.current) return;
+    iframeRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: "command", func: "setVolume", args: [vol] }), "*"
+    );
+  }, [vol, embed?.platform]);
+
+  // SoundCloud: load Widget API script once, bind widget on track change
+  useEffect(() => {
+    if (embed?.platform !== "SoundCloud") return;
+    scWidgetRef.current = null;
+    const bindWidget = () => {
+      const SC = (window as any).SC;
+      if (!SC || !iframeRef.current) return;
+      const w = SC.Widget(iframeRef.current);
+      scWidgetRef.current = w;
+      w.bind(SC.Widget.Events.READY, () => w.setVolume(vol));
+    };
+    if ((window as any).SC) {
+      bindWidget();
+    } else if (!document.getElementById("sc-widget-api")) {
+      const s = document.createElement("script");
+      s.id = "sc-widget-api";
+      s.src = "https://w.soundcloud.com/player/api.js";
+      s.onload = bindWidget;
+      document.head.appendChild(s);
+    } else {
+      document.getElementById("sc-widget-api")!.addEventListener("load", bindWidget, { once: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embed?.url]);
+
+  // SoundCloud: push volume changes after widget is bound
+  useEffect(() => {
+    if (embed?.platform !== "SoundCloud") return;
+    try { scWidgetRef.current?.setVolume(vol); } catch {}
+  }, [vol, embed?.platform]);
+
+  // Resolve artwork URL for "artwork" layout
+  useEffect(() => {
+    if (!currentTrack) { setArtworkUrl(null); return; }
+    const staticUrl = getStaticThumbnail(currentTrack.url);
+    if (staticUrl) { setArtworkUrl(staticUrl); return; }
+    let cancelled = false;
+    fetch(`/api/thumbnail?url=${encodeURIComponent(currentTrack.url)}`)
+      .then((r) => r.json())
+      .then((d: { thumbnail?: string | null }) => { if (!cancelled) setArtworkUrl(d.thumbnail ?? null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [currentTrack?.url]);
+
+  const goNext = () => {
+    if (tracks.length === 0) return;
+    if (item.playlistShuffle && tracks.length > 1) {
+      let next = currentIdx;
+      while (next === currentIdx) next = Math.floor(Math.random() * tracks.length);
+      upd({ playlistCurrentIndex: next });
+      return;
+    }
+    const next = item.playlistLoop
+      ? (currentIdx + 1) % tracks.length
+      : Math.min(currentIdx + 1, tracks.length - 1);
+    upd({ playlistCurrentIndex: next });
+  };
+
+  const goPrev = () => {
+    if (tracks.length === 0) return;
+    const next = item.playlistLoop
+      ? (currentIdx - 1 + tracks.length) % tracks.length
+      : Math.max(currentIdx - 1, 0);
+    upd({ playlistCurrentIndex: next });
+  };
+
+  const goTo = (idx: number) => upd({ playlistCurrentIndex: idx });
+
+  const addTrack = () => {
+    const url = urlInput.trim();
+    if (!url) return;
+    const detected = resolveEmbed(url, false);
+    const track: PlaylistTrack = { id: nanoid(), url, title: titleInput.trim() || detected.platform + " track" };
+    upd({ playlistTracks: [...tracks, track] });
+    setUrlInput("");
+    setTitleInput("");
+  };
+
+  const removeTrack = (id: string) => {
+    const newTracks = tracks.filter((t) => t.id !== id);
+    upd({ playlistTracks: newTracks, playlistCurrentIndex: Math.min(currentIdx, Math.max(0, newTracks.length - 1)) });
+  };
+
+  // Detect importable playlist URLs (YouTube only for now)
+  const importInfo = useMemo(() => {
+    const u = urlInput.trim();
+    if (!u) return null;
+    const ytList = u.match(/youtube\.com\/(?:playlist\?|watch\?[^#]*)list=([A-Za-z0-9_-]+)/);
+    if (ytList) return { platform: "YouTube" as const, id: ytList[1] };
+    return null;
+  }, [urlInput]);
+
+  const handleImportPlaylist = async () => {
+    if (!importInfo) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      const res = await fetch(`/api/import-playlist?platform=${importInfo.platform.toLowerCase()}&id=${importInfo.id}`);
+      const data: { tracks?: { title: string; url: string }[]; error?: string } = await res.json();
+      if (data.error) { setImportError(data.error); return; }
+      const newTracks: PlaylistTrack[] = (data.tracks ?? []).map((t) => ({ id: nanoid(), url: t.url, title: t.title }));
+      upd({ playlistTracks: [...tracks, ...newTracks] });
+      setUrlInput("");
+      setTitleInput("");
+    } catch {
+      setImportError("Failed to reach import API");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  if (collapsed) {
+    return (
+      <div className="flex items-center gap-2">
+        <Music size={13} className="text-[var(--text-muted)]" />
+        <span className="text-sm text-[var(--text-secondary)] truncate">{currentTrack?.title ?? "No tracks"}</span>
+        {tracks.length > 1 && (
+          <div className="flex gap-1 ml-auto">
+            <button onClick={goPrev} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"><SkipBack size={11} /></button>
+            <button onClick={goNext} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"><SkipForward size={11} /></button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Shared sub-renders ──────────────────────────────────────────────────────
+
+  const embedEl = !embed ? (
+    <div className="w-full h-full flex items-center justify-center bg-black/20 rounded-lg">
+      <div className="text-center">
+        <Music size={28} className="text-[var(--text-muted)] mx-auto mb-1 opacity-40" />
+        <p className="text-[11px] text-[var(--text-muted)]">Add a track below</p>
+      </div>
+    </div>
+  ) : embed.kind === "iframe" ? (
+    <iframe ref={iframeRef} key={embed.url} src={embed.url}
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowFullScreen className="w-full h-full border-none block"
+      onLoad={() => {
+        // Tell YouTube's postMessage API we're listening so it fires onReady
+        if (embed.platform === "YouTube") {
+          iframeRef.current?.contentWindow?.postMessage(
+            JSON.stringify({ event: "listening", id: 1 }), "*"
+          );
+        }
+      }}
+    />
+  ) : embed.kind === "audio" ? (
+    /* eslint-disable-next-line jsx-a11y/media-has-caption */
+    <audio ref={audioRef} key={embed.url} src={embed.url} controls autoPlay={!!item.playlistAutoplay}
+      className="w-full h-8" style={{ colorScheme: "dark" }} />
+  ) : (
+    <div className="w-full h-full flex flex-col items-center justify-center gap-2 py-4">
+      <PlatformBadge platform={embed.platform} />
+      <p className="text-[11px] text-[var(--text-muted)] text-center px-4">{embed.platform} doesn't support embedding.</p>
+      <a href={embed.url} target="_blank" rel="noopener noreferrer"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-[11px] font-medium hover:opacity-90 transition-opacity"
+        style={{ backgroundColor: accent }}>
+        <ExternalLink size={11} /> Open in {embed.platform}
+      </a>
+    </div>
+  );
+
+  const transportEl = tracks.length > 0 ? (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1">
+        <button onClick={goPrev} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shrink-0">
+          <SkipBack size={14} />
+        </button>
+        <div className="flex-1 min-w-0 text-center">
+          <p className="text-[11px] font-medium text-[var(--text-primary)] truncate">{currentTrack?.title}</p>
+          <p className="text-[9px] text-[var(--text-muted)]">{currentIdx + 1} / {tracks.length} · {embed?.platform}</p>
+        </div>
+        <button onClick={goNext} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shrink-0">
+          <SkipForward size={14} />
+        </button>
+        <button onClick={() => upd({ playlistLoop: !item.playlistLoop })} title="Loop"
+          className="p-1.5 rounded-lg transition-colors shrink-0"
+          style={item.playlistLoop ? { color: accent } : { color: "var(--text-muted)" }}>
+          <Repeat size={12} />
+        </button>
+        <button onClick={() => upd({ playlistShuffle: !item.playlistShuffle })} title="Shuffle"
+          className="p-1.5 rounded-lg transition-colors shrink-0"
+          style={item.playlistShuffle ? { color: accent } : { color: "var(--text-muted)" }}>
+          <Shuffle size={12} />
+        </button>
+        <button
+          onClick={() => volSupported && setShowVol((v) => !v)}
+          title={volSupported ? "Volume" : `${embed?.platform} doesn't expose a volume API — use its built-in controls`}
+          className="p-1.5 rounded-lg transition-colors shrink-0"
+          style={{ color: !volSupported ? "var(--text-muted)" : showVol ? accent : "var(--text-muted)", opacity: volSupported ? 1 : 0.4, cursor: volSupported ? "pointer" : "not-allowed" }}>
+          {vol === 0 ? <VolumeX size={12} /> : vol < 50 ? <Volume1 size={12} /> : <Volume2 size={12} />}
+        </button>
+      </div>
+      {showVol && volSupported && (
+        <div className="flex items-center gap-2">
+          <VolumeX size={10} className="shrink-0 text-[var(--text-muted)]" />
+          <input type="range" min={0} max={100} value={vol}
+            onChange={(e) => upd({ playlistVolume: Number(e.target.value) })}
+            className="flex-1 h-1 cursor-pointer" style={{ accentColor: accent }} />
+          <Volume2 size={10} className="shrink-0 text-[var(--text-muted)]" />
+          <span className="text-[9px] text-[var(--text-muted)] w-6 text-right tabular-nums">{vol}%</span>
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  const trackListEl = showList ? (
+    <div className="flex-1 overflow-y-auto flex flex-col gap-0.5 min-h-0">
+      {tracks.map((track, i) => {
+        const trackEmbed = resolveEmbed(track.url, false);
+        const active = i === currentIdx;
+        return (
+          <div key={track.id}
+            className={cn("group flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-colors", !active && "hover:bg-white/5")}
+            style={active ? { backgroundColor: accent + "25" } : undefined}
+            onClick={() => goTo(i)}>
+            <span className="text-[10px] tabular-nums w-4 shrink-0 text-center" style={{ color: active ? accent : "var(--text-muted)" }}>{i + 1}</span>
+            <PlatformBadge platform={trackEmbed.platform} />
+            <span className={cn("flex-1 text-[11px] truncate", active ? "font-medium" : "text-[var(--text-secondary)]")} style={active ? { color: accent } : undefined}>{track.title}</span>
+            {!isFinished && (
+              <button onClick={(e) => { e.stopPropagation(); removeTrack(track.id); }}
+                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-[var(--text-muted)] hover:text-red-400 transition-all">
+                <XIcon size={10} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
+
+  const addTrackEl = !isFinished ? (
+    <div className="shrink-0 border-t border-white/10 pt-2 flex flex-col gap-1.5">
+      <input value={urlInput} onChange={(e) => { setUrlInput(e.target.value); setImportError(null); }}
+        onKeyDown={(e) => { if (e.key === "Enter") addTrack(); }}
+        placeholder="Paste any URL — YouTube, Spotify, SoundCloud, Apple Music, Deezer…"
+        className="rounded-lg bg-black/20 border border-white/10 px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]" />
+      <div className="flex gap-1.5">
+        <input value={titleInput} onChange={(e) => setTitleInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") addTrack(); }}
+          placeholder="Title (optional)"
+          className="flex-1 rounded-lg bg-black/20 border border-white/10 px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]" />
+        <button onClick={addTrack} className="shrink-0 rounded-lg px-2.5 text-white hover:opacity-90 transition-opacity" style={{ backgroundColor: accent }}>
+          <Plus size={12} />
+        </button>
+      </div>
+      {/* Playlist import button */}
+      {importInfo && (
+        <button
+          onClick={handleImportPlaylist}
+          disabled={importing}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-red-500/40 bg-red-600/15 px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-600/25 transition-colors disabled:opacity-50 disabled:cursor-wait"
+        >
+          {importing
+            ? "Importing…"
+            : <><Music size={11} /> Import all videos from {importInfo.platform} playlist</>}
+        </button>
+      )}
+      {importError && <p className="text-[10px] text-red-400">{importError === "YOUTUBE_API_KEY not configured" ? "Add YOUTUBE_API_KEY to your .env to enable playlist import" : importError}</p>}
+      {urlInput && !importInfo && (() => {
+        const preview = resolveEmbed(urlInput, false);
+        return (
+          <p className="text-[10px] text-[var(--text-muted)]">
+            Detected: <span style={{ color: PLATFORM_COLORS[preview.platform] ?? "var(--text-secondary)" }}>{preview.platform}</span>
+            {preview.isPlaylist && " playlist"}
+            {preview.kind === "link" && " · will open in new tab"}
+          </p>
+        );
+      })()}
+    </div>
+  ) : null;
+
+  // ── Layout assembly ─────────────────────────────────────────────────────────
+
+  let inner: React.ReactNode;
+
+  if (layout === "card") {
+    // Embed fills box; frosted-glass transport + tracklist overlaid at bottom
+    inner = (
+      <div className="relative flex-1 min-h-0 rounded-lg overflow-hidden bg-black">
+        <div className="absolute inset-0">{embedEl}</div>
+        <div className="absolute bottom-0 left-0 right-0 p-2 flex flex-col gap-1.5"
+          style={{ backdropFilter: "blur(18px) saturate(1.4)", background: "rgba(0,0,0,0.6)" }}>
+          {transportEl}
+          {trackListEl && <div className="max-h-28 overflow-y-auto">{trackListEl}</div>}
+          {addTrackEl}
+        </div>
+      </div>
+    );
+  } else if (layout === "side") {
+    // Embed on left, controls + list on right
+    inner = (
+      <div className="flex flex-1 min-h-0 gap-2">
+        <div className="w-[45%] shrink-0 rounded-lg overflow-hidden bg-black">
+          {embedEl}
+        </div>
+        <div className="flex-1 flex flex-col gap-2 min-w-0 min-h-0">
+          {transportEl && <div className="shrink-0">{transportEl}</div>}
+          {trackListEl}
+          {addTrackEl}
+        </div>
+      </div>
+    );
+  } else if (layout === "minimal") {
+    // Controls + list only, no embed
+    inner = (
+      <>
+        {transportEl && <div className="shrink-0">{transportEl}</div>}
+        {trackListEl}
+        {addTrackEl}
+      </>
+    );
+  } else if (layout === "artwork") {
+    // Full-bleed album art with scrim overlay at bottom
+    const platformColor = embed ? (PLATFORM_COLORS[embed.platform] ?? "#1db954") : "#1db954";
+    inner = (
+      <div className="flex flex-col h-full gap-1.5">
+        <div className="relative flex-1 min-h-0 rounded-lg overflow-hidden"
+          style={{ background: artworkUrl ? "black" : `linear-gradient(135deg, ${platformColor}33, ${platformColor}11)` }}>
+          {artworkUrl ? (
+            <img
+              src={artworkUrl}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover"
+              onError={() => setArtworkUrl(null)}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Music size={40} style={{ color: platformColor, opacity: 0.3 }} />
+            </div>
+          )}
+          {/* gradient scrim */}
+          <div className="absolute inset-0" style={{
+            background: "linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.3) 45%, transparent 100%)",
+          }} />
+          {/* overlay controls */}
+          <div className="absolute bottom-0 left-0 right-0 px-2.5 pb-2.5 pt-1 flex flex-col gap-1.5">
+            {currentTrack && (
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold text-white truncate leading-tight">{currentTrack.title}</p>
+                {embed?.platform && (
+                  <p className="text-[9px] font-medium truncate" style={{ color: platformColor }}>{embed.platform}</p>
+                )}
+              </div>
+            )}
+            {tracks.length > 0 && transportEl && (
+              <div className="[&_button]:text-white [&_input[type='range']]:opacity-90 [&_button:hover]:opacity-70">
+                {transportEl}
+              </div>
+            )}
+          </div>
+        </div>
+        {addTrackEl && <div className="shrink-0">{addTrackEl}</div>}
+      </div>
+    );
+  } else {
+    // stack (default): embed on top, controls below, then list
+    const embedWrapper = !embed ? (
+      <div className="shrink-0 rounded-lg overflow-hidden bg-black/20" style={{ aspectRatio: "16/9" }}>{embedEl}</div>
+    ) : embed.kind === "iframe" ? (
+      <div className="shrink-0 rounded-lg overflow-hidden bg-black"
+        style={embed.fixedHeight ? { height: embed.fixedHeight } : { aspectRatio: embed.aspectRatio ?? "16/9" }}>
+        {embedEl}
+      </div>
+    ) : embed.kind === "audio" ? (
+      <div className="shrink-0 rounded-lg overflow-hidden bg-[var(--surface-overlay)] p-2">{embedEl}</div>
+    ) : (
+      <div className="shrink-0 rounded-lg bg-[var(--surface-overlay)]" style={{ minHeight: 80 }}>{embedEl}</div>
+    );
+    inner = (
+      <>
+        {embedWrapper}
+        {transportEl && <div className="shrink-0">{transportEl}</div>}
+        {trackListEl}
+        {addTrackEl}
+      </>
+    );
+  }
+
+  return (
+    <div className="relative flex flex-col h-full overflow-hidden" style={containerStyle}>
+      {/* BG: image layer */}
+      {item.playlistBgImage && (
+        <div aria-hidden style={{
+          position: "absolute",
+          inset: blur > 0 ? -blur * 1.5 : 0,
+          zIndex: 0, pointerEvents: "none",
+          backgroundImage: `url(${item.playlistBgImage})`,
+          backgroundSize: "cover", backgroundPosition: "center",
+          opacity: (item.playlistBgImageOpacity ?? 100) / 100,
+          filter: blurFilter,
+        }} />
+      )}
+      {/* BG: color / gradient layer */}
+      {hasBg && (
+        <div aria-hidden style={{
+          position: "absolute", zIndex: 1, pointerEvents: "none",
+          ...bgLayerStyle,
+        }} />
+      )}
+      {/* Content */}
+      <div className={cn("relative flex flex-col h-full gap-2", layout !== "card" && "p-1.5")} style={{ zIndex: 2 }}>
+        {inner}
+      </div>
+    </div>
+  );
+}
+
+// ── Layout icon thumbnails for PlaylistStylePanel ─────────────────────────────
+function PlaylistLayoutIcon({ layout }: { layout: string }) {
+  if (layout === "stack") return (
+    <svg viewBox="0 0 28 20" fill="none" className="w-7 h-5">
+      <rect x="1" y="1" width="26" height="10" rx="1.5" fill="currentColor" opacity=".35"/>
+      <rect x="1" y="13" width="26" height="2.5" rx="1" fill="currentColor" opacity=".6"/>
+      <rect x="1" y="16.5" width="18" height="2.5" rx="1" fill="currentColor" opacity=".4"/>
+    </svg>
+  );
+  if (layout === "card") return (
+    <svg viewBox="0 0 28 20" fill="none" className="w-7 h-5">
+      <rect x="1" y="1" width="26" height="18" rx="1.5" fill="currentColor" opacity=".2"/>
+      <rect x="1" y="13" width="26" height="6" rx="1.5" fill="currentColor" opacity=".55"/>
+      <rect x="3" y="14.5" width="10" height="1.5" rx=".75" fill="currentColor" opacity=".9"/>
+      <rect x="3" y="17" width="7" height="1.5" rx=".75" fill="currentColor" opacity=".6"/>
+    </svg>
+  );
+  if (layout === "side") return (
+    <svg viewBox="0 0 28 20" fill="none" className="w-7 h-5">
+      <rect x="1" y="1" width="11" height="18" rx="1.5" fill="currentColor" opacity=".35"/>
+      <rect x="14" y="1" width="13" height="3" rx="1" fill="currentColor" opacity=".6"/>
+      <rect x="14" y="6" width="13" height="2.5" rx="1" fill="currentColor" opacity=".4"/>
+      <rect x="14" y="10" width="9" height="2.5" rx="1" fill="currentColor" opacity=".3"/>
+    </svg>
+  );
+  if (layout === "artwork") return (
+    <svg viewBox="0 0 28 20" fill="none" className="w-7 h-5">
+      <rect x="1" y="1" width="26" height="19" rx="1.5" fill="currentColor" opacity=".18"/>
+      {/* big square album art */}
+      <rect x="3" y="2.5" width="22" height="12" rx="1" fill="currentColor" opacity=".38"/>
+      {/* music note inside */}
+      <rect x="11" y="5.5" width="1.5" height="4.5" rx=".75" fill="currentColor" opacity=".7"/>
+      <rect x="11" y="5.5" width="4" height="1.5" rx=".75" fill="currentColor" opacity=".7"/>
+      <circle cx="11.75" cy="10.2" r="1.2" fill="currentColor" opacity=".7"/>
+      {/* scrim bar at bottom of art */}
+      <rect x="1" y="12" width="26" height="8" rx="0" fill="currentColor" opacity=".3"/>
+      {/* track name line */}
+      <rect x="3" y="13.5" width="12" height="1.5" rx=".75" fill="currentColor" opacity=".85"/>
+      {/* controls row */}
+      <circle cx="5" cy="17.5" r="1.1" fill="currentColor" opacity=".6"/>
+      <circle cx="9" cy="17.5" r="1.1" fill="currentColor" opacity=".6"/>
+      <circle cx="13" cy="17.5" r="1.1" fill="currentColor" opacity=".6"/>
+    </svg>
+  );
+  // minimal
+  return (
+    <svg viewBox="0 0 28 20" fill="none" className="w-7 h-5">
+      <rect x="1" y="5" width="26" height="3" rx="1.5" fill="currentColor" opacity=".6"/>
+      <rect x="1" y="10" width="26" height="2.5" rx="1" fill="currentColor" opacity=".4"/>
+      <rect x="1" y="14" width="18" height="2.5" rx="1" fill="currentColor" opacity=".3"/>
+    </svg>
+  );
+}
+
+export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const [openPicker, setOpenPicker] = useState<"accent" | "bg" | "bgGradTo" | "border" | null>(null);
+  const bgImgFileRef = useRef<HTMLInputElement>(null);
+  const accent = item.playlistAccentColor || "var(--accent)";
+  const layout = item.playlistLayout ?? (item.playlistCompact ? "minimal" : "stack");
+
+  const LAYOUTS = [
+    { value: "stack",   label: "Stack"   },
+    { value: "card",    label: "Card"    },
+    { value: "side",    label: "Side"    },
+    { value: "minimal", label: "Minimal" },
+    { value: "artwork", label: "Art"     },
+  ] as const;
+
+  const SLabel = ({ children }: { children: React.ReactNode }) => (
+    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>
+  );
+
+  return (
+    <div className="flex flex-col gap-4 p-3 text-xs">
+
+      {/* Title */}
+      <section>
+        <SLabel>Title</SLabel>
+        <input value={item.playlistTitle ?? ""} onChange={(e) => upd({ playlistTitle: e.target.value })}
+          placeholder="My Study Playlist"
+          className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/50" />
+      </section>
+
+      {/* Layout */}
+      <section>
+        <SLabel>Layout</SLabel>
+        <div className="grid grid-cols-5 gap-1.5">
+          {LAYOUTS.map(({ value, label }) => (
+            <button key={value} onClick={() => upd({ playlistLayout: value, playlistCompact: value === "minimal" ? true : false })}
+              className={cn("flex flex-col items-center gap-1 rounded-lg border py-2 transition-colors", layout === value ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/40")}>
+              <PlaylistLayoutIcon layout={value} />
+              <span className="text-[9px]">{label}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex flex-col gap-1.5">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={item.playlistShowList !== false} onChange={(e) => upd({ playlistShowList: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[var(--text-secondary)]">Show track list</span>
+          </label>
+        </div>
+      </section>
+
+      {/* Playback */}
+      <section>
+        <SLabel>Playback</SLabel>
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={!!item.playlistLoop} onChange={(e) => upd({ playlistLoop: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[var(--text-secondary)]">Loop playlist</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={!!item.playlistShuffle} onChange={(e) => upd({ playlistShuffle: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[var(--text-secondary)]">Shuffle</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={!!item.playlistAutoplay} onChange={(e) => upd({ playlistAutoplay: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[var(--text-secondary)]">Autoplay on switch</span>
+          </label>
+        </div>
+      </section>
+
+      {/* Volume */}
+      <section>
+        <SLabel>Volume</SLabel>
+        <div className="flex items-center gap-2">
+          <VolumeX size={11} className="shrink-0 text-[var(--text-muted)]" />
+          <input type="range" min={0} max={100} value={item.playlistVolume ?? 80}
+            onChange={(e) => upd({ playlistVolume: Number(e.target.value) })}
+            className="flex-1 h-1 cursor-pointer" style={{ accentColor: accent }} />
+          <Volume2 size={11} className="shrink-0 text-[var(--text-muted)]" />
+          <span className="tabular-nums w-7 text-right text-[var(--text-muted)]">{item.playlistVolume ?? 80}%</span>
+        </div>
+        <p className="mt-1 text-[9px] text-[var(--text-muted)] leading-tight">Works for audio files and YouTube only. Spotify, SoundCloud, and others don't expose a volume API — the button is dimmed for those.</p>
+      </section>
+
+      {/* Background */}
+      <section>
+        <SLabel>Background</SLabel>
+        <div className="flex flex-col gap-3">
+
+          {/* Background image */}
+          <div>
+            <span className="text-[var(--text-secondary)] mb-1.5 block">Image</span>
+            {item.playlistBgImage ? (
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-7 rounded border border-[var(--border)] bg-cover bg-center shrink-0" style={{ backgroundImage: `url(${item.playlistBgImage})` }} />
+                <button onClick={() => upd({ playlistBgImage: undefined })} className="text-[10px] text-red-400 hover:text-red-300 transition-colors">Remove</button>
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <span className="text-[var(--text-muted)]">Opacity</span>
+                  <input type="range" min={0} max={100} value={item.playlistBgImageOpacity ?? 100}
+                    onChange={(e) => upd({ playlistBgImageOpacity: Number(e.target.value) })}
+                    className="w-16 h-1 cursor-pointer" style={{ accentColor: accent }} />
+                  <span className="tabular-nums w-6 text-right text-[var(--text-muted)]">{item.playlistBgImageOpacity ?? 100}%</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-1.5">
+                <input
+                  placeholder="https://… or paste image URL"
+                  className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]/50"
+                  onKeyDown={(e) => { if (e.key === "Enter") { const v = (e.currentTarget as HTMLInputElement).value.trim(); if (v) upd({ playlistBgImage: v }); } }}
+                  onBlur={(e) => { const v = e.currentTarget.value.trim(); if (v) upd({ playlistBgImage: v }); }}
+                />
+                <button onClick={() => bgImgFileRef.current?.click()} className="shrink-0 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors" title="Upload image">
+                  <ImageIcon size={12} />
+                </button>
+                <input ref={bgImgFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+                  const f = e.target.files?.[0]; if (!f) return;
+                  const r = new FileReader(); r.onload = (ev) => upd({ playlistBgImage: ev.target?.result as string }); r.readAsDataURL(f);
+                  e.target.value = "";
+                }} />
+              </div>
+            )}
+          </div>
+
+          {/* Color / gradient */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-secondary)]">Color</span>
+              <div className="flex items-center gap-1.5">
+                {item.playlistBgColor && (
+                  <button onClick={() => upd({ playlistBgColor: undefined, playlistBgGradient: false })} className="text-[9px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
+                )}
+                <div className="relative">
+                  <button className="h-5 w-5 rounded border border-[var(--border)]"
+                    style={{ background: item.playlistBgColor || "transparent", backgroundImage: item.playlistBgColor ? undefined : "linear-gradient(45deg,#888 25%,transparent 25%,transparent 75%,#888 75%),linear-gradient(45deg,#888 25%,transparent 25%,transparent 75%,#888 75%)", backgroundSize: "6px 6px", backgroundPosition: "0 0,3px 3px" }}
+                    onClick={() => setOpenPicker(openPicker === "bg" ? null : "bg")} />
+                  {openPicker === "bg" && (
+                    <div className="absolute right-0 top-7 z-50 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
+                      <input type="color" value={item.playlistBgColor || "#000000"} onChange={(e) => upd({ playlistBgColor: e.target.value })} className="h-8 w-24 cursor-pointer border-0 p-0" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            {item.playlistBgColor && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-[var(--text-secondary)]">Opacity</span>
+                  <div className="flex items-center gap-1.5">
+                    <input type="range" min={0} max={100} value={item.playlistBgOpacity ?? 100}
+                      onChange={(e) => upd({ playlistBgOpacity: Number(e.target.value) })}
+                      className="w-20 h-1 cursor-pointer" style={{ accentColor: accent }} />
+                    <span className="tabular-nums w-6 text-right text-[var(--text-muted)]">{item.playlistBgOpacity ?? 100}%</span>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={!!item.playlistBgGradient} onChange={(e) => upd({ playlistBgGradient: e.target.checked })} className="accent-[var(--accent)]" />
+                  <span className="text-[var(--text-secondary)]">Gradient</span>
+                </label>
+                {item.playlistBgGradient && (
+                  <div className="flex flex-col gap-2 pl-4 border-l border-[var(--border)]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[var(--text-secondary)]">To color</span>
+                      <div className="relative">
+                        <button className="h-5 w-5 rounded border border-[var(--border)]"
+                          style={{ background: item.playlistBgGradientTo || "#000000" }}
+                          onClick={() => setOpenPicker(openPicker === "bgGradTo" ? null : "bgGradTo")} />
+                        {openPicker === "bgGradTo" && (
+                          <div className="absolute right-0 top-7 z-50 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
+                            <input type="color" value={item.playlistBgGradientTo || "#000000"} onChange={(e) => upd({ playlistBgGradientTo: e.target.value })} className="h-8 w-24 cursor-pointer border-0 p-0" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[var(--text-secondary)]">Angle</span>
+                      <div className="flex items-center gap-1.5">
+                        <input type="range" min={0} max={360} value={item.playlistBgGradientAngle ?? 135}
+                          onChange={(e) => upd({ playlistBgGradientAngle: Number(e.target.value) })}
+                          className="w-20 h-1 cursor-pointer" style={{ accentColor: accent }} />
+                        <span className="tabular-nums w-7 text-right text-[var(--text-muted)]">{item.playlistBgGradientAngle ?? 135}°</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Background blur */}
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-secondary)]">Blur</span>
+            <div className="flex items-center gap-1.5">
+              <input type="range" min={0} max={24} value={item.playlistBgBlur ?? 0}
+                onChange={(e) => upd({ playlistBgBlur: Number(e.target.value) })}
+                className="w-20 h-1 cursor-pointer" style={{ accentColor: accent }} />
+              <span className="tabular-nums w-6 text-right text-[var(--text-muted)]">{item.playlistBgBlur ?? 0}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Appearance */}
+      <section>
+        <SLabel>Appearance</SLabel>
+        <div className="flex flex-col gap-2">
+          {/* Accent color */}
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-secondary)]">Accent color</span>
+            <div className="relative">
+              <button className="h-5 w-5 rounded border border-[var(--border)]"
+                style={{ background: item.playlistAccentColor || "var(--accent)" }}
+                onClick={() => setOpenPicker(openPicker === "accent" ? null : "accent")} />
+              {openPicker === "accent" && (
+                <div className="absolute right-0 top-7 z-50 flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
+                  <input type="color" value={item.playlistAccentColor || "#5865f2"} onChange={(e) => upd({ playlistAccentColor: e.target.value })} className="h-8 w-24 cursor-pointer border-0 p-0" />
+                  <button onClick={() => { upd({ playlistAccentColor: undefined }); setOpenPicker(null); }} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset to default</button>
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Border */}
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-secondary)]">Border</span>
+            <div className="flex items-center gap-1.5">
+              <input type="number" min={0} max={12} value={item.playlistBorderWidth ?? 0}
+                onChange={(e) => upd({ playlistBorderWidth: Number(e.target.value) })}
+                className="w-10 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-center text-xs text-[var(--text-primary)] outline-none" />
+              <span className="text-[var(--text-muted)]">px</span>
+              <div className="relative">
+                <button className="h-5 w-5 rounded border border-[var(--border)]"
+                  style={{ background: item.playlistBorderColor || "#ffffff" }}
+                  onClick={() => setOpenPicker(openPicker === "border" ? null : "border")} />
+                {openPicker === "border" && (
+                  <div className="absolute right-0 top-7 z-50 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
+                    <input type="color" value={item.playlistBorderColor || "#ffffff"} onChange={(e) => upd({ playlistBorderColor: e.target.value })} className="h-8 w-24 cursor-pointer border-0 p-0" />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          {/* Corner radius */}
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-secondary)]">Corner radius</span>
+            <div className="flex items-center gap-1.5">
+              <input type="range" min={0} max={32} value={item.playlistBorderRadius ?? 0}
+                onChange={(e) => upd({ playlistBorderRadius: Number(e.target.value) })}
+                className="w-20 cursor-pointer" style={{ accentColor: accent }} />
+              <span className="tabular-nums w-6 text-right text-[var(--text-muted)]">{item.playlistBorderRadius ?? 0}</span>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

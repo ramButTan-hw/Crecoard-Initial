@@ -57,5 +57,9 @@ body {
 /* Dragging state */
 .dragging { opacity: 0.5; cursor: grabbing !important; }
 
+/* Pan-on-drag: pannable areas show grab cursor */
+[data-pannable] { cursor: grab; }
+[data-pannable]:active { cursor: grabbing; }
+
 /* Selection ring */
 .selected { outline: 2px solid var(--accent); outline-offset: 1px; }

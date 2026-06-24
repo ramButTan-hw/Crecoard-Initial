@@ -3,12 +3,32 @@
 import { useState } from "react";
 import {
   Globe, Lock, Grid3X3, Ruler, ZoomIn, ZoomOut,
-  Pencil, CheckCircle2, Edit3, Palette,
+  Pencil, CheckCircle2, Edit3, Palette, Share2,
 } from "lucide-react";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
-
+import { useCollab } from "@/lib/useCollabSession";
 import { ThemePanel } from "./ThemePanel";
+import { ShareModal } from "./ShareModal";
 import { cn } from "@/lib/utils";
+
+function Avatar({ name, color, size = 24, title }: { name: string; color: string; size?: number; title?: string }) {
+  const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?";
+  return (
+    <div
+      title={title ?? name}
+      className="rounded-full flex items-center justify-center shrink-0 font-bold text-white"
+      style={{
+        width: size, height: size,
+        background: color,
+        fontSize: size * 0.4,
+        outline: "2px solid var(--surface-raised)",
+        outlineOffset: 0,
+      }}
+    >
+      {initials}
+    </div>
+  );
+}
 
 export function TopBar() {
   const {
@@ -19,10 +39,12 @@ export function TopBar() {
   } = useBoardStore();
   const hasAppBg = useBoardStore((s) => !!s.appBg.image);
   const board = useActiveBoard();
+  const { members, self, isConnected } = useCollab();
 
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(board?.name ?? "");
   const [showThemePanel, setShowThemePanel] = useState(false);
+  const [showShare, setShowShare] = useState(false);
 
   const commitName = () => {
     if (nameInput.trim()) updateBoard(activeBoardId, { name: nameInput.trim() });
@@ -30,6 +52,12 @@ export function TopBar() {
   };
 
   const isFinished = board?.isFinished ?? false;
+
+  // All visible presence: self first, then remote members (up to 4 total)
+  const presenceAvatars = [
+    { userId: self.userId, displayName: self.displayName, color: self.color },
+    ...members.filter(m => m.userId !== self.userId),
+  ].slice(0, 4);
 
   return (
     <>
@@ -93,14 +121,60 @@ export function TopBar() {
 
         <div className="flex-1" />
 
+        {/* Presence avatars (shown when collab is on or there are remote members) */}
+        {(board?.collabEnabled || members.length > 0) && (
+          <div className="flex items-center">
+            {/* Live dot */}
+            <div
+              className={cn("h-1.5 w-1.5 rounded-full mr-2 transition-colors", isConnected ? "bg-green-400" : "bg-yellow-400")}
+              title={isConnected ? "Live" : "Connecting…"}
+            />
+            {/* Stacked avatars */}
+            <div className="flex -space-x-1.5">
+              {presenceAvatars.map((p, i) => (
+                <div key={p.userId} style={{ zIndex: presenceAvatars.length - i }}>
+                  <Avatar
+                    name={p.displayName}
+                    color={p.color}
+                    size={24}
+                    title={p.userId === self.userId ? `${p.displayName} (you)` : p.displayName}
+                  />
+                </div>
+              ))}
+              {members.length > 3 && (
+                <div
+                  className="h-6 w-6 rounded-full flex items-center justify-center text-[9px] font-bold text-[var(--text-secondary)] ring-2"
+                  style={{ background: "var(--surface-overlay)", zIndex: 0 }}
+                  title={`${members.length - 3} more`}
+                >
+                  +{members.length - 3}
+                </div>
+              )}
+            </div>
+            <div className="h-5 w-px bg-[var(--border)] ml-3" />
+          </div>
+        )}
+
         {/* Board theme */}
         <ToolbarButton
           onClick={() => setShowThemePanel((v) => !v)}
           title="Board theme"
           active={showThemePanel}
+          extraProps={{ "data-theme-btn": "" }}
         >
           <Palette size={15} />
         </ToolbarButton>
+
+        {/* Share */}
+        <button
+          data-share-btn
+          onClick={() => setShowShare(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-[var(--surface-overlay)] border border-[var(--border)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border)] transition-colors"
+          title="Share board"
+        >
+          <Share2 size={13} />
+          Share
+        </button>
 
         <div className="h-5 w-px bg-[var(--border)]" />
 
@@ -128,15 +202,18 @@ export function TopBar() {
           <ThemePanel onClose={() => setShowThemePanel(false)} />
         </>
       )}
+
+      {showShare && <ShareModal onClose={() => setShowShare(false)} />}
     </>
   );
 }
 
-function ToolbarButton({ children, onClick, title, active }: { children: React.ReactNode; onClick: () => void; title?: string; active?: boolean }) {
+function ToolbarButton({ children, onClick, title, active, extraProps }: { children: React.ReactNode; onClick: () => void; title?: string; active?: boolean; extraProps?: Record<string, string> }) {
   return (
     <button
       onClick={onClick}
       title={title}
+      {...(extraProps ?? {})}
       className={cn(
         "flex items-center justify-center rounded p-1.5 transition-colors",
         active

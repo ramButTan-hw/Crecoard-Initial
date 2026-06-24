@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Hash, MessageCircle, Plus, ChevronLeft, ChevronRight, Users, Settings, Home } from "lucide-react";
+import { Hash, MessageCircle, Plus, ChevronLeft, ChevronRight, Users, Settings, Home, LayoutTemplate } from "lucide-react";
 import { useBoardStore } from "@/store/boardStore";
 import { cn } from "@/lib/utils";
 
@@ -30,9 +30,10 @@ interface SidebarProps {
   onServerSelect: (id: string) => void;
   onDmSelect: (id: string) => void;
   onSettingsOpen: () => void;
+  onTemplatesOpen: () => void;
 }
 
-export function Sidebar({ collapsed, onToggle, activeView, activeServerId, activeDmId, onViewChange, onServerSelect, onDmSelect, onSettingsOpen }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, activeView, activeServerId, activeDmId, onViewChange, onServerSelect, onDmSelect, onSettingsOpen, onTemplatesOpen }: SidebarProps) {
   const activeServer = DEMO_SERVERS.find((s) => s.id === activeServerId);
   const hasAppBg = useBoardStore((s) => !!s.appBg.image);
 
@@ -43,6 +44,10 @@ export function Sidebar({ collapsed, onToggle, activeView, activeServerId, activ
         {/* Home / Boards */}
         <SidebarIcon label="Boards" active={activeView === "board"} onClick={() => onViewChange("board")}>
           <Home size={20} />
+        </SidebarIcon>
+
+        <SidebarIcon label="Templates" onClick={onTemplatesOpen}>
+          <LayoutTemplate size={18} />
         </SidebarIcon>
 
         <div className="my-1 h-px w-8 bg-[var(--border)]" />

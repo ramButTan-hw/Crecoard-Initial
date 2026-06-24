@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import {
-  FileText, List, Calculator, Video, Timer, ImageIcon,
-  BarChart2, Gamepad2, ChevronDown, ChevronRight,
-  Trash2, Plus, Code2,
+  FileText, List, Calculator, Video, Timer,
+  BarChart2, Plug, CalendarDays, Table2, ChevronDown, ChevronRight,
+  Trash2, Code2, Music,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 import { BlockItem, ItemType, DEFAULT_BOX_STYLE, useBoardStore, useActiveBoard } from "@/store/boardStore";
@@ -57,13 +57,6 @@ export const ITEM_DEFINITIONS: {
     defaultItem: () => ({ type: "timer", timerSeconds: 300, timerLabel: "" }),
   },
   {
-    type: "image",
-    label: "Image",
-    icon: <ImageIcon size={15} />,
-    description: "Photo or illustration",
-    defaultItem: () => ({ type: "image", imageUrl: "", imageObjectFit: "cover" }),
-  },
-  {
     type: "graph",
     label: "Graph",
     icon: <BarChart2 size={15} />,
@@ -75,11 +68,36 @@ export const ITEM_DEFINITIONS: {
     }),
   },
   {
-    type: "gaming",
-    label: "Game Tracker",
-    icon: <Gamepad2 size={15} />,
-    description: "Valorant, LoL, Apex, CS2",
-    defaultItem: () => ({ type: "gaming", game: "valorant" as const, gameUsername: "", gameTag: "" }),
+    type: "api",
+    label: "API",
+    icon: <Plug size={15} />,
+    description: "Fetch data from any REST API",
+    defaultItem: () => ({ type: "api", apiMethod: "GET" as const, apiDisplayMode: "value" as const }),
+  },
+  {
+    type: "table",
+    label: "Table",
+    icon: <Table2 size={15} />,
+    description: "Notion-style editable table",
+    defaultItem: () => ({
+      type: "table",
+      tableColumns: [
+        { id: "c1", name: "Name", type: "text" as const },
+        { id: "c2", name: "Status", type: "select" as const, options: ["Todo", "In Progress", "Done"] },
+        { id: "c3", name: "Done", type: "checkbox" as const },
+      ],
+      tableRows: [
+        { id: "r1", cells: { c1: "", c2: "Todo", c3: false } },
+        { id: "r2", cells: { c1: "", c2: "Todo", c3: false } },
+      ],
+    }),
+  },
+  {
+    type: "calendar",
+    label: "Calendar",
+    icon: <CalendarDays size={15} />,
+    description: "Monthly calendar with events",
+    defaultItem: () => ({ type: "calendar", calendarEvents: [], calendarShowWeekends: true }),
   },
   {
     type: "widget",
@@ -87,6 +105,13 @@ export const ITEM_DEFINITIONS: {
     icon: <Code2 size={15} />,
     description: "HTML · CSS · JS — build anything",
     defaultItem: () => ({ type: "widget", widgetCode: DEFAULT_WIDGET_CODE }),
+  },
+  {
+    type: "playlist",
+    label: "Playlist",
+    icon: <Music size={15} />,
+    description: "Music queue — YouTube, Spotify, SoundCloud & more",
+    defaultItem: () => ({ type: "playlist", playlistTracks: [], playlistCurrentIndex: 0, playlistLoop: true }),
   },
 ];
 
@@ -122,11 +147,11 @@ function DraggableItem({ def, selectedBoxId }: { def: (typeof ITEM_DEFINITIONS)[
 // ─── Main palette ─────────────────────────────────────────────────────────────
 
 export function ItemPalette() {
-  const { activeBoardId, addBox, removeBox } = useBoardStore();
+  const { activeBoardId, removeBox } = useBoardStore();
   const board = useActiveBoard();
   const selectedBoxId = useBoardStore((s) => s.selectedBoxId);
   const hasAppBg = useBoardStore((s) => !!s.appBg.image);
-  const [open, setOpen] = useState<Record<string, boolean>>({ blocks: true, items: true });
+  const [open, setOpen] = useState<Record<string, boolean>>({ items: true });
 
   if (board?.isFinished) return null;
 
@@ -149,39 +174,6 @@ export function ItemPalette() {
         </div>
       )}
 
-      {/* Add block section */}
-      <div className="border-b border-[var(--border)]">
-        <button
-          onClick={() => toggle("blocks")}
-          className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-        >
-          Blocks {open.blocks ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </button>
-        {open.blocks && (
-          <div className="pb-2 px-3">
-            <p className="mb-2 text-[10px] text-[var(--text-muted)]">Add an empty block to the board</p>
-            <button
-              onClick={() =>
-                addBox(activeBoardId, {
-                  x: 80 + Math.random() * 100,
-                  y: 80 + Math.random() * 100,
-                  width: 280,
-                  height: 220,
-                  locked: false,
-                  title: "New block",
-                  isExpanded: false,
-                  items: [],
-                  style: { ...DEFAULT_BOX_STYLE },
-                })
-              }
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border)] py-3 text-sm text-[var(--text-muted)] hover:border-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-all"
-            >
-              <Plus size={16} /> Add block
-            </button>
-          </div>
-        )}
-      </div>
-
       {/* Items section */}
       <div className="border-b border-[var(--border)]">
         <button
@@ -193,7 +185,7 @@ export function ItemPalette() {
         {open.items && (
           <div className="pb-2">
             <p className="px-3 pb-1 text-[10px] text-[var(--text-muted)]">
-              {selectedBoxId ? "Drag onto a block below" : "Drag an item onto any block"}
+              {selectedBoxId ? "Drag onto a block" : "Drag onto any block · right-click canvas to add blocks"}
             </p>
             {ITEM_DEFINITIONS.map((def) => (
               <DraggableItem key={def.type} def={def} selectedBoxId={selectedBoxId} />

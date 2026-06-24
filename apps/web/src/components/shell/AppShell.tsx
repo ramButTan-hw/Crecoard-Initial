@@ -14,9 +14,11 @@ import { ExpandedBlock } from "../board/ExpandedBlock";
 import { StylePanel } from "../box/StylePanel";
 import { ServerView } from "./ServerView";
 import { SettingsPanel } from "./SettingsPanel";
+import { TemplatesModal } from "./TemplatesModal";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
 import { snapToGrid } from "@/lib/snapToGrid";
 import { applyThemeVars, applyAppFont, CSS_VAR_NAMES, ThemeVarMap } from "@/lib/appThemes";
+import { CollabContext, useCollabSessionSetup } from "@/lib/useCollabSession";
 
 const DEMO_SERVERS: Record<string, { name: string }> = {
   s1: { name: "Design Team" },
@@ -36,21 +38,31 @@ export function AppShell() {
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
   const [activeDmId, setActiveDmId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
-  const { addItem, moveBox, bringToFront, selectBox, setDraggingBlock, activeBoardId, zoom, themeVars, appFont, appBg } = useBoardStore();
+  const { addItem, moveBox, bringToFront, selectBox, setDraggingBlock, activeBoardId, zoom, themeVars, appFont, appBg, persistBoards, hydrateBoards } = useBoardStore();
   const boardThemeVars = useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId)?.boardThemeVars);
   const selectedBoxId = useBoardStore((s) => s.selectedBoxId);
   const expandedBoxId = useBoardStore((s) => s.expandedBoxId);
   const board = useActiveBoard();
   const isFinished = board?.isFinished ?? false;
 
+  const collabSession = useCollabSessionSetup(activeBoardId, board?.collabEnabled ?? false);
+
   // Re-apply app theme vars and font on mount (SSR → client hydration)
   // Board theme is scoped via inline styles — not applied to the document root.
   useEffect(() => {
     applyThemeVars(themeVars);
     applyAppFont(appFont);
+    hydrateBoards();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Debounced board persistence — saves all board data to localStorage on change
+  useEffect(() => {
+    const id = setTimeout(() => persistBoards(), 800);
+    return () => clearTimeout(id);
+  });
 
   // Build inline CSS var object for the board area — scopes board theme to that div only
   const boardAreaCssVars = boardThemeVars
@@ -81,13 +93,32 @@ export function AppShell() {
     if (data?.kind === "block") {
       const boxId = e.active.id as string;
       const state = useBoardStore.getState();
-      const box = state.boards.find((b) => b.id === state.activeBoardId)?.boxes.find((b) => b.id === boxId);
+      const boardId = state.activeBoardId;
+      const board = state.boards.find((b) => b.id === boardId);
+      const box = board?.boxes.find((b) => b.id === boxId);
       if (box && e.delta) {
         const snap = (v: number) => Math.round(v / 20) * 20;
-        moveBox(state.activeBoardId, boxId,
-          Math.max(0, snap(box.x + e.delta.x / state.zoom)),
-          Math.max(0, snap(box.y + e.delta.y / state.zoom))
+        const newX = Math.max(0, snap(box.x + e.delta.x / state.zoom));
+        const newY = Math.max(0, snap(box.y + e.delta.y / state.zoom));
+        const cx = newX + box.width / 2;
+        const cy = newY + box.height / 2;
+        // Check if center of dragged box lands inside another box → merge into deck
+        const target = board!.boxes.find(b =>
+          b.id !== boxId &&
+          !b.deckOwnerId &&
+          cx >= b.x && cx <= b.x + b.width &&
+          cy >= b.y && cy <= b.y + b.height
         );
+        if (target) {
+          if (target.isDeck) {
+            state.addToDeck(boardId, target.id, boxId);
+          } else {
+            state.createDeck(boardId, boxId, target.id);
+          }
+          setDraggingBlock(null);
+          return;
+        }
+        moveBox(boardId, boxId, newX, newY);
       }
       setDraggingBlock(null);
       return;
@@ -168,6 +199,7 @@ export function AppShell() {
           onServerSelect={handleServerSelect}
           onDmSelect={handleDmSelect}
           onSettingsOpen={() => setShowSettings((v) => !v)}
+          onTemplatesOpen={() => setShowTemplates(true)}
         />
       </div>
 
@@ -175,6 +207,7 @@ export function AppShell() {
       <div className="flex flex-1 flex-col overflow-hidden" style={{ position: "relative", zIndex: 1 }}>
         {/* Board area — board CSS vars scoped here so they never reach ServerView */}
         {activeView === "board" && (
+          <CollabContext.Provider value={collabSession}>
           <div className="flex flex-1 flex-col overflow-hidden" style={boardAreaCssVars}>
             <BoardTabs />
             <TopBar />
@@ -186,6 +219,7 @@ export function AppShell() {
               </div>
             </DndContext>
           </div>
+          </CollabContext.Provider>
         )}
 
         {activeView !== "board" && (
@@ -210,6 +244,10 @@ export function AppShell() {
           <div className="fixed inset-0 z-[998]" onClick={() => setShowSettings(false)} />
           <SettingsPanel onClose={() => setShowSettings(false)} />
         </>
+      )}
+
+      {showTemplates && (
+        <TemplatesModal onClose={() => setShowTemplates(false)} />
       )}
     </div>
   );

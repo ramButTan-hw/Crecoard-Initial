@@ -1,6 +1,6 @@
 const { app, BrowserWindow, shell, Menu } = require("electron");
 const path = require("path");
-const isDev = require("electron-is-dev");
+const isDev = !app.isPackaged;
 
 const DEV_URL = "http://localhost:3000";
 const PROD_URL = `file://${path.join(__dirname, "../../web/out/index.html")}`;

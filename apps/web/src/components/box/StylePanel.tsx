@@ -54,14 +54,18 @@ export function StylePanel({ boxId }: StylePanelProps) {
         </div>
       </div>
 
-      {/* Items count row */}
-      <div className="border-b border-[var(--border)] px-4 py-2 flex items-center gap-2">
-        <span className="text-xs text-[var(--text-muted)]">{box.items.length} item{box.items.length !== 1 ? "s" : ""} · {box.items.filter((i) => i.showInCollapsed).length} in summary</span>
-        <button onClick={() => setExpandedBox(boxId)} className="ml-auto text-xs text-[var(--accent)] hover:underline">Manage →</button>
-      </div>
+      {/* Items count row — hidden for decks */}
+      {!box.isDeck && (
+        <div className="border-b border-[var(--border)] px-4 py-2 flex items-center gap-2">
+          <span className="text-xs text-[var(--text-muted)]">{box.items.length} item{box.items.length !== 1 ? "s" : ""} · {box.items.filter((i) => i.showInCollapsed).length} in summary</span>
+          <button onClick={() => setExpandedBox(boxId)} className="ml-auto text-xs text-[var(--accent)] hover:underline">Manage →</button>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
-        {expertMode ? (
+        {box.isDeck ? (
+          <DeckStylePanel box={box} boardId={activeBoardId} />
+        ) : expertMode ? (
           <ExpertPanel box={box} boardId={activeBoardId} />
         ) : (
           <>
@@ -209,6 +213,112 @@ function BorderStylePicker({ value, color, width, onChange }: {
   );
 }
 
+function DeckStylePanel({ box, boardId }: { box: any; boardId: string }) {
+  const { updateBox } = useBoardStore();
+  const upd = (p: object) => updateBox(boardId, box.id, p);
+  const [openSec, setOpenSec] = useState("behaviour");
+  const toggle = (k: string) => setOpenSec(v => v === k ? "" : k);
+
+  const transition = box.deckTransition ?? "slide";
+  const layout = box.deckLayout ?? "centered";
+  const autoPlay = box.deckAutoPlay ?? true;
+  const autoMs = box.deckAutoPlayMs ?? 3500;
+  const showArrows = box.deckShowArrows ?? true;
+  const showDots = box.deckShowDots ?? true;
+  const showPeek = box.deckShowPeek ?? true;
+  const peekScale = box.deckPeekScale ?? 0.82;
+  const peekOpacity = box.deckPeekOpacity ?? 0.5;
+  const peekBlur = box.deckPeekBlur ?? false;
+
+  const TRANSITIONS = [
+    { id: "slide", label: "Slide", desc: "Glides left / right" },
+    { id: "fade", label: "Fade", desc: "Cross-fades in place" },
+    { id: "scale", label: "Scale", desc: "Zooms in from center" },
+    { id: "flip", label: "Flip", desc: "3-D card rotation" },
+  ] as const;
+
+  const LAYOUTS = [
+    { id: "centered", label: "Centered", desc: "Side slides peek in, scaled down" },
+    { id: "flat", label: "Flat", desc: "Side slides at full scale" },
+    { id: "stack", label: "Stack", desc: "Cards stack with depth shadow" },
+  ] as const;
+
+  return (
+    <div className="flex flex-col">
+      {/* Transition type */}
+      <Section title="Transition" open={openSec === "transition"} onToggle={() => toggle("transition")}>
+        <div className="px-4 pb-3 grid grid-cols-2 gap-2">
+          {TRANSITIONS.map(t => (
+            <button key={t.id} onClick={() => upd({ deckTransition: t.id })}
+              className={cn("flex flex-col items-start rounded-lg border p-2.5 text-left transition-colors",
+                transition === t.id ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] hover:border-[var(--accent)]/50")}>
+              <span className="text-xs font-semibold text-[var(--text-primary)]">{t.label}</span>
+              <span className="text-[10px] text-[var(--text-muted)] mt-0.5">{t.desc}</span>
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      {/* Layout */}
+      <Section title="Layout" open={openSec === "layout"} onToggle={() => toggle("layout")}>
+        <div className="px-4 pb-3 flex flex-col gap-2">
+          {LAYOUTS.map(l => (
+            <button key={l.id} onClick={() => upd({ deckLayout: l.id })}
+              className={cn("flex items-center gap-3 rounded-lg border p-2.5 text-left transition-colors",
+                layout === l.id ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] hover:border-[var(--accent)]/50")}>
+              <span className="text-xs font-semibold text-[var(--text-primary)] w-16 shrink-0">{l.label}</span>
+              <span className="text-[10px] text-[var(--text-muted)]">{l.desc}</span>
+            </button>
+          ))}
+
+          {showPeek && layout !== "flat" && (
+            <div className="mt-1 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
+              <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Side slides</p>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-[var(--text-muted)] w-14 shrink-0">Scale</span>
+                <input type="range" min={0.5} max={1} step={0.01} value={peekScale}
+                  onChange={e => upd({ deckPeekScale: Number(e.target.value) })}
+                  className="flex-1" />
+                <span className="text-[10px] text-[var(--text-muted)] w-8 text-right">{Math.round(peekScale * 100)}%</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-[var(--text-muted)] w-14 shrink-0">Opacity</span>
+                <input type="range" min={0} max={1} step={0.01} value={peekOpacity}
+                  onChange={e => upd({ deckPeekOpacity: Number(e.target.value) })}
+                  className="flex-1" />
+                <span className="text-[10px] text-[var(--text-muted)] w-8 text-right">{Math.round(peekOpacity * 100)}%</span>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={peekBlur} onChange={e => upd({ deckPeekBlur: e.target.checked })} className="rounded" />
+                <span className="text-[10px] text-[var(--text-muted)]">Blur side slides</span>
+              </label>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* Behaviour */}
+      <Section title="Behaviour" open={openSec === "behaviour"} onToggle={() => toggle("behaviour")}>
+        <div className="px-4 pb-3 flex flex-col gap-2.5">
+          <Toggle label="Auto-play" value={autoPlay} onChange={v => upd({ deckAutoPlay: v })} />
+          {autoPlay && (
+            <div className="flex items-center gap-2 pl-0">
+              <span className="text-[10px] text-[var(--text-muted)] w-12 shrink-0">Speed</span>
+              <input type="range" min={1000} max={8000} step={500} value={autoMs}
+                onChange={e => upd({ deckAutoPlayMs: Number(e.target.value) })}
+                className="min-w-0 flex-1" />
+              <span className="text-[10px] text-[var(--text-muted)] w-8 shrink-0 text-right">{(autoMs / 1000).toFixed(1)}s</span>
+            </div>
+          )}
+          <Toggle label="Show arrows"      value={showArrows} onChange={v => upd({ deckShowArrows: v })} />
+          <Toggle label="Show dots"        value={showDots}   onChange={v => upd({ deckShowDots: v })} />
+          <Toggle label="Show side slides" value={showPeek}   onChange={v => upd({ deckShowPeek: v })} />
+        </div>
+      </Section>
+    </div>
+  );
+}
+
 function ExpertPanel({ box, boardId }: { box: any; boardId: string }) {
   const { updateBoxStyle } = useBoardStore();
   const [css, setCss] = useState(box.style.customCss ?? "");
@@ -220,6 +330,26 @@ function ExpertPanel({ box, boardId }: { box: any; boardId: string }) {
         <textarea className="min-h-[140px] rounded border border-[var(--border)] bg-[var(--surface)] p-2 font-mono text-xs text-[var(--text-primary)] outline-none resize-y" placeholder={"/* inject any CSS */\nborder: 2px solid red;\n"} value={css} onChange={(e) => setCss(e.target.value)} onBlur={() => updateBoxStyle(boardId, box.id, { customCss: css })} />
       </div>
       <pre className="overflow-auto rounded border border-[var(--border)] bg-[var(--surface)] p-2 text-[10px] text-[var(--text-muted)] max-h-[200px]">{JSON.stringify(box.style, null, 2)}</pre>
+    </div>
+  );
+}
+
+function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-[var(--text-muted)]">{label}</span>
+      <button
+        type="button"
+        onClick={() => onChange(!value)}
+        className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors duration-200", value ? "bg-[var(--accent)]" : "bg-[var(--border)]")}
+        role="switch"
+        aria-checked={value}
+      >
+        <span
+          className="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
+          style={{ transform: value ? "translateX(16px)" : "translateX(0)" }}
+        />
+      </button>
     </div>
   );
 }

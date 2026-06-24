@@ -10,12 +10,81 @@ import {
 
 export type ItemType =
   | "text" | "list" | "variable" | "embed" | "timer"
-  | "image" | "graph" | "gaming" | "divider" | "widget";
+  | "image" | "graph" | "api" | "calendar" | "table" | "divider" | "widget"
+  | "playlist";
 
-export type GameId = "valorant" | "lol" | "apex" | "csgo";
+export type FilterOp =
+  | "contains" | "not_contains"
+  | "equals"   | "not_equals"
+  | "is_empty" | "is_not_empty"
+  | "gt" | "lt";
 
-export interface ListEntry { id: string; text: string; checked: boolean }
-export interface GraphPoint { label: string; value: number }
+export interface TableFilter {
+  id: string;
+  colId: string;
+  op: FilterOp;
+  value: string;
+}
+
+export interface TableColumn {
+  id: string;
+  name: string;
+  type: "text" | "number" | "checkbox" | "select" | "date" | "url";
+  width?: number;
+  options?: string[];
+}
+
+export interface TableRow {
+  id: string;
+  cells: Record<string, string | boolean>;
+}
+
+export interface CalendarEvent {
+  id: string;
+  date: string;       // YYYY-MM-DD
+  title: string;
+  color?: string;
+  startTime?: string; // HH:MM
+  endTime?: string;   // HH:MM
+  description?: string;
+  allDay?: boolean;
+  feedId?: string;    // from iCal feed (read-only)
+  location?: string;
+}
+
+export interface CalendarFeed {
+  id: string;
+  name: string;
+  url: string;
+  color: string;
+  enabled: boolean;
+}
+
+export interface TableLink {
+  id: string;         // link config id
+  tableId: string;    // item id of the table in the same box
+  dateCol: string;    // column id used as event date
+  titleCol: string;   // column id used as event title
+  colorCol?: string;  // column id used as event color (optional)
+  color?: string;     // fallback accent color for events from this link
+}
+
+export interface PlaylistTrack {
+  id: string;
+  url: string;
+  title: string;
+}
+
+export interface ListEntry {
+  id: string;
+  text: string;
+  checked: boolean;
+  isVariable?: boolean;
+  variableName?: string;
+  variableValue?: number;   // legacy plain number
+  variableRawValue?: string; // formula string like "{x} + 5" or "10"
+}
+export interface GraphPoint { label: string; [key: string]: string | number }
 
 export interface BlockItem {
   id: string;
@@ -27,6 +96,12 @@ export interface BlockItem {
   expandedY?: number;
   expandedW?: number;
   expandedH?: number;
+
+  // Layout inside collapsed view (absolute positioning)
+  collapsedX?: number;
+  collapsedY?: number;
+  collapsedW?: number;
+  collapsedH?: number;
 
   // text
   text?: string;
@@ -42,8 +117,14 @@ export interface BlockItem {
   textBorderColor?: string;
   textBorderWidth?: number;
   textBorderRadius?: number;
+  textPadding?: number;
+  textLetterSpacing?: number;
+  textLineHeight?: number;
+  textShadow?: "none" | "drop" | "glow" | "neon" | "hard";
+  textShadowColor?: string;
 
   // list
+  listTitle?: string;
   listItems?: ListEntry[];
   listFontFamily?: string;
   listFontSize?: number;
@@ -59,31 +140,243 @@ export interface BlockItem {
   listBorderRadius?: number;
   listMarker?: "checkbox" | "bullet" | "number" | "none";
   listRowSpacing?: number;
+  listBgColor?: string;
+  listPadding?: number;
+  listShadow?: "none" | "drop" | "glow" | "hard";
+  listShadowColor?: string;
+  listLetterSpacing?: number;
+  listLineHeight?: number;
+  listDividerColor?: string;
+  listDividerOpacity?: number;
+  listDividerWidth?: number;
+  listDividerStyle?: "solid" | "dashed" | "dotted" | "none";
+  listCheckColor?: string;
+  listCheckUncheckedIcon?: string;
+  listCheckCheckedIcon?: string;
+  listCheckIconSize?: number;
+  listVarValueFontFamily?: string;
+  listVarValueFontSize?: number;
+  listVarValueFontColor?: string;
+  listVarValueBold?: boolean;
+  listShowProgress?: boolean;
 
   // variable
   varName?: string;
   varFormula?: string;
 
+  // text paragraph style (Google Docs-style preset)
+  textParaStyle?: string;
+
+  // text modes: undefined = normal text, "number" = big number input (variable source), "formula" = shows computed result
+  textMode?: "number" | "formula";
+  textVarName?: string;     // variable name exposed for both number-mode and formula-mode items
+  textCalcFormula?: string; // formula expression when textMode === "formula"
+
   // embed
   embedUrl?: string;
+  embedBorderRadius?: number;
+  embedBorderWidth?: number;
+  embedBorderColor?: string;
+  embedBorderStyle?: "solid" | "dashed" | "dotted" | "double" | "glow";
+  embedFilterBrightness?: number;
+  embedFilterContrast?: number;
+  embedFilterSaturate?: number;
+  embedFilterGrayscale?: number;
+  embedFilterBlur?: number;
+  embedFilterHueRotate?: number;
+  embedFilterSepia?: number;
+  embedShadow?: "none" | "sm" | "md" | "lg" | "glow";
 
   // timer
   timerSeconds?: number;
   timerLabel?: string;
+  timerMode?: "countdown" | "stopwatch" | "clock";
+  timerFontFamily?: string;
+  timerFontSize?: number;
+  timerFontColor?: string;
+  timerAccentColor?: string;
+  timerBold?: boolean;
+  timerShowLabel?: boolean;
+  timerLabelPosition?: "top" | "bottom";
+  timerBgColor?: string;
+  timerBgOpacity?: number;
+  timerBgImage?: string;
+  timerBgImageSize?: string;
+  timerBgImageOpacity?: number;
+  timerBorderWidth?: number;
+  timerBorderColor?: string;
+  timerBorderRadius?: number;
+  timerBorderStyle?: "solid" | "dashed" | "dotted" | "glow";
+  timerFormat24h?: boolean;
+  timerShowSeconds?: boolean;
+  timerShowDate?: boolean;
+  // timer — pomodoro cycle
+  timerPomodoroEnabled?: boolean;
+  timerPomodoroWorkSecs?: number;
+  timerPomodoroBreakSecs?: number;
+  timerPomodoroLongBreakSecs?: number;
+  timerPomodoroCyclesBeforeLongBreak?: number;
+  timerCollabEnabled?: boolean;
+  timerProgressStyle?: "none" | "bar" | "thick-bar" | "ring" | "bg-fill" | "bg-dim" | "bg-sweep";
+  timerProgressDir?: "ltr" | "rtl" | "ttb" | "btt"; // direction for bg-fill / bg-sweep
+  timerProgressColor?: string; // override accent for progress elements
+  timerVarName?: string;       // export elapsed/remaining as a named variable
+  timerElapsedSecs?: number;   // last-synced elapsed seconds (stopwatch / pomodoro)
+  timerRemainingSecs?: number; // last-synced remaining seconds (countdown mode)
+
+  // playlist
+  playlistTracks?: PlaylistTrack[];
+  playlistCurrentIndex?: number;
+  playlistTitle?: string;
+  playlistLoop?: boolean;
+  playlistAutoplay?: boolean;
+  playlistShuffle?: boolean;
+  playlistVolume?: number;        // 0–100
+  playlistShowList?: boolean;     // default true
+  playlistCompact?: boolean;      // kept for compat; prefer playlistLayout
+  playlistLayout?: "stack" | "card" | "side" | "minimal" | "artwork";
+  playlistBgColor?: string;
+  playlistBgOpacity?: number;     // 0–100, default 100
+  playlistBgBlur?: number;        // backdrop-filter blur px, default 0
+  playlistBgGradient?: boolean;
+  playlistBgGradientTo?: string;
+  playlistBgGradientAngle?: number;
+  playlistBgImage?: string;
+  playlistBgImageOpacity?: number; // 0–100, default 100
+  playlistAccentColor?: string;
+  playlistBorderRadius?: number;
+  playlistBorderWidth?: number;
+  playlistBorderColor?: string;
 
   // image
   imageUrl?: string;
   imageObjectFit?: "cover" | "contain" | "fill";
 
   // graph
-  graphType?: "bar" | "line" | "pie";
+  graphType?: "bar" | "bar-h" | "bar-stacked" | "line" | "multiline" | "area" | "area-stacked" | "pie" | "donut" | "scatter" | "radar";
   graphData?: GraphPoint[];
+  graphSeriesKeys?: string[];
   graphTitle?: string;
+  graphColors?: string[];
+  graphShowGrid?: boolean;
+  graphShowLegend?: boolean;
+  graphSmooth?: boolean;
+  // graph appearance
+  graphBgColor?: string;
+  graphBgOpacity?: number;
+  graphBgImage?: string;
+  graphBgImageSize?: string;
+  graphBgImageOpacity?: number;
+  graphFontFamily?: string;
+  graphFontSize?: number;
+  graphFontColor?: string;
+  graphBarRadius?: number;
+  graphStrokeWidth?: number;
+  graphListSourceItemId?: string;  // derives data from a list item's variable entries
 
-  // gaming
-  game?: GameId;
-  gameUsername?: string;
-  gameTag?: string;
+  // embedded chart in table item
+  tableChartEnabled?: boolean;
+  tableChartType?: string;
+  tableChartLabelColId?: string;
+  tableChartValueColIds?: string[];
+  tableChartSplitRatio?: number;   // 0–1 fraction that table occupies
+  tableChartColors?: string[];
+  tableChartShowGrid?: boolean;
+  tableChartShowLegend?: boolean;
+  tableChartShowDataLabels?: boolean;
+  tableChartSmooth?: boolean;
+  tableChartBarRadius?: number;
+  tableChartStrokeWidth?: number;
+  tableChartTitle?: string;
+  tableChartXAxisTitle?: string;
+  tableChartYAxisTitle?: string;
+  tableChartBgColor?: string;
+  tableChartFontFamily?: string;
+  tableChartFontSize?: number;
+  tableChartFontColor?: string;
+
+  // graph item linked to a table item (extracted chart)
+  graphTableSourceItemId?: string;
+  graphTableLabelColId?: string;
+  graphTableValueColIds?: string[];
+
+  // api
+  apiUrl?: string;
+  apiMethod?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  apiHeaders?: string;
+  apiBody?: string;
+  apiAuthType?: "none" | "bearer" | "apikey" | "basic";
+  apiAuthHeader?: string;
+  apiAuthValue?: string;
+  apiAuthUser?: string;
+  apiResponsePath?: string;
+  apiDisplayMode?: "value" | "json" | "table";
+  apiRefreshInterval?: number;
+  apiLabel?: string;
+  apiVarName?: string;    // export the resolved value as this variable name
+  apiCachedValue?: number; // numeric value at apiResponsePath, updated on each successful fetch
+
+  // calendar
+  calendarEvents?: CalendarEvent[];
+  calendarFeeds?: CalendarFeed[];
+  calendarFeedEvents?: CalendarEvent[]; // cached from feeds
+  calendarView?: "month" | "week" | "agenda";
+  calendarFirstDayMonday?: boolean;
+  calendarAccentColor?: string;
+  calendarShowWeekends?: boolean;
+  calendarShowDeclined?: boolean;
+  calendarFontFamily?: string;
+  calendarFontSize?: number;
+  calendarFontColor?: string;
+  calendarBgColor?: string;
+  calendarBgOpacity?: number;
+  calendarBgImage?: string;
+  calendarBgImageSize?: string;
+  calendarBgImageOpacity?: number;
+  calendarBorderRadius?: number;
+  calendarCellBgColor?: string;
+  calendarCellBgImage?: string;
+  calendarCellBgImageSize?: string;
+  calendarCellBgImageOpacity?: number;
+  calendarWeekendBgColor?: string;
+  calendarWeekendBgImage?: string;
+  calendarWeekendBgImageSize?: string;
+  calendarWeekendBgImageOpacity?: number;
+  calendarTodayColor?: string;
+  calendarHeaderBgColor?: string;
+  calendarHeaderBgImage?: string;
+  calendarLinkedTables?: TableLink[]; // multiple table→calendar links
+  // legacy single-link fields (kept for migration)
+  calendarLinkedTableId?: string;
+  calendarLinkedDateCol?: string;
+  calendarLinkedTitleCol?: string;
+  calendarLinkedColorCol?: string;
+  calendarHeaderBgImageSize?: string;
+  calendarHeaderBgImageOpacity?: number;
+
+  // table
+  tableTitle?: string;
+  tableShowTitle?: boolean;
+  tableColumns?: TableColumn[];
+  tableRows?: TableRow[];
+  tableStriped?: boolean;
+  tableHeaderColor?: string;
+  tableFontFamily?: string;
+  tableFontSize?: number;
+  tableFontColor?: string;
+  tableHeaderFontColor?: string;
+  tableCellBgColor?: string;
+  tableStripedColor?: string;
+  tableBorderColor?: string;
+  tableBorderWidth?: number;
+  tableBorderRadius?: number;
+  tableBgColor?: string;
+  tableBgOpacity?: number;
+  tableBgImage?: string;
+  tableBgImageSize?: string;
+  tableBgImageOpacity?: number;
+  tableRowHeight?: number;
+  tableCollabEnabled?: boolean;
 
   // widget (custom HTML/CSS/JS)
   widgetCode?: string;
@@ -139,6 +432,23 @@ export interface Box {
   isExpanded: boolean;
   items: BlockItem[];
   style: BoxStyle;
+  // Deck (slideshow) container
+  isDeck?: boolean;
+  deckSlideIds?: string[];   // ordered IDs of slide boxes
+  deckFocusIndex?: number;   // which slide is center
+  // Deck appearance & behaviour
+  deckTransition?: "slide" | "fade" | "scale" | "flip";
+  deckLayout?: "centered" | "flat" | "stack";  // visual layout style
+  deckAutoPlay?: boolean;        // default true
+  deckAutoPlayMs?: number;       // default 3500
+  deckShowArrows?: boolean;      // default true
+  deckShowDots?: boolean;        // default true
+  deckShowPeek?: boolean;        // show adjacent slides (default true)
+  deckPeekScale?: number;        // adjacent slide scale  (default 0.82)
+  deckPeekOpacity?: number;      // adjacent slide opacity (default 0.5)
+  deckPeekBlur?: boolean;        // blur adjacent slides
+  // Slide membership — set when this box is owned by a deck
+  deckOwnerId?: string;
 }
 
 // ─── Board ────────────────────────────────────────────────────────────────────
@@ -159,6 +469,7 @@ export interface Board {
   backgroundOverlayOpacity?: number;
   // Board-scoped theme (applied only inside the board area, never to the document root)
   boardThemeVars?: ThemeVarMap;
+  collabEnabled?: boolean;
   boxes: Box[];
   createdAt: number;
   updatedAt: number;
@@ -168,15 +479,53 @@ export interface Board {
 
 export function resolveVars(items: BlockItem[]): Record<string, number> {
   const vars: Record<string, number> = {};
-  const varItems = items.filter((i) => i.type === "variable" && i.varName);
-  const unresolved = new Set(varItems.map((i) => i.varName!));
 
-  for (let pass = 0; pass < varItems.length + 1; pass++) {
+  // Pass 1: direct (non-formula) sources — plain list entry values + text number-mode items
+  for (const item of items) {
+    if (item.type === "list") {
+      for (const entry of item.listItems ?? []) {
+        if (entry.isVariable && entry.variableName?.trim() && !entry.variableRawValue?.trim()) {
+          vars[entry.variableName.trim()] = entry.variableValue ?? 0;
+        }
+      }
+    }
+    if (item.type === "text" && item.textMode === "number" && item.textVarName?.trim()) {
+      vars[item.textVarName.trim()] = Number(item.text ?? "0") || 0;
+    }
+    if (item.type === "timer" && item.timerVarName?.trim() && item.timerElapsedSecs !== undefined) {
+      vars[item.timerVarName.trim()] = item.timerElapsedSecs;
+      const remainKey = `${item.timerVarName.trim()}_remaining`;
+      if (item.timerRemainingSecs !== undefined) vars[remainKey] = item.timerRemainingSecs;
+    }
+    if (item.type === "api" && item.apiVarName?.trim() && item.apiCachedValue !== undefined) {
+      vars[item.apiVarName.trim()] = item.apiCachedValue;
+    }
+  }
+
+  // Pass 2+: single dependency-aware loop for everything formula-based
+  const pending: Array<{ name: string; formula: string }> = [];
+  for (const item of items) {
+    if (item.type === "list") {
+      for (const entry of item.listItems ?? []) {
+        if (entry.isVariable && entry.variableName?.trim() && entry.variableRawValue?.trim()) {
+          pending.push({ name: entry.variableName.trim(), formula: entry.variableRawValue.trim() });
+        }
+      }
+    }
+    if (item.type === "text" && item.textMode === "formula" && item.textVarName?.trim() && item.textCalcFormula) {
+      pending.push({ name: item.textVarName.trim(), formula: item.textCalcFormula });
+    }
+    if (item.type === "variable" && item.varName) {
+      pending.push({ name: item.varName, formula: item.varFormula ?? "0" });
+    }
+  }
+
+  const unresolved = new Set(pending.map((p) => p.name));
+  for (let pass = 0; pass < pending.length + 1; pass++) {
     let progress = false;
-    for (const item of varItems) {
-      const name = item.varName!;
+    for (const { name, formula } of pending) {
       if (!unresolved.has(name)) continue;
-      const result = evalVarFormula(item.varFormula ?? "0", vars);
+      const result = evalVarFormula(formula, vars);
       if (result !== "pending") {
         vars[name] = typeof result === "number" ? result : NaN;
         unresolved.delete(name);
@@ -284,6 +633,7 @@ interface BoardState {
 
   // Board
   addBoard: (name?: string) => void;
+  createBoardFromTemplate: (template: import("@/lib/communityTemplates").CommunityBoard) => void;
   removeBoard: (id: string) => void;
   setActiveBoard: (id: string) => void;
   updateBoard: (id: string, patch: Partial<Omit<Board, "id" | "boxes">>) => void;
@@ -298,6 +648,17 @@ interface BoardState {
   resizeBox: (boardId: string, boxId: string, width: number, height: number) => void;
   updateBoxStyle: (boardId: string, boxId: string, style: Partial<BoxStyle>) => void;
   bringToFront: (boardId: string, boxId: string) => void;
+  sendToBack: (boardId: string, boxId: string) => void;
+  duplicateBox: (boardId: string, boxId: string) => void;
+  copiedBox: Box | null;
+  copyBox: (boardId: string, boxId: string) => void;
+  pasteBox: (boardId: string, x: number, y: number) => void;
+  // Deck actions
+  createDeck: (boardId: string, draggedBoxId: string, targetBoxId: string) => void;
+  addToDeck: (boardId: string, deckId: string, boxId: string) => void;
+  setDeckFocus: (boardId: string, deckId: string, index: number) => void;
+  ejectSlide: (boardId: string, deckId: string, slideIndex: number) => void;
+  disbandDeck: (boardId: string, deckId: string) => void;
 
   // Items inside blocks
   addItem: (boardId: string, boxId: string, item: Omit<BlockItem, "id">) => void;
@@ -308,6 +669,10 @@ interface BoardState {
   toggleItemInCollapsed: (boardId: string, boxId: string, itemId: string) => void;
   moveExpandedItem: (boardId: string, boxId: string, itemId: string, x: number, y: number) => void;
   resizeExpandedItem: (boardId: string, boxId: string, itemId: string, w: number, h: number) => void;
+  duplicateItem: (boardId: string, boxId: string, itemId: string) => void;
+  resetItemLayout: (boardId: string, boxId: string, itemId: string) => void;
+  moveCollapsedItem: (boardId: string, boxId: string, itemId: string, x: number, y: number) => void;
+  resizeCollapsedItem: (boardId: string, boxId: string, itemId: string, w: number, h: number) => void;
 
   // Selection & expand
   selectBox: (id: string | null) => void;
@@ -332,6 +697,10 @@ interface BoardState {
   userFonts: UserFont[];
   addUserFont: (font: UserFont) => void;
   removeUserFont: (name: string) => void;
+
+  // Board persistence
+  persistBoards: () => void;
+  hydrateBoards: () => void;
 }
 
 export interface UserFont {
@@ -350,6 +719,7 @@ export const useBoardStore = create<BoardState>()(
     selectedBoxId: null,
     expandedBoxId: null,
     draggingBlockId: null,
+    copiedBox: null,
     showGrid: true,
     showRuler: true,
     zoom: 1,
@@ -364,6 +734,36 @@ export const useBoardStore = create<BoardState>()(
         const b = makeDefaultBoard(name);
         s.boards.push(b);
         s.activeBoardId = b.id;
+      }),
+
+    createBoardFromTemplate: (template) =>
+      set((s) => {
+        const boardId = nanoid();
+        const board: Board = {
+          ...makeDefaultBoard(template.name),
+          id: boardId,
+          backgroundColor: template.boardData.backgroundColor ?? "#1a1b1e",
+          boxes: template.boardData.boxes.map((tBox, i) => ({
+            id: nanoid(),
+            boardId,
+            x: tBox.x,
+            y: tBox.y,
+            width: tBox.width,
+            height: tBox.height,
+            zIndex: i + 1,
+            locked: false,
+            title: tBox.title,
+            isExpanded: false,
+            style: { ...DEFAULT_BOX_STYLE, ...(tBox.style ?? {}) },
+            items: tBox.items.map((item) => ({
+              ...item,
+              id: nanoid(),
+              showInCollapsed: false,
+            })),
+          })),
+        };
+        s.boards.push(board);
+        s.activeBoardId = boardId;
       }),
 
     removeBoard: (id) =>
@@ -455,6 +855,147 @@ export const useBoardStore = create<BoardState>()(
         if (box) box.zIndex = maxZ + 1;
       }),
 
+    sendToBack: (boardId, boxId) =>
+      set((s) => {
+        const board = s.boards.find((b) => b.id === boardId);
+        if (!board) return;
+        const minZ = board.boxes.reduce((m, b) => Math.min(m, b.zIndex), Infinity);
+        const box = board.boxes.find((b) => b.id === boxId);
+        if (box) box.zIndex = minZ > 0 ? minZ - 1 : 0;
+      }),
+
+    duplicateBox: (boardId, boxId) =>
+      set((s) => {
+        const board = s.boards.find((b) => b.id === boardId);
+        if (!board) return;
+        const box = board.boxes.find((b) => b.id === boxId);
+        if (!box) return;
+        const maxZ = board.boxes.reduce((m, b) => Math.max(m, b.zIndex), 0);
+        const clone: Box = JSON.parse(JSON.stringify(box));
+        clone.id = nanoid();
+        clone.x = box.x + 24;
+        clone.y = box.y + 24;
+        clone.zIndex = maxZ + 1;
+        clone.title = box.title ? box.title + " (copy)" : "";
+        clone.items = clone.items.map((item) => ({ ...item, id: nanoid() }));
+        board.boxes.push(clone);
+        s.selectedBoxId = clone.id;
+      }),
+
+    copyBox: (boardId, boxId) =>
+      set((s) => {
+        const box = findBox(s.boards, boardId, boxId);
+        if (box) s.copiedBox = JSON.parse(JSON.stringify(box));
+      }),
+
+    pasteBox: (boardId, x, y) =>
+      set((s) => {
+        if (!s.copiedBox) return;
+        const board = s.boards.find((b) => b.id === boardId);
+        if (!board) return;
+        const maxZ = board.boxes.reduce((m, b) => Math.max(m, b.zIndex), 0);
+        const clone: Box = JSON.parse(JSON.stringify(s.copiedBox));
+        clone.id = nanoid();
+        clone.x = x;
+        clone.y = y;
+        clone.zIndex = maxZ + 1;
+        clone.title = clone.title ? clone.title + " (copy)" : "";
+        clone.items = clone.items.map((item) => ({ ...item, id: nanoid() }));
+        board.boxes.push(clone);
+        s.selectedBoxId = clone.id;
+      }),
+
+    createDeck: (boardId, draggedBoxId, targetBoxId) =>
+      set((s) => {
+        const board = s.boards.find((b) => b.id === boardId);
+        if (!board) return;
+        const dragged = board.boxes.find((b) => b.id === draggedBoxId);
+        const target = board.boxes.find((b) => b.id === targetBoxId);
+        if (!dragged || !target) return;
+        const deckId = nanoid();
+        const maxZ = board.boxes.reduce((m, b) => Math.max(m, b.zIndex), 0);
+        const w = Math.max(dragged.width, target.width, 320);
+        const h = Math.max(dragged.height, target.height, 220);
+        // Mark both boxes as deck-owned
+        dragged.deckOwnerId = deckId;
+        target.deckOwnerId = deckId;
+        // Insert deck container at target's position
+        board.boxes.push({
+          id: deckId, boardId,
+          x: target.x, y: target.y,
+          width: w, height: h,
+          zIndex: maxZ + 1,
+          locked: false,
+          title: "",
+          isExpanded: false,
+          items: [],
+          style: { ...DEFAULT_BOX_STYLE },
+          isDeck: true,
+          deckSlideIds: [targetBoxId, draggedBoxId],
+          deckFocusIndex: 0,
+        });
+      }),
+
+    addToDeck: (boardId, deckId, boxId) =>
+      set((s) => {
+        const board = s.boards.find((b) => b.id === boardId);
+        if (!board) return;
+        const deck = board.boxes.find((b) => b.id === deckId);
+        const box = board.boxes.find((b) => b.id === boxId);
+        if (!deck || !box || !deck.isDeck) return;
+        box.deckOwnerId = deckId;
+        deck.deckSlideIds = [...(deck.deckSlideIds ?? []), boxId];
+        deck.deckFocusIndex = (deck.deckSlideIds.length) - 1;
+      }),
+
+    setDeckFocus: (boardId, deckId, index) =>
+      set((s) => {
+        const deck = findBox(s.boards, boardId, deckId);
+        if (deck?.isDeck) deck.deckFocusIndex = index;
+      }),
+
+    ejectSlide: (boardId, deckId, slideIndex) =>
+      set((s) => {
+        const board = s.boards.find((b) => b.id === boardId);
+        if (!board) return;
+        const deck = board.boxes.find((b) => b.id === deckId);
+        if (!deck?.isDeck || !deck.deckSlideIds) return;
+        const slideId = deck.deckSlideIds[slideIndex];
+        const slide = board.boxes.find((b) => b.id === slideId);
+        if (slide) {
+          slide.deckOwnerId = undefined;
+          slide.x = deck.x + slideIndex * 40;
+          slide.y = deck.y + 40;
+        }
+        deck.deckSlideIds = deck.deckSlideIds.filter((_, i) => i !== slideIndex);
+        deck.deckFocusIndex = Math.min(deck.deckFocusIndex ?? 0, Math.max(0, deck.deckSlideIds.length - 1));
+        // If only 0 or 1 slides left, disband
+        if (deck.deckSlideIds.length <= 1) {
+          if (deck.deckSlideIds.length === 1) {
+            const lastSlide = board.boxes.find((b) => b.id === deck.deckSlideIds![0]);
+            if (lastSlide) { lastSlide.deckOwnerId = undefined; lastSlide.x = deck.x; lastSlide.y = deck.y; }
+          }
+          board.boxes = board.boxes.filter((b) => b.id !== deckId);
+          if (s.selectedBoxId === deckId) s.selectedBoxId = null;
+          if (s.expandedBoxId === deckId) s.expandedBoxId = null;
+        }
+      }),
+
+    disbandDeck: (boardId, deckId) =>
+      set((s) => {
+        const board = s.boards.find((b) => b.id === boardId);
+        if (!board) return;
+        const deck = board.boxes.find((b) => b.id === deckId);
+        if (!deck?.isDeck) return;
+        (deck.deckSlideIds ?? []).forEach((sid, i) => {
+          const slide = board.boxes.find((b) => b.id === sid);
+          if (slide) { slide.deckOwnerId = undefined; slide.x = deck.x + i * 40; slide.y = deck.y + 40; }
+        });
+        board.boxes = board.boxes.filter((b) => b.id !== deckId);
+        if (s.selectedBoxId === deckId) s.selectedBoxId = null;
+        if (s.expandedBoxId === deckId) s.expandedBoxId = null;
+      }),
+
     addItem: (boardId, boxId, item) =>
       set((s) => {
         const box = findBox(s.boards, boardId, boxId);
@@ -507,6 +1048,37 @@ export const useBoardStore = create<BoardState>()(
       set((s) => {
         const item = findBox(s.boards, boardId, boxId)?.items.find((i) => i.id === itemId);
         if (item) { item.expandedW = w; item.expandedH = h; }
+      }),
+
+    duplicateItem: (boardId, boxId, itemId) =>
+      set((s) => {
+        const box = findBox(s.boards, boardId, boxId);
+        if (!box) return;
+        const idx = box.items.findIndex((i) => i.id === itemId);
+        if (idx < 0) return;
+        const clone: BlockItem = JSON.parse(JSON.stringify(box.items[idx]));
+        clone.id = nanoid();
+        if (clone.expandedX !== undefined) clone.expandedX += 24;
+        if (clone.expandedY !== undefined) clone.expandedY += 24;
+        box.items.splice(idx + 1, 0, clone);
+      }),
+
+    resetItemLayout: (boardId, boxId, itemId) =>
+      set((s) => {
+        const item = findBox(s.boards, boardId, boxId)?.items.find((i) => i.id === itemId);
+        if (item) { item.expandedX = undefined; item.expandedY = undefined; item.expandedW = undefined; item.expandedH = undefined; }
+      }),
+
+    moveCollapsedItem: (boardId, boxId, itemId, x, y) =>
+      set((s) => {
+        const item = findBox(s.boards, boardId, boxId)?.items.find((i) => i.id === itemId);
+        if (item) { item.collapsedX = x; item.collapsedY = y; }
+      }),
+
+    resizeCollapsedItem: (boardId, boxId, itemId, w, h) =>
+      set((s) => {
+        const item = findBox(s.boards, boardId, boxId)?.items.find((i) => i.id === itemId);
+        if (item) { item.collapsedW = w; item.collapsedH = h; }
       }),
 
     selectBox: (id) => set((s) => { s.selectedBoxId = id; }),
@@ -569,6 +1141,23 @@ export const useBoardStore = create<BoardState>()(
       if (!s.userFonts.find((f) => f.name === font.name)) s.userFonts.push(font);
     }),
     removeUserFont: (name) => set((s) => { s.userFonts = s.userFonts.filter((f) => f.name !== name); }),
+
+    persistBoards: () => {
+      try {
+        const { boards, activeBoardId } = get();
+        localStorage.setItem("plancraft-boards-v1", JSON.stringify({ boards, activeBoardId }));
+      } catch { /* quota exceeded — ignore */ }
+    },
+
+    hydrateBoards: () => {
+      try {
+        const raw = localStorage.getItem("plancraft-boards-v1");
+        if (!raw) return;
+        const { boards, activeBoardId } = JSON.parse(raw) as { boards: Board[]; activeBoardId: string };
+        if (!Array.isArray(boards) || boards.length === 0) return;
+        set((s) => { s.boards = boards; s.activeBoardId = activeBoardId; });
+      } catch { /* corrupt data — ignore */ }
+    },
   }))
 );
 
