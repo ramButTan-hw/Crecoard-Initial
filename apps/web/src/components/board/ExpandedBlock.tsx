@@ -8,7 +8,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   X, Pin, Grid3X3, Upload, AlignLeft, AlignCenter, AlignRight, Trash2,
-  CopyPlus, Settings2, ArrowUp, ArrowDown, RefreshCw, LayoutGrid, Minus, Plus,
+  CopyPlus, ArrowUp, ArrowDown, RefreshCw, LayoutGrid, Minus, Plus,
 } from "lucide-react";
 import {
   useBoardStore, useActiveBoard, resolveVars,
@@ -63,7 +63,7 @@ function ItemCard({
   item, boardId, boxId, vars, isFinished, layout,
   zoom,
   onDelete, onTogglePin, isSelected, onSelect,
-  onDuplicate, onMoveUp, onMoveDown, onOpenSettings, onResetLayout,
+  onDuplicate, onMoveUp, onMoveDown, onResetLayout,
 }: {
   item: BlockItem;
   boardId: string;
@@ -79,7 +79,6 @@ function ItemCard({
   onDuplicate: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
-  onOpenSettings: () => void;
   onResetLayout: () => void;
 }) {
   const { resizeExpandedItem } = useBoardStore();
@@ -216,11 +215,6 @@ function ItemCard({
           y={ctxMenu.y}
           onClose={() => setCtxMenu(null)}
           items={[
-            {
-              label: "Settings",
-              icon: <Settings2 size={14} />,
-              onClick: onOpenSettings,
-            },
             {
               label: item.showInCollapsed ? "Unpin from summary" : "Pin to summary",
               icon: <Pin size={14} />,
@@ -495,7 +489,6 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                       onDuplicate={() => duplicateItem(activeBoardId, boxId, item.id)}
                       onMoveUp={() => moveItemUp(activeBoardId, boxId, item.id)}
                       onMoveDown={() => moveItemDown(activeBoardId, boxId, item.id)}
-                      onOpenSettings={() => { setSelectedItemId(item.id); setRightTab("item"); }}
                       onResetLayout={() => resetItemLayout(activeBoardId, boxId, item.id)}
                     />
                   );
