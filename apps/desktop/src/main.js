@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, Menu } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain } = require("electron");
 const path = require("path");
 const isDev = !app.isPackaged;
 
@@ -13,7 +13,8 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    titleBarStyle: "hiddenInset",
+    frame: false,
+    autoHideMenuBar: true,
     backgroundColor: "#1a1b1e",
     icon: path.join(__dirname, "../assets/icon.png"),
     webPreferences: {
@@ -25,6 +26,7 @@ function createWindow() {
   });
 
   mainWindow.loadURL(isDev ? DEV_URL : PROD_URL);
+  mainWindow.setMenuBarVisibility(false);
 
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
@@ -40,46 +42,35 @@ function createWindow() {
   mainWindow.on("closed", () => { mainWindow = null; });
 }
 
+ipcMain.handle("window-minimize", () => {
+  const win = BrowserWindow.getFocusedWindow();
+  if (win) win.minimize();
+});
+
+ipcMain.handle("window-maximize-toggle", () => {
+  const win = BrowserWindow.getFocusedWindow();
+  if (!win) return false;
+  if (win.isMaximized()) {
+    win.unmaximize();
+    return false;
+  }
+  win.maximize();
+  return true;
+});
+
+ipcMain.handle("window-is-maximized", () => {
+  const win = BrowserWindow.getFocusedWindow();
+  return !!win?.isMaximized();
+});
+
+ipcMain.handle("window-close", () => {
+  const win = BrowserWindow.getFocusedWindow();
+  if (win) win.close();
+});
+
 app.whenReady().then(() => {
   createWindow();
-  // Build a minimal menu
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      {
-        label: "PlanCraft",
-        submenu: [
-          { role: "about" },
-          { type: "separator" },
-          { role: "quit" },
-        ],
-      },
-      {
-        label: "Edit",
-        submenu: [
-          { role: "undo" },
-          { role: "redo" },
-          { type: "separator" },
-          { role: "cut" },
-          { role: "copy" },
-          { role: "paste" },
-          { role: "selectAll" },
-        ],
-      },
-      {
-        label: "View",
-        submenu: [
-          { role: "reload" },
-          { role: "toggleDevTools" },
-          { type: "separator" },
-          { role: "resetZoom" },
-          { role: "zoomIn" },
-          { role: "zoomOut" },
-          { type: "separator" },
-          { role: "togglefullscreen" },
-        ],
-      },
-    ])
-  );
+  Menu.setApplicationMenu(null);
 });
 
 app.on("window-all-closed", () => {

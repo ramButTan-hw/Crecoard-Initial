@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import {
-  FileText, List, Calculator, Video, Timer,
+  FileText, List, Video, Timer,
   BarChart2, Plug, CalendarDays, Table2, ChevronDown, ChevronRight,
-  Trash2, Code2, Music,
+  Trash2, Code2, Music, Kanban, MessageSquare, FolderOpen,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 import { BlockItem, ItemType, DEFAULT_BOX_STYLE, useBoardStore, useActiveBoard } from "@/store/boardStore";
+import { useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
 import { DEFAULT_WIDGET_CODE } from "@/lib/defaultWidgetCode";
 import { nanoid } from "nanoid";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ export const ITEM_DEFINITIONS: {
   label: string;
   icon: React.ReactNode;
   description: string;
+  serverOnly?: boolean;
   defaultItem: () => Omit<BlockItem, "id" | "showInCollapsed">;
 }[] = [
   {
@@ -34,13 +36,6 @@ export const ITEM_DEFINITIONS: {
     icon: <List size={15} />,
     description: "Checklist / to-do",
     defaultItem: () => ({ type: "list", listItems: [{ id: nanoid(), text: "", checked: false }], listFontAutoScale: true }),
-  },
-  {
-    type: "variable",
-    label: "Variable",
-    icon: <Calculator size={15} />,
-    description: "Named value or formula using {refs}",
-    defaultItem: () => ({ type: "variable", varName: "", varFormula: "0" }),
   },
   {
     type: "embed",
@@ -113,6 +108,42 @@ export const ITEM_DEFINITIONS: {
     description: "Music queue — YouTube, Spotify, SoundCloud & more",
     defaultItem: () => ({ type: "playlist", playlistTracks: [], playlistCurrentIndex: 0, playlistLoop: true }),
   },
+  {
+    type: "kanban",
+    label: "Kanban",
+    icon: <Kanban size={15} />,
+    description: "Drag-and-drop card board",
+    defaultItem: () => ({
+      type: "kanban",
+      kanbanColumns: [
+        { id: "col-todo",       title: "To Do",       color: "#5865f2" },
+        { id: "col-inprogress", title: "In Progress",  color: "#f2994a" },
+        { id: "col-done",       title: "Done",         color: "#48cfa6" },
+      ],
+      kanbanCards: [
+        { id: nanoid(), columnId: "col-todo",       text: "Plan the week",   order: 0 },
+        { id: nanoid(), columnId: "col-todo",       text: "Research topic",  order: 1 },
+        { id: nanoid(), columnId: "col-inprogress", text: "Write outline",   order: 0 },
+        { id: nanoid(), columnId: "col-done",       text: "Brainstorm ideas", order: 0 },
+      ],
+    }),
+  },
+  {
+    type: "chat",
+    label: "Chat Channel",
+    icon: <MessageSquare size={15} />,
+    description: "Discord-style chat block",
+    serverOnly: true,
+    defaultItem: () => ({ type: "chat", chatChannelName: "general", chatMessages: [] }),
+  },
+  {
+    type: "filebank",
+    label: "File Bank",
+    icon: <FolderOpen size={15} />,
+    description: "Shared file storage block",
+    serverOnly: true,
+    defaultItem: () => ({ type: "filebank", fileBankTitle: "Files", fileBankFiles: [] }),
+  },
 ];
 
 // ─── Draggable palette item ───────────────────────────────────────────────────
@@ -133,7 +164,7 @@ function DraggableItem({ def, selectedBoxId }: { def: (typeof ITEM_DEFINITIONS)[
         isDragging ? "opacity-40" : "text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]",
         selectedBoxId && "text-[var(--accent)] hover:bg-[var(--accent)]/10"
       )}
-      title={selectedBoxId ? "Drop onto a block or drag to canvas" : "Drag onto a block"}
+      title="Drag onto a block or to empty canvas to place directly"
     >
       <span className={cn("flex-shrink-0", selectedBoxId ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>{def.icon}</span>
       <div className="flex flex-col min-w-0">
@@ -148,10 +179,14 @@ function DraggableItem({ def, selectedBoxId }: { def: (typeof ITEM_DEFINITIONS)[
 
 export function ItemPalette() {
   const { activeBoardId, removeBox } = useBoardStore();
-  const board = useActiveBoard();
+  const personalBoard = useActiveBoard();
+  const serverBoard = useServerBoardData();
+  const board = serverBoard ?? personalBoard;
   const selectedBoxId = useBoardStore((s) => s.selectedBoxId);
   const hasAppBg = useBoardStore((s) => !!s.appBg.image);
   const [open, setOpen] = useState<Record<string, boolean>>({ items: true });
+  const { serverId } = useServerBoard();
+  const visibleDefs = ITEM_DEFINITIONS.filter(d => !d.serverOnly || serverId !== null);
 
   if (board?.isFinished) return null;
 
@@ -185,9 +220,9 @@ export function ItemPalette() {
         {open.items && (
           <div className="pb-2">
             <p className="px-3 pb-1 text-[10px] text-[var(--text-muted)]">
-              {selectedBoxId ? "Drag onto a block" : "Drag onto any block · right-click canvas to add blocks"}
+              {selectedBoxId ? "Drag onto a block or to empty canvas" : "Drag to canvas · right-click canvas to add"}
             </p>
-            {ITEM_DEFINITIONS.map((def) => (
+            {visibleDefs.map((def) => (
               <DraggableItem key={def.type} def={def} selectedBoxId={selectedBoxId} />
             ))}
           </div>

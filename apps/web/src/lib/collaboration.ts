@@ -1,11 +1,17 @@
 /**
- * Collaboration layer — real-time room presence, timer sync, and shared logs.
+ * Collaboration layer — real-time room presence, cursor sync, and board op broadcasting.
  *
- * All functions are Supabase-ready stubs. The UI calls only these functions.
- * Replace each stub body with the real Supabase Realtime call shown in the
- * TODO comment when the backend is connected.
+ * Uses Supabase Realtime:
+ *   - Broadcast channel  → cursors + board mutations (ephemeral, no DB write)
+ *   - Presence tracking  → who is in the room (auto-cleaned on disconnect)
+ *
+ * All functions accept a RealtimeChannel object returned by joinRoom — never
+ * call supabase.channel(name) twice for the same name or you'll get duplicate
+ * subscriptions on every render.
  */
 
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import { supabase } from "./supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,129 +22,6 @@ export interface CollabPresence {
   color: string;
   joinedAt: string; // ISO 8601
 }
-
-export interface TimerSyncState {
-  running: boolean;
-  remaining: number;   // seconds remaining (countdown mode)
-  elapsed: number;     // seconds elapsed (stopwatch mode)
-  phase: "work" | "break" | "long-break";
-  cycleCount: number;
-  /** performance.now() snapshot at broadcast time — used for drift correction */
-  sentAt: number;
-}
-
-/** A row change broadcast from one collaborator to others. */
-export interface CollabTableRow {
-  itemId: string;
-  boardId: string;
-  rowId: string;
-  cells: Record<string, string | boolean>;
-  deleted?: boolean;
-}
-
-// ─── Room management ──────────────────────────────────────────────────────────
-
-/**
- * Join a collaboration room for a board.
- *
- * TODO (Supabase Realtime):
- *   const channel = supabase.channel(`room:${boardId}`, {
- *     config: { presence: { key: userId } },
- *   });
- *   channel.on('presence', { event: 'join' }, ({ newPresences }) => { ... });
- *   channel.on('presence', { event: 'leave' }, ({ leftPresences }) => { ... });
- *   await channel.subscribe(async (status) => {
- *     if (status === 'SUBSCRIBED') {
- *       await channel.track({ userId, displayName, color, joinedAt: new Date().toISOString() });
- *     }
- *   });
- *   return { boardId, channelName: `room:${boardId}` };
- */
-export async function joinRoom(
-  boardId: string
-): Promise<{ boardId: string; channelName: string }> {
-  void boardId;
-  return { boardId, channelName: `room:${boardId}` };
-}
-
-/**
- * Leave a collaboration room and untrack presence.
- *
- * TODO (Supabase Realtime):
- *   const channel = supabase.channel(channelName);
- *   await channel.untrack();
- *   await supabase.removeChannel(channel);
- */
-export async function leaveRoom(channelName: string): Promise<void> {
-  void channelName;
-}
-
-/**
- * Subscribe to who is currently in the session.
- *
- * TODO (Supabase Realtime):
- *   const channel = supabase.channel(channelName);
- *   channel.on('presence', { event: 'sync' }, () => {
- *     const raw = channel.presenceState<CollabPresence>();
- *     cb(Object.values(raw).flat());
- *   }).subscribe();
- *   return () => supabase.removeChannel(channel);
- */
-export function subscribeToPresence(
-  channelName: string,
-  cb: (members: CollabPresence[]) => void
-): () => void {
-  void channelName; void cb;
-  return () => {};
-}
-
-// ─── Timer sync ───────────────────────────────────────────────────────────────
-
-/**
- * Broadcast the current timer state to everyone in the room.
- *
- * TODO (Supabase Realtime):
- *   await supabase.channel(channelName).send({
- *     type: 'broadcast',
- *     event: `timer:${itemId}`,
- *     payload: { ...state, sentAt: performance.now() },
- *   });
- */
-export async function broadcastTimerState(
-  channelName: string,
-  itemId: string,
-  state: TimerSyncState
-): Promise<void> {
-  void channelName; void itemId; void state;
-}
-
-/**
- * Subscribe to timer sync events from other members.
- *
- * TODO (Supabase Realtime):
- *   const channel = supabase.channel(channelName);
- *   channel.on('broadcast', { event: `timer:${itemId}` }, ({ payload }) => {
- *     // drift correction
- *     const driftSecs = (performance.now() - payload.sentAt) / 1000;
- *     const corrected = {
- *       ...payload,
- *       remaining: Math.max(0, payload.remaining - (payload.running ? driftSecs : 0)),
- *       elapsed: payload.elapsed + (payload.running ? driftSecs : 0),
- *     };
- *     cb(corrected);
- *   }).subscribe();
- *   return () => supabase.removeChannel(channel);
- */
-export function subscribeToTimerSync(
-  channelName: string,
-  itemId: string,
-  cb: (state: TimerSyncState) => void
-): () => void {
-  void channelName; void itemId; void cb;
-  return () => {};
-}
-
-// ─── Cursor presence ──────────────────────────────────────────────────────────
 
 export interface CursorState {
   userId: string;
@@ -155,6 +38,34 @@ export interface SelfIdentity {
   color: string;
 }
 
+/** A board-level mutation broadcast from one collaborator to others. */
+export interface BoardOp {
+  op: string;
+  senderId: string;
+  boardId: string;
+  [key: string]: unknown;
+}
+
+export interface TimerSyncState {
+  running: boolean;
+  remaining: number;
+  elapsed: number;
+  phase: "work" | "break" | "long-break";
+  cycleCount: number;
+  /** performance.now() snapshot at broadcast time — used for drift correction */
+  sentAt: number;
+}
+
+export interface CollabTableRow {
+  itemId: string;
+  boardId: string;
+  rowId: string;
+  cells: Record<string, string | boolean>;
+  deleted?: boolean;
+}
+
+// ─── Self-identity ────────────────────────────────────────────────────────────
+
 const COLLAB_COLORS = [
   "#5865f2", "#eb459e", "#57f287", "#fee75c",
   "#ed4245", "#00b0f4", "#faa61a", "#9c84ef",
@@ -164,7 +75,8 @@ export function getSelfIdentity(): SelfIdentity {
   if (typeof window === "undefined") return { userId: "ssr", displayName: "You", color: COLLAB_COLORS[0] };
   const stored = localStorage.getItem("plancraft-user-identity");
   if (stored) { try { return JSON.parse(stored) as SelfIdentity; } catch {} }
-  const userId = Math.random().toString(36).slice(2, 10);
+  // Use crypto.randomUUID() for a proper UUID — avoids collision on concurrent tabs
+  const userId = crypto.randomUUID();
   const color = COLLAB_COLORS[Math.floor(Math.random() * COLLAB_COLORS.length)];
   const identity: SelfIdentity = { userId, displayName: "Anonymous", color };
   localStorage.setItem("plancraft-user-identity", JSON.stringify(identity));
@@ -177,77 +89,206 @@ export function updateSelfIdentity(patch: Partial<Omit<SelfIdentity, "userId">>)
   localStorage.setItem("plancraft-user-identity", JSON.stringify({ ...identity, ...patch }));
 }
 
+// ─── Room management ──────────────────────────────────────────────────────────
+
+/**
+ * Join a collaboration room for a board.
+ *
+ * Creates a single Supabase Realtime channel, subscribes with presence tracking,
+ * and returns the channel object. All other collab functions accept this channel
+ * object — never call supabase.channel() again for the same board.
+ */
+export async function joinRoom(
+  boardId: string
+): Promise<{ boardId: string; channel: RealtimeChannel }> {
+  const { userId, displayName, color } = getSelfIdentity();
+
+  const channel = supabase.channel(`room:${boardId}`, {
+    config: { presence: { key: userId } },
+  });
+
+  await new Promise<void>((resolve) => {
+    // Presence tracking requires SUBSCRIBED status before track() can be called
+    channel.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        try {
+          await channel.track({
+            userId,
+            displayName,
+            color,
+            joinedAt: new Date().toISOString(),
+          } satisfies CollabPresence);
+        } catch {
+          // Track failure is non-fatal — channel is still usable for broadcasts
+        }
+        resolve();
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        // Resolve anyway so the UI never hangs offline
+        resolve();
+      }
+    });
+    // Failsafe: resolve after 6 seconds even if Supabase never responds
+    setTimeout(resolve, 6_000);
+  });
+
+  return { boardId, channel };
+}
+
+/**
+ * Leave a collaboration room — untracks presence and removes the channel.
+ */
+export async function leaveRoom(channel: RealtimeChannel): Promise<void> {
+  try {
+    await channel.untrack();
+  } catch { /* ignore — channel may already be closed */ }
+  await supabase.removeChannel(channel);
+}
+
+// ─── Presence ─────────────────────────────────────────────────────────────────
+
+/**
+ * Subscribe to who is currently in the room.
+ * Fires immediately with the current presence state, then on every sync event.
+ */
+export function subscribeToPresence(
+  channel: RealtimeChannel,
+  cb: (members: CollabPresence[]) => void
+): () => void {
+  const fireSync = () => {
+    const raw = channel.presenceState<CollabPresence>();
+    cb(Object.values(raw).flat());
+  };
+
+  channel.on("presence", { event: "sync" }, fireSync);
+  // Fire immediately in case the sync event already fired before this handler registered
+  fireSync();
+
+  return () => {}; // channel is torn down entirely by leaveRoom
+}
+
+// ─── Cursors ──────────────────────────────────────────────────────────────────
+
 /**
  * Broadcast your cursor position to all room members.
- *
- * TODO (Supabase Realtime):
- *   await supabase.channel(channelName).send({
- *     type: 'broadcast', event: 'cursor', payload: cursor,
- *   });
  */
-export async function broadcastCursor(channelName: string, cursor: CursorState): Promise<void> {
-  void channelName; void cursor;
+export async function broadcastCursor(
+  channel: RealtimeChannel,
+  cursor: CursorState
+): Promise<void> {
+  await channel.send({ type: "broadcast", event: "cursor", payload: cursor });
 }
 
 /**
  * Subscribe to remote cursor moves.
- *
- * TODO (Supabase Realtime):
- *   const map = new Map<string, CursorState>();
- *   const channel = supabase.channel(channelName);
- *   channel.on('broadcast', { event: 'cursor' }, ({ payload }) => {
- *     map.set(payload.userId, payload as CursorState);
- *     cb(Array.from(map.values()));
- *   }).subscribe();
- *   return () => supabase.removeChannel(channel);
+ * Maintains a per-user map so stale cursors from the same user are replaced.
  */
 export function subscribeToCursors(
-  channelName: string,
-  cb: (cursors: CursorState[]) => void,
+  channel: RealtimeChannel,
+  cb: (cursors: CursorState[]) => void
 ): () => void {
-  void channelName; void cb;
+  const map = new Map<string, CursorState>();
+
+  channel.on(
+    "broadcast",
+    { event: "cursor" },
+    ({ payload }: { payload: CursorState }) => {
+      map.set(payload.userId, payload);
+      cb(Array.from(map.values()));
+    }
+  );
+
+  return () => {};
+}
+
+// ─── Board ops (command-sourcing) ─────────────────────────────────────────────
+
+/**
+ * Broadcast a store mutation to all peers in the room.
+ * Peers receive the op and call the same store action locally.
+ * Never broadcast ops that contain local-only state (selection, zoom, etc.).
+ */
+export async function broadcastBoardOp(
+  channel: RealtimeChannel,
+  op: BoardOp
+): Promise<void> {
+  await channel.send({ type: "broadcast", event: "board:op", payload: op });
+}
+
+/**
+ * Subscribe to board ops broadcast by other peers.
+ */
+export function subscribeToBoardOps(
+  channel: RealtimeChannel,
+  cb: (op: BoardOp) => void
+): () => void {
+  channel.on(
+    "broadcast",
+    { event: "board:op" },
+    ({ payload }: { payload: BoardOp }) => {
+      cb(payload);
+    }
+  );
+  return () => {};
+}
+
+// ─── Timer sync ───────────────────────────────────────────────────────────────
+
+export async function broadcastTimerState(
+  channel: RealtimeChannel,
+  itemId: string,
+  state: TimerSyncState
+): Promise<void> {
+  await channel.send({
+    type: "broadcast",
+    event: `timer:${itemId}`,
+    payload: { ...state, sentAt: performance.now() },
+  });
+}
+
+export function subscribeToTimerSync(
+  channel: RealtimeChannel,
+  itemId: string,
+  cb: (state: TimerSyncState) => void
+): () => void {
+  channel.on(
+    "broadcast",
+    { event: `timer:${itemId}` },
+    ({ payload }: { payload: TimerSyncState }) => {
+      const driftSecs = (performance.now() - payload.sentAt) / 1000;
+      cb({
+        ...payload,
+        remaining: Math.max(0, payload.remaining - (payload.running ? driftSecs : 0)),
+        elapsed: payload.elapsed + (payload.running ? driftSecs : 0),
+      });
+    }
+  );
   return () => {};
 }
 
 // ─── Collaborative table rows ─────────────────────────────────────────────────
 
-/**
- * Broadcast a row add/edit/delete to all room members and persist it.
- *
- * TODO (Supabase Realtime + DB):
- *   // 1. Upsert or delete in database
- *   if (row.deleted) {
- *     await supabase.from('table_rows').delete().eq('id', row.rowId).eq('item_id', row.itemId);
- *   } else {
- *     await supabase.from('table_rows').upsert({ id: row.rowId, item_id: row.itemId, cells: row.cells });
- *   }
- *   // 2. Broadcast to peers
- *   await supabase.channel(channelName).send({
- *     type: 'broadcast', event: `table:${row.itemId}`, payload: row,
- *   });
- */
 export async function broadcastTableRow(
-  channelName: string,
+  channel: RealtimeChannel,
   row: CollabTableRow
 ): Promise<void> {
-  void channelName; void row;
+  await channel.send({
+    type: "broadcast",
+    event: `table:${row.itemId}`,
+    payload: row,
+  });
 }
 
-/**
- * Subscribe to incoming table row changes from collaborators.
- *
- * TODO (Supabase Realtime):
- *   const channel = supabase.channel(channelName);
- *   channel.on('broadcast', { event: `table:${itemId}` }, ({ payload }) => {
- *     cb(payload as CollabTableRow);
- *   }).subscribe();
- *   return () => supabase.removeChannel(channel);
- */
 export function subscribeToTableRows(
-  channelName: string,
+  channel: RealtimeChannel,
   itemId: string,
   cb: (row: CollabTableRow) => void
 ): () => void {
-  void channelName; void itemId; void cb;
+  channel.on(
+    "broadcast",
+    { event: `table:${itemId}` },
+    ({ payload }: { payload: CollabTableRow }) => {
+      cb(payload);
+    }
+  );
   return () => {};
 }

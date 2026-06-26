@@ -21,6 +21,8 @@ interface ServerViewProps {
   dmUsername?: string;
   dmOnline?: boolean;
   channelName?: string;
+  showChannels?: boolean;
+  showMembers?: boolean;
 }
 
 const DEMO_CHANNELS: Record<string, { name: string; messages: Message[] }> = {
@@ -65,7 +67,15 @@ const DM_MESSAGES: Record<string, Message[]> = {
   d3: [],
 };
 
-export function ServerView({ mode, serverId, dmId, serverName, dmUsername, dmOnline, channelName = "general" }: ServerViewProps) {
+const DEMO_MEMBERS = [
+  { id: "m1", username: "alex_dev", avatar: "A", online: true, role: "Admin" },
+  { id: "m2", username: "sarah.m", avatar: "S", online: false, role: "Member" },
+  { id: "m3", username: "jordan", avatar: "J", online: true, role: "Member" },
+  { id: "m4", username: "riley_k", avatar: "R", online: true, role: "Member" },
+  { id: "m5", username: "mia.dev", avatar: "M", online: false, role: "Member" },
+];
+
+export function ServerView({ mode, serverId, dmId, serverName, dmUsername, dmOnline, channelName = "general", showChannels = true, showMembers = false }: ServerViewProps) {
   const [activeChannel, setActiveChannel] = useState(channelName);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -87,8 +97,8 @@ export function ServerView({ mode, serverId, dmId, serverName, dmUsername, dmOnl
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      {/* Channel list (servers only) */}
-      {mode === "server" && (
+      {/* Channel list (servers only, toggleable) */}
+      {mode === "server" && showChannels && (
         <div className="w-[200px] flex-shrink-0 border-r border-[var(--border)] overflow-y-auto" style={{ background: "var(--surface-raised)" }}>
           <div className="px-3 py-3 border-b border-[var(--border)]">
             <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{serverName ?? "Server"}</p>
@@ -203,7 +213,44 @@ export function ServerView({ mode, serverId, dmId, serverName, dmUsername, dmOnl
           </div>
         </div>
       </div>
+
+      {/* Members panel (servers only, toggleable) */}
+      {mode === "server" && showMembers && (
+        <div className="w-[200px] flex-shrink-0 border-l border-[var(--border)] overflow-y-auto" style={{ background: "var(--surface-raised)" }}>
+          <div className="px-3 py-3 border-b border-[var(--border)]">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              Online — {DEMO_MEMBERS.filter((m) => m.online).length}
+            </p>
+          </div>
+          <div className="p-2 flex flex-col gap-0.5">
+            {DEMO_MEMBERS.filter((m) => m.online).map((m) => (
+              <MemberRow key={m.id} member={m} />
+            ))}
+            <p className="px-2 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              Offline — {DEMO_MEMBERS.filter((m) => !m.online).length}
+            </p>
+            {DEMO_MEMBERS.filter((m) => !m.online).map((m) => (
+              <MemberRow key={m.id} member={m} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function MemberRow({ member }: { member: typeof DEMO_MEMBERS[number] }) {
+  return (
+    <button className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors text-left">
+      <span className="relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
+        {member.avatar}
+        <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--surface-raised)]", member.online ? "bg-green-500" : "bg-[var(--text-muted)]")} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium">{member.username}</p>
+        <p className="truncate text-[10px] text-[var(--text-muted)]">{member.role}</p>
+      </div>
+    </button>
   );
 }
 

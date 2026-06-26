@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useBoardStore } from "@/store/boardStore";
 import { cn } from "@/lib/utils";
@@ -8,18 +8,28 @@ import { cn } from "@/lib/utils";
 export function BoardTabs() {
   const { boards, activeBoardId, setActiveBoard, addBoard, removeBoard } = useBoardStore();
   const hasAppBg = useBoardStore((s) => !!s.appBg.image);
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => { setIsDesktop(!!window.electron); }, []);
+
+  // Only show personal boards — server boards are accessed via the server nav
+  const personalBoards = boards.filter((b) => !b.serverId);
 
   const handleAddBoard = () => {
-    const name = `Board ${boards.length + 1}`;
+    const name = `Board ${personalBoards.length + 1}`;
     addBoard(name);
   };
 
+  const noDrag = isDesktop ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined;
+
   return (
     <div
-      className="flex h-9 items-center gap-0.5 border-b border-[var(--border)] px-2 overflow-x-auto flex-shrink-0"
-      style={{ background: hasAppBg ? "transparent" : "var(--surface-raised)" }}
+      className={cn("flex h-9 items-center gap-0.5 border-b border-[var(--border)] px-2 overflow-x-auto flex-shrink-0", isDesktop && "select-none")}
+      style={{
+        background: hasAppBg ? "transparent" : "var(--surface-raised)",
+        ...(isDesktop ? { WebkitAppRegion: "drag" } as React.CSSProperties : {}),
+      }}
     >
-      {boards.map((board) => (
+      {personalBoards.map((board) => (
         <div
           key={board.id}
           className={cn(
@@ -28,6 +38,7 @@ export function BoardTabs() {
               ? "bg-[var(--surface)] text-[var(--text-primary)] border border-b-transparent border-[var(--border)]"
               : "text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
           )}
+          style={noDrag}
           onClick={() => setActiveBoard(board.id)}
         >
           {board.isPublic ? (
@@ -36,7 +47,7 @@ export function BoardTabs() {
             <span className="text-[10px] text-[var(--text-muted)]" title="Private">●</span>
           )}
           <span className="flex-1 truncate">{board.name}</span>
-          {boards.length > 1 && (
+          {personalBoards.length > 1 && (
             <button
               onClick={(e) => { e.stopPropagation(); removeBoard(board.id); }}
               className="opacity-0 group-hover:opacity-100 rounded p-0.5 hover:bg-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-opacity"
@@ -48,6 +59,7 @@ export function BoardTabs() {
       ))}
       <button
         onClick={handleAddBoard}
+        style={noDrag}
         className="ml-1 flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0"
         title="New board"
       >

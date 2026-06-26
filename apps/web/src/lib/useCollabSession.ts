@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import {
   type CollabPresence,
   type CursorState,
@@ -47,7 +48,8 @@ export function useCollabSessionSetup(boardId: string, enabled: boolean): Collab
   const [cursors, setCursors] = useState<CursorState[]>([]);
   const [self, setSelf] = useState<SelfIdentity>(FALLBACK.self);
   const [isConnected, setIsConnected] = useState(false);
-  const channelRef = useRef<string | null>(null);
+  // Store the RealtimeChannel object — not the name string — to avoid duplicate subscriptions.
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const throttleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -66,12 +68,14 @@ export function useCollabSessionSetup(boardId: string, enabled: boolean): Collab
     let unsubPresence: (() => void) | null = null;
     let unsubCursors: (() => void) | null = null;
 
-    joinRoom(boardId).then(({ channelName }) => {
-      if (!mounted) { void leaveRoom(channelName); return; }
-      channelRef.current = channelName;
+    joinRoom(boardId).then(({ channel }) => {
+      if (!mounted) { void leaveRoom(channel); return; }
+      channelRef.current = channel;
       setIsConnected(true);
-      unsubPresence = subscribeToPresence(channelName, setMembers);
-      unsubCursors = subscribeToCursors(channelName, setCursors);
+      unsubPresence = subscribeToPresence(channel, setMembers);
+      unsubCursors = subscribeToCursors(channel, setCursors);
+    }).catch(() => {
+      // Supabase not configured or connection failed — collab stays disabled
     });
 
     return () => {

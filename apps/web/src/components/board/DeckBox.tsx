@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, X, Maximize2, LayoutGrid } from "lucide-react";
-import { Box, useBoardStore, useActiveBoard, resolveVars } from "@/store/boardStore";
+import { Box, useBoardStore } from "@/store/boardStore";
+import { useCanEditBoard } from "@/contexts/ServerBoardContext";
 import { ItemRenderer } from "@/components/items/ItemRenderer";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +14,7 @@ const EJECT_THRESHOLD = 40; // px outside carousel before eject fires
 
 function SlideContent({ box, boardId }: { box: Box; boardId: string }) {
   const s = box.style;
-  const vars = resolveVars(box.items);
+  const vars = {};
   const summaryItems = box.items.filter(i => i.showInCollapsed);
 
   const wallpaperStyle: React.CSSProperties = s.wallpaperUrl
@@ -47,7 +48,8 @@ function SlideContent({ box, boardId }: { box: Box; boardId: string }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function DeckBox({ deck, boardId }: { deck: Box; boardId: string }) {
-  const board = useActiveBoard();
+  const board = useBoardStore(s => s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId]);
+  const canEditBoard = useCanEditBoard();
   const { setDeckFocus, ejectSlide, disbandDeck, setExpandedBox, selectBox, bringToFront, moveBox } = useBoardStore();
   const zoom = useBoardStore(s => s.zoom);
 
@@ -156,6 +158,7 @@ export function DeckBox({ deck, boardId }: { deck: Box; boardId: string }) {
   // Drag center slide out to eject it back to the canvas
   const handleCenterMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    if (board?.isFinished || !canEditBoard) return;
     e.stopPropagation();
     const slideId = deck.deckSlideIds?.[realFocus];
     const containerEl = containerRef.current;
@@ -311,7 +314,7 @@ export function DeckBox({ deck, boardId }: { deck: Box; boardId: string }) {
               }}
             >
               <SlideContent box={slide} boardId={boardId} />
-              {isCenter && hovered && (
+              {isCenter && hovered && !board?.isFinished && canEditBoard && (
                 <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[9px] text-white/60 pointer-events-none select-none backdrop-blur-sm">
                   drag out to release
                 </div>

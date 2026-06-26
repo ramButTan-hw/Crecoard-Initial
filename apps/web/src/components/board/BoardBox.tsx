@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import {
   ChevronDown,
   Edit3, Copy, Trash2, Lock, Unlock,
   CopyPlus, Clipboard, ArrowUpToLine, ArrowDownToLine,
-  SquareDashedMousePointer, Maximize2,
+  SquareDashedMousePointer, Maximize2, CheckSquare,
 } from "lucide-react";
-import { Box, BlockItem, useBoardStore, useActiveBoard, resolveVars } from "@/store/boardStore";
+import { Box, BlockItem, useBoardStore } from "@/store/boardStore";
+import { useCanEditBoard } from "@/contexts/ServerBoardContext";
 import { ItemRenderer } from "@/components/items/ItemRenderer";
 import { DeckBox } from "./DeckBox";
 import { ContextMenu } from "@/components/ui/ContextMenu";
@@ -24,22 +25,25 @@ function snap(v: number) { return Math.round(v / GRID) * GRID; }
 // ─── Collapsed item card (absolute-positioned, draggable + resizable) ──────────
 
 function CollapsedItemCard({
-  item, idx, boardId, boxId, boxW, padding, vars, isFinished, zoom,
+  item, idx, boardId, boxId, boxW, padding, isFinished, canEdit, zoom,
 }: {
   item: BlockItem; idx: number;
   boardId: string; boxId: string;
   boxW: number; padding: number;
-  vars: Record<string, number>; isFinished: boolean; zoom: number;
+  isFinished: boolean; canEdit: boolean; zoom: number;
 }) {
   const { moveCollapsedItem, resizeCollapsedItem } = useBoardStore();
   const [livePos, setLivePos] = useState<{ x: number; y: number } | null>(null);
   const [liveSize, setLiveSize] = useState<{ w: number; h: number } | null>(null);
+  const colItemCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => { return () => { colItemCleanupRef.current?.(); }; }, []);
 
   const defaultW = Math.max(80, boxW - padding * 2 - 8);
   const x = item.collapsedX ?? padding;
   const y = item.collapsedY ?? (padding + idx * 46);
   const w = item.collapsedW ?? defaultW;
-  const h = item.collapsedH ?? 40;
+  const h = item.collapsedH ?? (item.type === "chat" ? 64 : 40);
 
   const displayX = livePos?.x ?? x;
   const displayY = livePos?.y ?? y;
@@ -47,7 +51,7 @@ function CollapsedItemCard({
   const displayH = liveSize?.h ?? h;
 
   const handleDragStart = (e: React.PointerEvent) => {
-    if (isFinished) return;
+    if (isFinished || !canEdit) return;
     e.stopPropagation();
     e.preventDefault();
     const startX = e.clientX;
@@ -57,20 +61,25 @@ function CollapsedItemCard({
       const dy = (ev.clientY - startY) / zoom;
       setLivePos({ x: Math.max(0, x + dx), y: Math.max(0, y + dy) });
     };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      colItemCleanupRef.current = null;
+    };
     const onUp = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) / zoom;
       const dy = (ev.clientY - startY) / zoom;
       moveCollapsedItem(boardId, boxId, item.id, Math.max(0, Math.round(x + dx)), Math.max(0, Math.round(y + dy)));
       setLivePos(null);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      cleanup();
     };
+    colItemCleanupRef.current = cleanup;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   };
 
   const handleResizeStart = (e: React.PointerEvent) => {
-    if (isFinished) return;
+    if (isFinished || !canEdit) return;
     e.stopPropagation();
     e.preventDefault();
     const startX = e.clientX;
@@ -80,14 +89,19 @@ function CollapsedItemCard({
       const dy = (ev.clientY - startY) / zoom;
       setLiveSize({ w: Math.max(60, w + dx), h: Math.max(20, h + dy) });
     };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      colItemCleanupRef.current = null;
+    };
     const onUp = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) / zoom;
       const dy = (ev.clientY - startY) / zoom;
       resizeCollapsedItem(boardId, boxId, item.id, Math.max(60, Math.round(w + dx)), Math.max(20, Math.round(h + dy)));
       setLiveSize(null);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      cleanup();
     };
+    colItemCleanupRef.current = cleanup;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   };
@@ -102,10 +116,10 @@ function CollapsedItemCard({
         cursor: isFinished ? "default" : "move",
         zIndex: 1,
       }}
-      onPointerDown={!isFinished ? handleDragStart : undefined}
+      onPointerDown={!isFinished && canEdit ? handleDragStart : undefined}
     >
-      <ItemRenderer item={item} boardId={boardId} boxId={boxId} vars={vars} collapsed isFinished={isFinished} containerW={displayW} containerH={displayH} />
-      {!isFinished && (
+      <ItemRenderer item={item} boardId={boardId} boxId={boxId} vars={{}} collapsed isFinished={isFinished || !canEdit} containerW={displayW} containerH={displayH} />
+      {!isFinished && canEdit && (
         <div
           className="absolute bottom-0 right-0 w-3 h-3 opacity-0 group-hover/ci:opacity-60 transition-opacity"
           style={{
@@ -129,11 +143,13 @@ interface BoardBoxProps {
 export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
   const {
     selectBox, removeBox, updateBox, resizeBox, moveBox, bringToFront, sendToBack,
-    duplicateBox, copyBox, pasteBox, copiedBox, setExpandedBox,
+    duplicateBox, copyBox, pasteBox, copiedBox, setExpandedBox, setResizeState,
   } = useBoardStore();
   const zoom = useBoardStore(s => s.zoom);
-  const board = useActiveBoard();
-  const isFinished = board?.isFinished ?? false;
+  const isFinished = useBoardStore(s =>
+    (s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId])?.isFinished ?? false
+  );
+  const canEdit = useCanEditBoard();
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -142,7 +158,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
   // ─── Drag ───────────────────────────────────────────────────────────────────
   const { attributes, listeners, setNodeRef: setDragRef, transform } = useDraggable({
     id: box.id,
-    disabled: box.locked || isFinished,
+    disabled: box.locked || isFinished || !canEdit,
     data: { kind: "block" },
   });
 
@@ -158,6 +174,11 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
   const resizing = useRef(false);
   const resizeOrigin = useRef({ mx: 0, my: 0, x: 0, y: 0, w: 0, h: 0 });
   const [liveBox, setLiveBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => { resizeCleanupRef.current?.(); };
+  }, []);
 
   const makeResizeHandler = useCallback(
     (edges: { n?: boolean; s?: boolean; e?: boolean; w?: boolean }) =>
@@ -178,25 +199,36 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           return { x: Math.max(0, x), y: Math.max(0, y), w, h };
         };
 
-        const onMove = (ev: MouseEvent) => { if (resizing.current) setLiveBox(compute(ev)); };
+        const onMove = (ev: MouseEvent) => {
+          if (!resizing.current) return;
+          const { x, y, w, h } = compute(ev);
+          setLiveBox({ x, y, w, h });
+          setResizeState({ id: box.id, x, y, width: w, height: h });
+        };
+        const cleanup = () => {
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+          resizeCleanupRef.current = null;
+        };
         const onUp = (ev: MouseEvent) => {
           resizing.current = false;
           const { x, y, w, h } = compute(ev);
           moveBox(boardId, box.id, x, y);
           resizeBox(boardId, box.id, w, h);
           setLiveBox(null);
-          window.removeEventListener("mousemove", onMove);
-          window.removeEventListener("mouseup", onUp);
+          setResizeState(null);
+          cleanup();
         };
+        resizeCleanupRef.current = cleanup;
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
       },
-    [boardId, box.id, box.x, box.y, box.width, box.height, box.locked, isFinished, zoom, moveBox, resizeBox]
+    [boardId, box.id, box.x, box.y, box.width, box.height, box.locked, isFinished, zoom, moveBox, resizeBox, setResizeState]
   );
 
   // ─── Context menu handler ────────────────────────────────────────────────────
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    if (isFinished) return;
+    if (isFinished || !canEdit) return;
     e.preventDefault();
     e.stopPropagation();
     selectBox(box.id);
@@ -204,13 +236,18 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
     setCtxMenu({ x: e.clientX, y: e.clientY });
   }, [isFinished, selectBox, bringToFront, boardId, box.id]);
 
+  const handleCtxMenuClose = useCallback(() => setCtxMenu(null), []);
+
   const commitRename = useCallback(() => {
     if (renameInput.trim()) updateBox(boardId, box.id, { title: renameInput.trim() });
     setIsRenaming(false);
   }, [boardId, box.id, renameInput, updateBox]);
 
   // ─── Derived styles ──────────────────────────────────────────────────────────
-  const s = box.style;
+  // Merge collapsedStyle overrides on top of the base style when rendering on the canvas
+  const s: typeof box.style = box.collapsedStyle
+    ? { ...box.style, ...box.collapsedStyle }
+    : box.style;
   const displayW = liveBox?.w ?? box.width;
   const displayH = liveBox?.h ?? box.height;
   const displayX = liveBox?.x ?? box.x;
@@ -239,8 +276,12 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
   const boxShadowCSS = [glowCSS, box.isDeck ? null : shadowMap[s.shadow]].filter(Boolean).join(", ") || "none";
 
   const summaryItems = box.items.filter((i) => i.showInCollapsed);
-  const vars = resolveVars(box.items);
   const draggingBlockId = useBoardStore(s => s.draggingBlockId);
+
+  const allListEntries = box.items.filter(i => i.type === "list").flatMap(i => i.listItems ?? []);
+  const rollupTotal = allListEntries.length;
+  const rollupChecked = allListEntries.filter(e => e.checked).length;
+  const rollupPct = rollupTotal > 0 ? (rollupChecked / rollupTotal) * 100 : 0;
   const isDeckMergeTarget = isOver && !!draggingBlockId && draggingBlockId !== box.id && !box.isDeck;
 
   // ─── Block context menu items ────────────────────────────────────────────────
@@ -339,7 +380,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
             selectBox(box.id);
             bringToFront(boardId, box.id);
           }
-          if (!box.isDeck) setExpandedBox(box.id);
+          if (!box.isDeck && !isFinished) setExpandedBox(box.id);
         }}
         onContextMenu={handleContextMenu}
       >
@@ -386,6 +427,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
             onBlur={commitRename}
             onKeyDown={e => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setIsRenaming(false); }}
             onClick={e => e.stopPropagation()}
+            onPointerDown={e => e.stopPropagation()}
             className="absolute bottom-2 left-3 z-20 w-[65%] rounded bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white outline-none ring-1 ring-[var(--accent)]"
             style={{ backdropFilter: "blur(4px)" }}
           />
@@ -403,6 +445,18 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
         {box.locked && !isFinished && (
           <div className="absolute top-2 left-2 z-20 pointer-events-none">
             <Lock size={11} className="text-[var(--accent)] opacity-70" />
+          </div>
+        )}
+
+        {/* Rollup badge */}
+        {rollupTotal > 0 && (
+          <div
+            aria-hidden
+            className="absolute bottom-2 right-3 z-10 flex items-center gap-1 text-[10px] font-semibold pointer-events-none select-none"
+            style={{ color: rollupPct === 100 ? "var(--accent)" : s.fontColor, opacity: rollupPct === 100 ? 0.9 : 0.45 }}
+          >
+            <CheckSquare size={10} />
+            {rollupChecked}/{rollupTotal}
           </div>
         )}
 
@@ -435,8 +489,8 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
                     boxId={box.id}
                     boxW={displayW}
                     padding={s.padding}
-                    vars={vars}
                     isFinished={isFinished}
+                    canEdit={canEdit}
                     zoom={zoom}
                   />
                 ))}
@@ -451,8 +505,8 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           </div>
         )}
 
-        {/* 8-directional resize handles */}
-        {!isFinished && !box.locked && (<>
+        {/* 8-directional resize handles — hidden for server members */}
+        {!isFinished && !box.locked && canEdit && (<>
           <div onMouseDown={makeResizeHandler({ n: true })} onClick={e => e.stopPropagation()} style={{ position:"absolute", top:0,    left:8,   right:8,  height:6,  cursor:"n-resize",  zIndex:15 }} className="group/edge-n">
             <div className="absolute top-0 left-2 right-2 h-px bg-[var(--accent)] opacity-0 group-hover/edge-n:opacity-50 transition-opacity" />
           </div>
@@ -484,7 +538,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           x={ctxMenu.x}
           y={ctxMenu.y}
           items={blockMenuItems}
-          onClose={() => setCtxMenu(null)}
+          onClose={handleCtxMenuClose}
         />
       )}
     </>

@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Check, Plus, Trash2, ExternalLink, Play, Pause, RotateCcw,
-  Wifi, WifiOff, ImageIcon, Upload, X as XIcon, Hash,
+  ImageIcon, Upload, X as XIcon,
   Filter, Search, ArrowUpDown, ArrowUp, ArrowDown,
   Music, SkipBack, SkipForward, Repeat, Shuffle, Volume1, Volume2, VolumeX,
-  Radio, Users, Lock, LockOpen, CheckSquare, Square, Copy, FileDown,
+  Radio, Users, Lock, LockOpen, CheckSquare, Square, Copy, FileDown, CopyPlus,
+  ArrowUpToLine, ArrowDownToLine, Maximize2, Eye, EyeOff,
 } from "lucide-react";
 import { WallpaperEditor } from "@/components/ui/WallpaperEditor";
 import {
@@ -16,18 +17,30 @@ import {
   ScatterChart, Scatter, ZAxis,
   XAxis, YAxis, Tooltip, Legend, CartesianGrid, LabelList,
 } from "recharts";
-import { BlockItem, CalendarEvent, CalendarFeed, TableLink, TableColumn, TableRow, TableFilter, FilterOp, ListEntry, PlaylistTrack, GraphPoint, useBoardStore, resolveVars } from "@/store/boardStore";
+import { BlockItem, BoardLevelItem, CalendarEvent, CalendarFeed, TableLink, TableColumn, TableRow, TableFilter, FilterOp, ListEntry, PlaylistTrack, GraphPoint, KanbanCard, KanbanColumn, useBoardStore } from "@/store/boardStore";
+import {
+  DndContext, DragOverlay, PointerSensor, KeyboardSensor,
+  useSensor, useSensors, useDroppable, closestCorners,
+  type DragStartEvent, type DragEndEvent, type DragOverEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, sortableKeyboardCoordinates, useSortable,
+  verticalListSortingStrategy, arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS as DndCSS } from "@dnd-kit/utilities";
 import { useShallow } from "zustand/react/shallow";
 import { FontPicker } from "@/components/ui/FontPicker";
 import { loadGoogleFont } from "@/lib/fonts";
 import { DEFAULT_WIDGET_CODE } from "@/lib/defaultWidgetCode";
 import { nanoid } from "nanoid";
+import DOMPurify from "isomorphic-dompurify";
 import { cn } from "@/lib/utils";
+import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 
 const CHART_COLORS = ["#5865f2", "#48cfa6", "#f2994a", "#eb5757", "#9b51e0", "#2d9cdb"];
 
 // ─── Paragraph style presets (Google Docs-style) ──────────────────────────────
-const PARA_STYLES: {
+export const PARA_STYLES: {
   id: string; label: string;
   fontSize: number; bold: boolean; italic: boolean; fontFamily?: string;
 }[] = [
@@ -64,30 +77,47 @@ interface ItemRendererProps {
   containerW?: number;
   /** Card pixel height — passed to chart so ResponsiveContainer gets a real value */
   containerH?: number;
+  /** Override the default updateItem callback (used for board-level items) */
+  onUpdate?: (patch: Partial<BlockItem>) => void;
 }
 
 // ─── Main dispatcher ──────────────────────────────────────────────────────────
 
-export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished, containerW, containerH }: ItemRendererProps) {
-  const upd = (patch: Partial<BlockItem>) =>
-    useBoardStore.getState().updateItem(boardId, boxId, item.id, patch);
+export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished, containerW, containerH, onUpdate }: ItemRendererProps) {
+  const upd = onUpdate ?? ((patch: Partial<BlockItem>) =>
+    useBoardStore.getState().updateItem(boardId, boxId, item.id, patch));
 
   switch (item.type) {
-    case "text":     return <TextItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} />;
-    case "list":     return <ListItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} />;
-    case "variable": return <VariableItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} />;
+    case "text":     return <TextItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
+    case "list":     return <ListItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} boardId={boardId} boxId={boxId} />;
     case "embed":    return <EmbedItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
     case "timer":    return <TimerItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} containerH={containerH} />;
     case "image":    return <ImageItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
-    case "graph":    return <GraphItem item={item} vars={vars} collapsed={collapsed} containerW={containerW} containerH={containerH} boardId={boardId} boxId={boxId} />;
+    case "graph":    return <GraphItem item={item} collapsed={collapsed} containerW={containerW} containerH={containerH} boardId={boardId} boxId={boxId} />;
     case "api":      return <ApiItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
     case "calendar": return <CalendarItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} />;
-    case "table":    return <TableItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
+    case "table":    return <TableItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} boardId={boardId} boxId={boxId} />;
     case "divider":  return <hr className="border-[var(--border)] my-1" />;
     case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} />;
     case "playlist": return <PlaylistItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
+    case "kanban":   return <KanbanItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
+    case "chat":     return <ChatBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} />;
+    case "filebank": return <FileBankBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} />;
     default:         return null;
   }
+}
+
+// ─── Chat + File bank item renderers (thin wrappers) ─────────────────────────
+
+import { ChatBlock } from "@/components/items/ChatBlock";
+import { FileBankBlock } from "@/components/items/FileBankBlock";
+
+function ChatBlockRenderer({ item, boardId, boxId, collapsed }: { item: BlockItem; boardId: string; boxId: string; collapsed?: boolean }) {
+  return <ChatBlock item={item} boardId={boardId} boxId={boxId} expanded={!collapsed} />;
+}
+
+function FileBankBlockRenderer({ item, boardId, boxId, collapsed }: { item: BlockItem; boardId: string; boxId: string; collapsed?: boolean }) {
+  return <FileBankBlock item={item} boardId={boardId} boxId={boxId} expanded={!collapsed} />;
 }
 
 // ─── Text ─────────────────────────────────────────────────────────────────────
@@ -105,25 +135,6 @@ const TEXT_BORDER_STYLES = [
 ] as const;
 
 
-function evalTextCalcFormula(formula: string, vars: Record<string, number>): string {
-  let expr = formula;
-  const refs = [...expr.matchAll(/\{([^}]+)\}/g)];
-  for (const [full, name] of refs) {
-    const v = vars[name.trim()];
-    if (v === undefined) return `? (${name.trim()} not found)`;
-    expr = expr.replace(full, String(v));
-  }
-  try {
-    // Only allow safe math expressions
-    if (!/^[\d\s+\-*/%.(),\^]+$/.test(expr)) return expr; // plain text passthrough
-    // eslint-disable-next-line no-new-func
-    const result = Function(`"use strict"; return (${expr})`)();
-    const num = Number(result);
-    return isNaN(num) ? String(result) : String(Math.round(num * 10000) / 10000);
-  } catch {
-    return "Error";
-  }
-}
 
 // ─── Shared rich-text selection hook ──────────────────────────────────────────
 // containerRef: the element whose descendants are the editable divs.
@@ -135,22 +146,67 @@ function useRichSel(
   onHTMLChange: (el: HTMLElement) => void,
 ) {
   const savedRangeRef = useRef<Range | null>(null);
-  const [selRect, setSelRect] = useState<{ cx: number; top: number } | null>(null);
-  const [selState, setSelState] = useState({ bold: false, italic: false, underline: false });
+  const [selState, setSelState] = useState<{ bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; fontSize?: number; fontFamily?: string }>({ bold: false, italic: false, underline: false, strikethrough: false });
+  const [showToolbar, setShowToolbar] = useState(false);
+  const [toolbarPos, setToolbarPos] = useState<{ cx: number; top: number } | null>(null);
+
+  // Show toolbar whenever any child contenteditable is focused
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onFocusIn = () => {
+      const rect = el.getBoundingClientRect();
+      setToolbarPos({ cx: rect.left + rect.width / 2, top: rect.top });
+      setShowToolbar(true);
+    };
+    el.addEventListener("focusin", onFocusIn);
+    return () => el.removeEventListener("focusin", onFocusIn);
+  }, [containerRef]);
+
+  // Hide toolbar when clicking outside container AND outside toolbar
+  useEffect(() => {
+    if (!showToolbar) return;
+    const handler = (e: MouseEvent) => {
+      const path = e.composedPath() as Element[];
+      if (path.includes(containerRef.current!)) return;
+      if (path.some(el => el instanceof Element && el.getAttribute?.("data-richtoolbar") === "true")) return;
+      setShowToolbar(false);
+      setToolbarPos(null);
+    };
+    document.addEventListener("mousedown", handler, true);
+    return () => document.removeEventListener("mousedown", handler, true);
+  }, [showToolbar, containerRef]);
 
   useEffect(() => {
     const onSelChange = () => {
       const sel = window.getSelection();
-      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      if (!sel || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
       if (!containerRef.current?.contains(range.commonAncestorContainer)) return;
-      savedRangeRef.current = range.cloneRange();
-      const rect = range.getBoundingClientRect();
-      setSelRect({ cx: rect.left + rect.width / 2, top: rect.top });
+      if (!sel.isCollapsed) savedRangeRef.current = range.cloneRange();
+      // Walk up inline styles to find explicit font settings; fall back to computed for size + family
+      let walkerEl: Node | null = range.startContainer;
+      if (walkerEl?.nodeType === Node.TEXT_NODE) walkerEl = (walkerEl as Text).parentElement;
+      let fsPx: number | undefined;
+      let fsFamily: string | undefined;
+      while (walkerEl instanceof HTMLElement) {
+        if (!fsPx && walkerEl.style.fontSize) fsPx = Math.round(parseFloat(walkerEl.style.fontSize)) || undefined;
+        if (!fsFamily && walkerEl.style.fontFamily) fsFamily = walkerEl.style.fontFamily.replace(/['"]/g, "").split(",")[0]?.trim() || undefined;
+        if ((fsPx && fsFamily) || walkerEl.isContentEditable) break;
+        walkerEl = walkerEl.parentElement;
+      }
+      if (walkerEl instanceof HTMLElement) {
+        const cs = window.getComputedStyle(walkerEl);
+        if (!fsPx) fsPx = Math.round(parseFloat(cs.fontSize)) || undefined;
+        if (!fsFamily) fsFamily = cs.fontFamily.replace(/['"]/g, "").split(",")[0]?.trim() || undefined;
+      }
       setSelState({
         bold: document.queryCommandState("bold"),
         italic: document.queryCommandState("italic"),
         underline: document.queryCommandState("underline"),
+        strikethrough: document.queryCommandState("strikeThrough"),
+        fontSize: fsPx,
+        fontFamily: fsFamily,
       });
     };
     document.addEventListener("selectionchange", onSelChange);
@@ -178,20 +234,39 @@ function useRichSel(
     fn();
     const newSel = window.getSelection();
     if (newSel && !newSel.isCollapsed && newSel.rangeCount > 0) {
-      savedRangeRef.current = newSel.getRangeAt(0).cloneRange();
+      const newRange = newSel.getRangeAt(0);
+      savedRangeRef.current = newRange.cloneRange();
+      let wEl: Node | null = newRange.startContainer;
+      if (wEl?.nodeType === Node.TEXT_NODE) wEl = (wEl as Text).parentElement;
+      let wPx: number | undefined;
+      let wFamily: string | undefined;
+      while (wEl instanceof HTMLElement) {
+        if (!wPx && wEl.style.fontSize) wPx = Math.round(parseFloat(wEl.style.fontSize)) || undefined;
+        if (!wFamily && wEl.style.fontFamily) wFamily = wEl.style.fontFamily.replace(/['"]/g, "").split(",")[0]?.trim() || undefined;
+        if ((wPx && wFamily) || wEl.isContentEditable) break;
+        wEl = wEl.parentElement;
+      }
+      if (wEl instanceof HTMLElement) {
+        const cs = window.getComputedStyle(wEl);
+        if (!wPx) wPx = Math.round(parseFloat(cs.fontSize)) || undefined;
+        if (!wFamily) wFamily = cs.fontFamily.replace(/['"]/g, "").split(",")[0]?.trim() || undefined;
+      }
       setSelState({
         bold: document.queryCommandState("bold"),
         italic: document.queryCommandState("italic"),
         underline: document.queryCommandState("underline"),
+        strikethrough: document.queryCommandState("strikeThrough"),
+        fontSize: wPx,
+        fontFamily: wFamily,
       });
     }
     if (el) onHTMLChange(el);
   }, [findEditableEl, onHTMLChange]);
 
-  const wrapSelectionSpan = useCallback((styleProps: Record<string, string>) => {
+  const wrapSelectionSpan = useCallback((styleProps: Record<string, string>): boolean => {
     const el = findEditableEl();
     const range = savedRangeRef.current;
-    if (!el || !range) return;
+    if (!el || !range || range.collapsed) return false;
     el.focus();
     const sel = window.getSelection();
     sel?.removeAllRanges();
@@ -208,31 +283,77 @@ function useRichSel(
       sel?.removeAllRanges();
     }
     onHTMLChange(el);
-    savedRangeRef.current = null;
-    setSelRect(null);
+    return true;
   }, [findEditableEl, onHTMLChange]);
+
+  const applyFontSizeRange = useCallback((sizePx: number): boolean => {
+    // Use live selection — toolbar buttons keep focus via e.preventDefault()
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return false;
+    const range = sel.getRangeAt(0);
+    if (!containerRef.current?.contains(range.commonAncestorContainer)) return false;
+    const el = findEditableEl();
+    if (!el) return false;
+    document.execCommand("styleWithCSS", false, "false");
+    document.execCommand("fontSize", false, "7");
+    const newSpans: HTMLElement[] = [];
+    el.querySelectorAll('font[size="7"]').forEach(font => {
+      const span = document.createElement("span");
+      span.style.fontSize = `${sizePx}px`;
+      while (font.firstChild) span.appendChild(font.firstChild);
+      font.parentNode!.replaceChild(span, font);
+      newSpans.push(span);
+    });
+    // Re-select the newly created spans so the highlight stays visible
+    if (newSpans.length > 0) {
+      const newRange = document.createRange();
+      newRange.setStartBefore(newSpans[0]);
+      newRange.setEndAfter(newSpans[newSpans.length - 1]);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+      savedRangeRef.current = newRange.cloneRange();
+    }
+    onHTMLChange(el);
+    return true;
+  }, [findEditableEl, containerRef, onHTMLChange, savedRangeRef]);
+
+  const applyFontSizeAll = useCallback((sizePx: number) => {
+    const editables = Array.from(
+      containerRef.current?.querySelectorAll<HTMLElement>('[contenteditable="true"]') ?? []
+    );
+    // Strip inline font-size overrides from all children so the container-level CSS (set by the
+    // caller via upd({ fontSize/listFontSize })) cascades uniformly. No focus/selectAll needed.
+    for (const el of editables) {
+      el.querySelectorAll<HTMLElement>('[style*="font-size"]').forEach(child => {
+        child.style.removeProperty('font-size');
+        if (!child.getAttribute('style')?.trim()) child.removeAttribute('style');
+      });
+      onHTMLChange(el);
+    }
+  }, [containerRef, onHTMLChange]);
 
   const dismissSelToolbar = useCallback(() => {
     savedRangeRef.current = null;
-    setSelRect(null);
+    setShowToolbar(false);
+    setToolbarPos(null);
   }, []);
 
-  return { selRect, selState, withSavedRange, wrapSelectionSpan, dismissSelToolbar };
+  return { selState, showToolbar, toolbarPos, withSavedRange, wrapSelectionSpan, applyFontSizeRange, applyFontSizeAll, dismissSelToolbar };
 }
 
-function TextItem({ item, upd, vars = {}, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; vars?: Record<string, number>; collapsed?: boolean; isFinished?: boolean }) {
+function TextItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
   const [focused, setFocused] = useState(false);
-  const [hovered, setHovered] = useState(false);
+  const [showToolbar, setShowToolbar] = useState(false);
   const [showWallpaper, setShowWallpaper] = useState(false);
+  const [selState, setSelState] = useState<{ bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; fontSize?: number; fontFamily?: string }>({ bold: false, italic: false, underline: false, strikethrough: false });
+  const [toolbarPos, setToolbarPos] = useState<{ cx: number; top: number } | null>(null);
   const bgImageFileRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Rich text editing
   const editorRef = useRef<HTMLDivElement>(null);
   const innerHTMLRef = useRef(item.text ?? "");
   const savedRangeRef = useRef<Range | null>(null);
-  type SelRect = { cx: number; top: number };
-  const [selRect, setSelRect] = useState<SelRect | null>(null);
-  const [selState, setSelState] = useState({ bold: false, italic: false, underline: false });
 
   // Initialize editor content on mount
   useEffect(() => {
@@ -243,6 +364,179 @@ function TextItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Track selection; update savedRangeRef and B/I/U/S active state for the toolbar
+  useEffect(() => {
+    const onSelChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (!editorRef.current?.contains(range.commonAncestorContainer)) return;
+      if (!sel.isCollapsed) savedRangeRef.current = range.cloneRange();
+      let tiEl: Node | null = range.startContainer;
+      if (tiEl?.nodeType === Node.TEXT_NODE) tiEl = (tiEl as Text).parentElement;
+      let tiPx: number | undefined;
+      let tiFamily: string | undefined;
+      while (tiEl instanceof HTMLElement) {
+        if (!tiPx && tiEl.style.fontSize) tiPx = Math.round(parseFloat(tiEl.style.fontSize)) || undefined;
+        if (!tiFamily && tiEl.style.fontFamily) tiFamily = tiEl.style.fontFamily.replace(/['"]/g, "").split(",")[0]?.trim() || undefined;
+        if ((tiPx && tiFamily) || tiEl.isContentEditable) break;
+        tiEl = tiEl.parentElement;
+      }
+      if (tiEl instanceof HTMLElement) {
+        const cs = window.getComputedStyle(tiEl);
+        if (!tiPx) tiPx = Math.round(parseFloat(cs.fontSize)) || undefined;
+        if (!tiFamily) tiFamily = cs.fontFamily.replace(/['"]/g, "").split(",")[0]?.trim() || undefined;
+      }
+      setSelState({
+        bold: document.queryCommandState("bold"),
+        italic: document.queryCommandState("italic"),
+        underline: document.queryCommandState("underline"),
+        strikethrough: document.queryCommandState("strikeThrough"),
+        fontSize: tiPx,
+        fontFamily: tiFamily,
+      });
+    };
+    document.addEventListener("selectionchange", onSelChange);
+    return () => document.removeEventListener("selectionchange", onSelChange);
+  }, []);
+
+  // Hide toolbar when clicking outside BOTH the editor container AND the toolbar.
+  useEffect(() => {
+    if (!showToolbar) return;
+    const handler = (e: MouseEvent) => {
+      const path = e.composedPath() as Element[];
+      if (path.includes(containerRef.current!)) return;
+      if (path.some(el => el instanceof Element && el.getAttribute?.("data-richtoolbar") === "true")) return;
+      setShowToolbar(false);
+      setToolbarPos(null);
+    };
+    document.addEventListener("mousedown", handler, true);
+    return () => document.removeEventListener("mousedown", handler, true);
+  }, [showToolbar]);
+
+  // Wrap the current selection (or restore savedRangeRef) in a <span> with inline styles.
+  // Returns true if applied inline, false if there was nothing to wrap.
+  const wrapSelInStyle = useCallback((styles: Record<string, string>): boolean => {
+    const range = savedRangeRef.current;
+    if (!range || range.collapsed || !editorRef.current) return false;
+    editorRef.current.focus();
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    const span = document.createElement("span");
+    Object.assign(span.style, styles);
+    try {
+      range.surroundContents(span);
+    } catch {
+      const frag = range.extractContents();
+      span.appendChild(frag);
+      range.insertNode(span);
+    }
+    const h = editorRef.current.innerHTML;
+    innerHTMLRef.current = h;
+    upd({ text: h });
+    return true;
+  }, [upd]);
+
+  // Apply inline styles to the existing block element(s) containing the selection (does not change tag).
+  const applyBlockStyle = useCallback((styles: Record<string, string>) => {
+    const sel = window.getSelection();
+    if (!sel || !editorRef.current) return;
+    const range = savedRangeRef.current ?? (sel.rangeCount > 0 ? sel.getRangeAt(0) : null);
+    if (!range) return;
+    const findBlock = (node: Node): HTMLElement | null => {
+      let n: Node | null = node;
+      while (n && n !== editorRef.current) {
+        if (n.nodeType === Node.ELEMENT_NODE) {
+          const t = (n as Element).tagName.toLowerCase();
+          if (["p","div","h1","h2","h3","h4","h5","h6","blockquote","pre","li"].includes(t))
+            return n as HTMLElement;
+        }
+        n = n.parentNode;
+      }
+      return null;
+    };
+    const startBlock = findBlock(range.startContainer);
+    const endBlock   = findBlock(range.endContainer);
+    const blocks: HTMLElement[] = [];
+    if (startBlock) {
+      let curr: Node | null = startBlock;
+      while (curr) {
+        if (curr.nodeType === Node.ELEMENT_NODE) {
+          const t = (curr as Element).tagName.toLowerCase();
+          if (["p","div","h1","h2","h3","h4","h5","h6","blockquote","pre","li"].includes(t))
+            blocks.push(curr as HTMLElement);
+        }
+        if (curr === endBlock) break;
+        curr = curr.nextSibling;
+      }
+    }
+    if (blocks.length === 0 && startBlock) blocks.push(startBlock);
+    blocks.forEach(block => Object.assign(block.style, styles));
+    const h = editorRef.current.innerHTML;
+    innerHTMLRef.current = h;
+    upd({ text: h });
+  }, [upd]);
+
+  // Change the block element(s) that contain the current selection to a new tag.
+  const applyBlockTag = useCallback((tag: string, inlineStyles?: Record<string, string>) => {
+    const sel = window.getSelection();
+    if (!sel || !editorRef.current) return;
+
+    const findBlock = (node: Node): HTMLElement | null => {
+      let n: Node | null = node;
+      while (n && n !== editorRef.current) {
+        if (n.nodeType === Node.ELEMENT_NODE) {
+          const t = (n as Element).tagName.toLowerCase();
+          if (["p","div","h1","h2","h3","h4","h5","h6","blockquote","pre","li"].includes(t))
+            return n as HTMLElement;
+        }
+        n = n.parentNode;
+      }
+      // text node directly in editor root — wrap it first
+      if (n === editorRef.current) {
+        const p = document.createElement("p");
+        node.parentNode!.insertBefore(p, node);
+        p.appendChild(node);
+        return p;
+      }
+      return null;
+    };
+
+    const range = savedRangeRef.current ?? (sel.rangeCount > 0 ? sel.getRangeAt(0) : null);
+    if (!range) return;
+
+    const startBlock = findBlock(range.startContainer);
+    const endBlock   = findBlock(range.endContainer);
+
+    // collect all sibling blocks between start and end
+    const blocks: HTMLElement[] = [];
+    if (startBlock) {
+      let curr: Node | null = startBlock;
+      while (curr) {
+        if (curr.nodeType === Node.ELEMENT_NODE) {
+          const t = (curr as Element).tagName.toLowerCase();
+          if (["p","div","h1","h2","h3","h4","h5","h6","blockquote","pre","li"].includes(t))
+            blocks.push(curr as HTMLElement);
+        }
+        if (curr === endBlock) break;
+        curr = curr.nextSibling;
+      }
+    }
+    if (blocks.length === 0 && startBlock) blocks.push(startBlock);
+
+    blocks.forEach(block => {
+      const newEl = document.createElement(tag);
+      if (inlineStyles) Object.assign(newEl.style, inlineStyles);
+      while (block.firstChild) newEl.appendChild(block.firstChild);
+      block.parentNode!.replaceChild(newEl, block);
+    });
+
+    const h = editorRef.current.innerHTML;
+    innerHTMLRef.current = h;
+    upd({ text: h });
+  }, [upd]);
+
   // Sync external changes without disrupting active editing
   useEffect(() => {
     if (editorRef.current && document.activeElement !== editorRef.current && item.text !== innerHTMLRef.current) {
@@ -251,75 +545,234 @@ function TextItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
     }
   }, [item.text]);
 
-  // Track text selection — save range + screen position for the portal toolbar
-  useEffect(() => {
-    const onSelChange = () => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
-        // Don't clear selRect here; user may be clicking the portal toolbar
-        return;
-      }
-      const range = sel.getRangeAt(0);
-      if (!editorRef.current?.contains(range.commonAncestorContainer)) return;
-      savedRangeRef.current = range.cloneRange();
-      const rect = range.getBoundingClientRect();
-      setSelRect({ cx: rect.left + rect.width / 2, top: rect.top });
-      setSelState({
-        bold: document.queryCommandState("bold"),
-        italic: document.queryCommandState("italic"),
-        underline: document.queryCommandState("underline"),
-      });
-    };
-    document.addEventListener("selectionchange", onSelChange);
-    return () => document.removeEventListener("selectionchange", onSelChange);
-  }, []);
-
-  // Restore saved range, run fn, then persist HTML to store
-  const withSavedRange = useCallback((fn: () => void) => {
-    const range = savedRangeRef.current;
-    if (!range) return;
-    editorRef.current?.focus();
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-    fn();
-    // Re-save range in case execCommand moved it
-    const newSel = window.getSelection();
-    if (newSel && !newSel.isCollapsed && newSel.rangeCount > 0) {
-      savedRangeRef.current = newSel.getRangeAt(0).cloneRange();
-      setSelState({
-        bold: document.queryCommandState("bold"),
-        italic: document.queryCommandState("italic"),
-        underline: document.queryCommandState("underline"),
-      });
+  // Run an execCommand on the focused editor and persist the HTML
+  const exec = useCallback((cmd: string, val?: string) => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    if (savedRangeRef.current) {
+      const s = window.getSelection();
+      s?.removeAllRanges();
+      s?.addRange(savedRangeRef.current);
     }
-    const html = editorRef.current?.innerHTML ?? "";
+    document.execCommand(cmd, false, val);
+    const html = editorRef.current.innerHTML;
     innerHTMLRef.current = html;
     upd({ text: html });
   }, [upd]);
 
-  // Wrap saved selection in a <span> with inline styles, then dismiss toolbar
-  const wrapSelectionSpan = useCallback((styleProps: Record<string, string>) => {
-    withSavedRange(() => {
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
-      const range = sel.getRangeAt(0);
-      const span = document.createElement("span");
-      for (const [k, v] of Object.entries(styleProps)) {
-        (span.style as unknown as Record<string, string>)[k] = v;
+  // Restore saved selection and wrap it in an <a> tag, then sync HTML
+  const insertLink = useCallback((url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed || !editorRef.current) return;
+    const range = savedRangeRef.current ?? (() => {
+      const s = window.getSelection();
+      return (s && s.rangeCount > 0) ? s.getRangeAt(0) : null;
+    })();
+    if (!range) return;
+    const finalUrl = /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
+    const anchor = document.createElement("a");
+    anchor.href = finalUrl;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    // Manipulate the DOM directly — no focus() before the operation so the
+    // sync-external-changes effect (which fires when !activeElement && text changed)
+    // never sees a window between innerHTMLRef update and the DOM state.
+    if (range.collapsed) {
+      anchor.textContent = finalUrl;
+      range.insertNode(anchor);
+    } else {
+      try {
+        range.surroundContents(anchor);
+      } catch {
+        const frag = range.extractContents();
+        anchor.appendChild(frag);
+        range.insertNode(anchor);
       }
-      try { range.surroundContents(span); }
-      catch { const frag = range.extractContents(); span.appendChild(frag); range.insertNode(span); }
-      sel.removeAllRanges();
-    });
+    }
+    const html = editorRef.current.innerHTML;
+    innerHTMLRef.current = html;
+    upd({ text: html });
     savedRangeRef.current = null;
-    setSelRect(null);
-  }, [withSavedRange]);
+    // Focus editor and move cursor after the inserted link
+    editorRef.current.focus();
+    try {
+      const cur = document.createRange();
+      cur.setStartAfter(anchor);
+      cur.collapse(true);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(cur);
+    } catch { /* anchor may have moved during surroundContents — cursor placement is best-effort */ }
+  }, [upd]);
 
-  const dismissSelToolbar = useCallback(() => {
-    savedRangeRef.current = null;
-    setSelRect(null);
-  }, []);
+  // Insert a task checkbox at the current cursor position
+  const insertCheckboxLine = useCallback(() => {
+    exec("insertHTML", `<span class="chk" data-checked="false" contenteditable="false" style="cursor:pointer;user-select:none;display:inline-block;margin-right:5px;line-height:1">☐</span>&#8203;`);
+  }, [exec]);
+
+  const insertList = useCallback((listTag: "ul" | "ol") => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    if (savedRangeRef.current) {
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(savedRangeRef.current);
+    }
+    document.execCommand(listTag === "ul" ? "insertUnorderedList" : "insertOrderedList");
+    const html = editorRef.current.innerHTML;
+    innerHTMLRef.current = html;
+    upd({ text: html });
+  }, [upd]);
+
+  const applyHighlight = useCallback((color: string) => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    if (savedRangeRef.current) {
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(savedRangeRef.current);
+    }
+    document.execCommand("hiliteColor", false, color);
+    const h = editorRef.current.innerHTML;
+    innerHTMLRef.current = h;
+    upd({ text: h });
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+  }, [upd]);
+
+  const applyFontSizeToSel = useCallback((sizePx: number): boolean => {
+    if (!editorRef.current) return false;
+    // Restore saved selection — clicking the toolbar collapses the live selection
+    if (savedRangeRef.current) {
+      editorRef.current.focus();
+      const s = window.getSelection();
+      s?.removeAllRanges();
+      s?.addRange(savedRangeRef.current);
+    }
+    const sel = window.getSelection();
+    const hasActiveSel = sel && !sel.isCollapsed && sel.rangeCount > 0 &&
+      editorRef.current.contains(sel.getRangeAt(0).commonAncestorContainer);
+    if (!hasActiveSel) return false;
+    document.execCommand("styleWithCSS", false, "false");
+    const preExisting = new Set(editorRef.current.querySelectorAll('font[size="7"]'));
+    document.execCommand("fontSize", false, "7");
+    const newSpans: HTMLElement[] = [];
+    editorRef.current.querySelectorAll('font[size="7"]').forEach(font => {
+      if (preExisting.has(font)) return;
+      const span = document.createElement("span");
+      span.style.fontSize = `${sizePx}px`;
+      while (font.firstChild) span.appendChild(font.firstChild);
+      font.parentNode!.replaceChild(span, font);
+      newSpans.push(span);
+    });
+    // Re-select the newly created spans so the highlight stays visible
+    if (newSpans.length > 0 && sel) {
+      const newRange = document.createRange();
+      newRange.setStartBefore(newSpans[0]);
+      newRange.setEndAfter(newSpans[newSpans.length - 1]);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+      savedRangeRef.current = newRange.cloneRange();
+    }
+    const h = editorRef.current.innerHTML;
+    innerHTMLRef.current = h;
+    upd({ text: h });
+    return true;
+  }, [upd]);
+
+  const applyFontSizeGlobal = useCallback((sizePx: number) => {
+    const el = editorRef.current;
+    if (!el) { upd({ fontSize: sizePx }); return; }
+    // Strip inline font-size overrides so the editor's container-level font-size cascades uniformly.
+    // No focus/selectAll needed — cursor stays in place, no auto-selection side effect.
+    el.querySelectorAll<HTMLElement>('[style*="font-size"]').forEach(child => {
+      child.style.removeProperty('font-size');
+      if (!child.getAttribute('style')?.trim()) child.removeAttribute('style');
+    });
+    const h = el.innerHTML;
+    innerHTMLRef.current = h;
+    upd({ text: h, fontSize: sizePx });
+  }, [upd]);
+
+  // Handle clicks inside the contenteditable: checkbox toggle + link navigation
+  const handleEditorClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains("chk")) {
+      const checked = target.dataset.checked === "true";
+      target.dataset.checked = checked ? "false" : "true";
+      target.textContent = checked ? "☐" : "☑";
+      target.style.color = checked ? "" : "var(--accent)";
+      const html = editorRef.current?.innerHTML ?? "";
+      innerHTMLRef.current = html;
+      upd({ text: html });
+      return;
+    }
+    const anchor = target.closest("a") as HTMLAnchorElement | null;
+    if (anchor?.href) {
+      e.preventDefault();
+      window.open(anchor.href, "_blank", "noopener,noreferrer");
+    }
+  }, [isFinished, upd]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== " ") return;
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !editorRef.current) return;
+    const range = sel.getRangeAt(0);
+    if (!range.collapsed) return;
+    const container = range.startContainer;
+    if (container.nodeType !== Node.TEXT_NODE) return;
+    let blockEl: HTMLElement | null = container.parentElement;
+    while (blockEl && blockEl !== editorRef.current) {
+      if (["p", "div", "h1", "h2", "h3", "li", "blockquote"].includes(blockEl.tagName.toLowerCase())) break;
+      blockEl = blockEl.parentElement;
+    }
+    // Text node is a direct child of the editor root (no block wrapper yet) — wrap it so we can replace it
+    if (!blockEl || blockEl === editorRef.current) {
+      const p = document.createElement("p");
+      container.parentNode!.insertBefore(p, container);
+      p.appendChild(container);
+      blockEl = p;
+    }
+    const fullText = blockEl.textContent?.trim() ?? "";
+
+    const swapBlock = (tag: string) => {
+      e.preventDefault();
+      const newEl = document.createElement(tag);
+      blockEl!.parentNode!.replaceChild(newEl, blockEl!);
+      const r = document.createRange();
+      r.setStart(newEl, 0);
+      r.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      const html = editorRef.current?.innerHTML ?? "";
+      innerHTMLRef.current = html;
+      upd({ text: html });
+    };
+
+    const swapList = (listTag: "ul" | "ol") => {
+      e.preventDefault();
+      const list = document.createElement(listTag);
+      const li = document.createElement("li");
+      list.appendChild(li);
+      blockEl!.parentNode!.replaceChild(list, blockEl!);
+      const r = document.createRange();
+      r.setStart(li, 0);
+      r.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      const html = editorRef.current?.innerHTML ?? "";
+      innerHTMLRef.current = html;
+      upd({ text: html });
+    };
+
+    if (fullText === "#") swapBlock("h1");
+    else if (fullText === "##") swapBlock("h2");
+    else if (fullText === "###") swapBlock("h3");
+    else if (fullText === ">") swapBlock("blockquote");
+    else if (fullText === "-" || fullText === "*") swapList("ul");
+    else if (/^\d+\.$/.test(fullText)) swapList("ol");
+  }, [upd]);
 
   const hasBorder = (item.textBorderWidth ?? 0) > 0;
   const hasBg = !!(item.textBgColor || item.textBgImage);
@@ -355,6 +808,20 @@ function TextItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
     letterSpacing: item.textLetterSpacing ? `${item.textLetterSpacing}px` : undefined,
   };
 
+  const editorTypoStyle: React.CSSProperties = {
+    fontSize: textStyle.fontSize,
+    fontWeight: textStyle.fontWeight,
+    fontStyle: textStyle.fontStyle,
+    textAlign: textStyle.textAlign,
+    fontFamily: textStyle.fontFamily,
+    color: textStyle.color,
+    lineHeight: textStyle.lineHeight,
+    letterSpacing: textStyle.letterSpacing,
+    padding: item.textPadding ?? 10,
+    wordBreak: "break-word",
+    overflowWrap: "anywhere",
+  };
+
   const handleBgImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -365,215 +832,29 @@ function TextItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
   };
 
   if (collapsed) {
+    const hasCollapsedFont = item.collapsedFontFamily || item.collapsedFontSize || item.collapsedBold !== undefined || item.collapsedItalic !== undefined || item.collapsedFontColor;
+    const collapsedStyle: React.CSSProperties = hasCollapsedFont ? {
+      ...textStyle,
+      fontFamily: item.collapsedFontFamily ?? textStyle.fontFamily,
+      fontSize: item.collapsedFontSize ?? textStyle.fontSize,
+      fontWeight: item.collapsedBold !== undefined ? (item.collapsedBold ? 700 : 400) : textStyle.fontWeight,
+      fontStyle: item.collapsedItalic !== undefined ? (item.collapsedItalic ? "italic" : "normal") : textStyle.fontStyle,
+      color: item.collapsedFontColor ?? textStyle.color,
+    } : textStyle;
     if (!item.text) {
-      return <p className="truncate opacity-40 italic" style={{ ...textStyle, fontSize: 12 }}>Empty text</p>;
+      return <p className="truncate opacity-40 italic" style={{ ...collapsedStyle, fontSize: 12 }}>Empty text</p>;
     }
-    return <p className="truncate" style={textStyle} dangerouslySetInnerHTML={{ __html: item.text }} />;
+    return <p className="truncate" style={collapsedStyle} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.text) }} />;
   }
 
-  const showToolbar = (focused || hovered) && !isFinished;
-
   return (
-    <div
-      className="relative w-full h-full"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setShowWallpaper(false); }}
-    >
+    <div ref={containerRef} className="relative w-full h-full">
       {/* Hidden file input for bg image */}
       <input ref={bgImageFileRef} type="file" accept="image/*" className="hidden" onChange={handleBgImageFile} />
 
-      {/* Floating toolbar */}
-      {showToolbar && (
-        <div
-          className="absolute z-30 flex items-center gap-1 rounded-lg border border-[var(--border)] shadow-xl px-2 py-1.5"
-          style={{ bottom: "calc(100% + 6px)", left: 0, background: "var(--surface-raised)", whiteSpace: "nowrap" }}
-          onMouseDown={(e) => e.preventDefault()}
-        >
-          {/* Paragraph style */}
-          <select
-            value={item.textParaStyle ?? "normal"}
-            onChange={(e) => {
-              const style = PARA_STYLES.find(s => s.id === e.target.value);
-              if (!style) return;
-              const patch: Partial<BlockItem> = { textParaStyle: style.id, fontSize: style.fontSize, bold: style.bold, italic: style.italic };
-              if (style.fontFamily) patch.fontFamily = style.fontFamily;
-              upd(patch);
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-            className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-xs text-[var(--text-primary)] outline-none cursor-pointer"
-            style={{ maxWidth: 80 }}
-          >
-            {PARA_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
-
-          <Divider />
-
-          {/* Font family */}
-          <FontPicker
-            compact
-            value={item.fontFamily ?? "Inter"}
-            onChange={(font) => { loadGoogleFont(font); upd({ fontFamily: font }); }}
-          />
-
-          {/* Font size */}
-          <input
-            type="number" min={6} max={200}
-            value={item.fontSize ?? 16}
-            onChange={(e) => upd({ fontSize: Number(e.target.value) })}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-            className="w-11 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-xs text-[var(--text-primary)] outline-none"
-          />
-
-          <Divider />
-
-          <TBtn active={!!item.bold} onClick={() => upd({ bold: !item.bold })} title="Bold">
-            <span className="font-bold text-xs">B</span>
-          </TBtn>
-          <TBtn active={!!item.italic} onClick={() => upd({ italic: !item.italic })} title="Italic">
-            <span className="italic text-xs">I</span>
-          </TBtn>
-
-          <Divider />
-
-          {(["left", "center", "right"] as const).map((a) => (
-            <TBtn key={a} active={(item.align ?? "left") === a} onClick={() => upd({ align: a })} title={`Align ${a}`}>
-              <span className="text-[9px] font-mono">{a[0].toUpperCase()}</span>
-            </TBtn>
-          ))}
-
-          <Divider />
-
-          {/* Text color */}
-          <label className="flex items-center gap-1 cursor-pointer" title="Text color">
-            <span className="text-[10px] font-bold" style={{ color: item.textColor || "var(--text-primary)", textDecoration: "underline 2px" }}>A</span>
-            <input type="color" value={item.textColor ?? "#f2f2f2"} onChange={(e) => upd({ textColor: e.target.value })} className="h-4 w-4 cursor-pointer rounded-sm border-0 bg-transparent p-0 outline-none" />
-          </label>
-
-          {/* Background fill color */}
-          <label className="flex items-center gap-1 cursor-pointer" title="Fill color">
-            <span className="text-[10px] text-[var(--text-muted)]">Fill</span>
-            <input type="color" value={item.textBgColor ?? "#1a1b1e"} onChange={(e) => upd({ textBgColor: e.target.value })} className="h-4 w-4 cursor-pointer rounded-sm border-0 bg-transparent p-0 outline-none" />
-            {item.textBgColor && (
-              <button onClick={() => upd({ textBgColor: "" })} className="text-[var(--text-muted)] hover:text-red-400 leading-none text-xs">×</button>
-            )}
-          </label>
-
-          {/* Wallpaper image — popover */}
-          <div className="relative">
-            <TBtn
-              active={!!item.textBgImage || showWallpaper}
-              onClick={() => setShowWallpaper((v) => !v)}
-              title="Background image"
-            >
-              <ImageIcon size={11} />
-            </TBtn>
-
-            {showWallpaper && (
-              <div
-                className="absolute top-full left-0 z-40 mt-1.5 w-60 rounded-xl border border-[var(--border)] shadow-2xl p-3 flex flex-col gap-2"
-                style={{ background: "var(--surface-raised)" }}
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background Image</span>
-                  {item.textBgImage && (
-                    <button onClick={() => upd({ textBgImage: "" })} className="flex items-center gap-1 text-[10px] text-red-400 hover:text-red-300 transition-colors">
-                      <XIcon size={10} /> Clear
-                    </button>
-                  )}
-                </div>
-
-                {/* Preview */}
-                {item.textBgImage && (
-                  <div className="h-14 w-full rounded-lg border border-[var(--border)] overflow-hidden">
-                    <div className="h-full w-full" style={{ backgroundImage: `url(${item.textBgImage})`, backgroundSize: "cover", backgroundPosition: "center" }} />
-                  </div>
-                )}
-
-                {/* URL input */}
-                <input
-                  type="text"
-                  placeholder="Paste image URL…"
-                  value={item.textBgImage?.startsWith("data:") ? "" : (item.textBgImage ?? "")}
-                  onChange={(e) => upd({ textBgImage: e.target.value || "" })}
-                  className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] transition-colors"
-                />
-
-                {/* File upload */}
-                <button
-                  onClick={() => bgImageFileRef.current?.click()}
-                  className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border)] py-2 text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
-                >
-                  <Upload size={12} /> Upload from file
-                </button>
-              </div>
-            )}
-          </div>
-
-          <Divider />
-
-          {/* Border toggle */}
-          <TBtn
-            active={hasBorder}
-            onClick={() => upd({ textBorderWidth: hasBorder ? 0 : 1, textBorderColor: item.textBorderColor ?? "#ffffff", textBorderStyle: item.textBorderStyle ?? "solid" })}
-            title="Toggle border"
-          >
-            <span className="text-[10px]">⬜</span>
-          </TBtn>
-          {hasBorder && (
-            <>
-              <input type="color" value={item.textBorderColor ?? "#ffffff"} onChange={(e) => upd({ textBorderColor: e.target.value })} className="h-4 w-4 cursor-pointer rounded-sm border-0 bg-transparent p-0 outline-none" title="Border color" />
-              <input type="number" min={1} max={16} value={item.textBorderWidth ?? 1} onChange={(e) => upd({ textBorderWidth: Number(e.target.value) })} className="w-9 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-xs text-[var(--text-primary)] outline-none" title="Border width" />
-              <Divider />
-              {/* Inline border style picker */}
-              {TEXT_BORDER_STYLES.map((bs) => {
-                const bc = item.textBorderColor ?? "#ffffff";
-                const bw = Math.max(1, Math.min(item.textBorderWidth ?? 1, 4));
-                const isGlow = bs.id === "glow";
-                return (
-                  <button
-                    key={bs.id}
-                    onClick={() => upd({ textBorderStyle: bs.id as BlockItem["textBorderStyle"] })}
-                    title={bs.label}
-                    className={cn(
-                      "flex items-center justify-center rounded px-1 py-0.5 transition-colors",
-                      (item.textBorderStyle ?? "solid") === bs.id
-                        ? "bg-[var(--accent)]/20 ring-1 ring-[var(--accent)]"
-                        : "hover:bg-[var(--surface-overlay)]"
-                    )}
-                    style={{ minWidth: 28 }}
-                  >
-                    <div
-                      className="w-5 rounded-sm"
-                      style={{
-                        height: 10,
-                        border: isGlow ? "none" : `${bw}px ${bs.id} ${bc}`,
-                        boxShadow: isGlow ? `0 0 4px 1px ${bc}` : undefined,
-                      }}
-                    />
-                  </button>
-                );
-              })}
-            </>
-          )}
-
-          {/* Corner radius */}
-          <label className="flex items-center gap-1 cursor-pointer" title="Corner radius">
-            <span className="text-[10px] text-[var(--text-muted)]">⌒</span>
-            <input type="number" min={0} max={200} value={item.textBorderRadius ?? 0} onChange={(e) => upd({ textBorderRadius: Number(e.target.value) })} className="w-11 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-xs text-[var(--text-primary)] outline-none" />
-            <span className="text-[9px] text-[var(--text-muted)]">px</span>
-          </label>
-        </div>
-      )}
-
-      {/* Number mode — big editable number, exposes {textVarName} to vars */}
+      {/* Number mode — big editable number */}
       {item.textMode === "number" ? (
         <div className="flex flex-col items-center justify-center w-full h-full gap-1" style={textStyle}>
-          {item.textVarName && (
-            <span className="font-mono text-[11px] opacity-50 tracking-widest uppercase">{item.textVarName}</span>
-          )}
           <input
             type="number"
             readOnly={isFinished}
@@ -584,59 +865,42 @@ function TextItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
             onChange={(e) => upd({ text: e.target.value })}
           />
         </div>
-      ) : item.textMode === "formula" ? (
-        /* Formula mode — formula input at top, result displayed large, optional var name at bottom */
-        <div className="flex flex-col w-full h-full" style={textStyle}>
-          {!isFinished && !collapsed && (
-            <input
-              className="w-full bg-[var(--surface-overlay)] border-b border-[var(--border)] px-3 py-1.5 font-mono text-[11px] text-[var(--text-secondary)] outline-none focus:border-[var(--accent)] transition-colors"
-              placeholder="{var1} + {var2} * 2"
-              value={item.textCalcFormula ?? ""}
-              onChange={(e) => upd({ textCalcFormula: e.target.value })}
-            />
-          )}
-          <div className="flex-1 flex items-center justify-center font-mono font-bold" style={{ fontSize: item.fontSize ?? 40, color: item.textColor || "var(--accent)" }}>
-            {item.textCalcFormula ? evalTextCalcFormula(item.textCalcFormula, vars) : "—"}
-          </div>
-          {!isFinished && !collapsed && (
-            <div className="flex items-center gap-1.5 border-t border-[var(--border)] px-2 py-1">
-              <Hash size={9} className="text-[var(--accent)] flex-shrink-0" />
-              <input
-                className="flex-1 bg-transparent font-mono text-[10px] text-[var(--accent)] outline-none placeholder:text-[var(--text-muted)]/40"
-                placeholder="expose as variable name…"
-                value={item.textVarName ?? ""}
-                onChange={(e) => upd({ textVarName: e.target.value })}
-              />
-            </div>
-          )}
-          {(isFinished || collapsed) && item.textVarName && (
-            <div className="flex items-center gap-1 px-2 py-0.5 border-t border-[var(--border)]">
-              <Hash size={9} className="text-[var(--accent)]" />
-              <span className="font-mono text-[10px] text-[var(--accent)]">{item.textVarName}</span>
-            </div>
-          )}
-        </div>
       ) : (
-        /* Normal text — contenteditable for rich inline formatting */
-        <div className="relative w-full h-full">
+        /* Normal text — contenteditable; toolbar floats above via portal */
+        <div className="relative w-full h-full" style={{
+          backgroundColor: textStyle.backgroundColor,
+          backgroundImage: textStyle.backgroundImage,
+          backgroundSize: textStyle.backgroundSize,
+          backgroundPosition: textStyle.backgroundPosition,
+          backgroundRepeat: textStyle.backgroundRepeat,
+          borderRadius: textStyle.borderRadius,
+          border: textStyle.border,
+          boxShadow: textStyle.boxShadow,
+        }}>
           {!item.text && !focused && !isFinished && (
             <span
-              className="absolute inset-0 pointer-events-none opacity-30 italic select-none"
-              style={{ fontSize: textStyle.fontSize, fontFamily: textStyle.fontFamily, padding: textStyle.padding }}
+              className="absolute inset-0 pointer-events-none select-none opacity-30 italic"
+              style={{ fontSize: textStyle.fontSize, fontFamily: textStyle.fontFamily, padding: editorTypoStyle.padding, zIndex: 1 }}
             >
-              Click to type…
+              Start typing… (# heading, - list)
             </span>
           )}
           <div
             ref={editorRef}
             contentEditable={!isFinished}
             suppressContentEditableWarning
-            className="w-full h-full outline-none"
-            style={{ ...textStyle, wordBreak: "break-word", whiteSpace: "pre-wrap", overflowWrap: "anywhere", overflowY: "auto" }}
-            onFocus={() => setFocused(true)}
-            onBlur={() => { setFocused(false); }}
+            className="doc-editor w-full h-full outline-none overflow-y-auto"
+            style={editorTypoStyle}
+            onFocus={() => {
+              setFocused(true);
+              setShowToolbar(true);
+              const rect = containerRef.current?.getBoundingClientRect();
+              if (rect) setToolbarPos({ cx: rect.left + rect.width / 2, top: rect.top });
+            }}
+            onBlur={() => { setTimeout(() => setFocused(false), 0); }}
+            onClick={handleEditorClick}
+            onKeyDown={handleKeyDown}
             onInput={() => {
-              dismissSelToolbar();
               const html = editorRef.current?.innerHTML ?? "";
               innerHTMLRef.current = html;
               upd({ text: html });
@@ -645,19 +909,61 @@ function TextItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
         </div>
       )}
 
-      {/* Selection formatting toolbar — portal so it's never clipped */}
-      {selRect && !isFinished && createPortal(
+      {/* Floating toolbar — visible as long as editor or toolbar itself has focus */}
+      {showToolbar && toolbarPos && !isFinished && createPortal(
         <RichSelToolbar
-          cx={selRect.cx}
-          top={selRect.top}
+          cx={toolbarPos.cx}
+          top={toolbarPos.top}
           selState={selState}
-          onExecCmd={(cmd) => withSavedRange(() => document.execCommand(cmd))}
-          onFontFamily={(font) => { loadGoogleFont(font); wrapSelectionSpan({ fontFamily: font }); }}
-          onFontSize={(size) => wrapSelectionSpan({ fontSize: `${size}px` })}
-          onColor={(color) => withSavedRange(() => document.execCommand("foreColor", false, color))}
-          onHighlight={(color) => withSavedRange(() => document.execCommand("hiliteColor", false, color))}
-          onClearFormat={() => { withSavedRange(() => document.execCommand("removeFormat")); dismissSelToolbar(); }}
-          onDismiss={dismissSelToolbar}
+          onExecCmd={(cmd) => exec(cmd)}
+          onParaStyle={(styleId) => {
+            const style = PARA_STYLES.find(s => s.id === styleId);
+            if (!style) return;
+            const range = savedRangeRef.current;
+            // Non-collapsed selection → apply visual styles inline to selected text only
+            if (range && !range.collapsed) {
+              const selStyles: Record<string, string> = {
+                fontSize: `${style.fontSize}px`,
+                fontWeight: style.bold ? "700" : "400",
+                fontStyle: style.italic ? "italic" : "normal",
+              };
+              if (style.fontFamily) selStyles.fontFamily = style.fontFamily;
+              wrapSelInStyle(selStyles);
+              return;
+            }
+            // No selection → change the block-level tag as before
+            const tagMap: Record<string, string> = { h1: "h1", h2: "h2", h3: "h3", code: "pre" };
+            const tag = tagMap[style.id] ?? "p";
+            const inlineStyles: Record<string, string> = {};
+            if (!["h1","h2","h3"].includes(style.id)) {
+              inlineStyles.fontSize = `${style.fontSize}px`;
+              inlineStyles.fontWeight = style.bold ? "700" : "400";
+              inlineStyles.fontStyle = style.italic ? "italic" : "normal";
+              if (style.fontFamily) inlineStyles.fontFamily = style.fontFamily;
+            }
+            applyBlockTag(tag, Object.keys(inlineStyles).length ? inlineStyles : undefined);
+          }}
+          onFontFamily={(font) => { loadGoogleFont(font); if (!wrapSelInStyle({ fontFamily: font })) upd({ fontFamily: font }); }}
+          onFontSize={(size) => { if (!applyFontSizeToSel(size)) applyFontSizeGlobal(size); }}
+          onColor={(color) => {
+            if (!editorRef.current) return;
+            editorRef.current.focus();
+            const range = savedRangeRef.current;
+            if (range) { const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(range); }
+            document.execCommand("styleWithCSS", false, "true");
+            document.execCommand("foreColor", false, color);
+            document.execCommand("styleWithCSS", false, "false");
+            const h = editorRef.current.innerHTML;
+            innerHTMLRef.current = h;
+            upd({ text: h });
+          }}
+          onHighlight={(color) => applyHighlight(color)}
+          onInsertList={(tag) => insertList(tag)}
+          onClearFormat={() => { exec("removeFormat"); exec("formatBlock", "p"); }}
+          onLink={insertLink}
+          onLineSpacing={(value) => applyBlockStyle({ lineHeight: value })}
+          onInsertCheckbox={insertCheckboxLine}
+          onDismiss={() => { setShowToolbar(false); setToolbarPos(null); }}
         />,
         document.body
       )}
@@ -686,26 +992,78 @@ function TBtn({ children, active, onClick, title }: { children: React.ReactNode;
 
 // ─── Rich text selection toolbar (portal) ─────────────────────────────────────
 
+const SIZE_PRESETS = [8,9,10,11,12,14,18,24,30,36,48,60,72,96];
+
 function RichSelToolbar({
   cx, top, selState,
-  onExecCmd, onFontFamily, onFontSize, onColor, onHighlight, onClearFormat, onDismiss,
+  onExecCmd, onParaStyle, onFontFamily, onFontSize, onColor, onHighlight, onInsertList,
+  onClearFormat, onLink, onLineSpacing, onInsertCheckbox, onDismiss, hideAlignment,
 }: {
   cx: number; top: number;
-  selState: { bold: boolean; italic: boolean; underline: boolean };
+  selState: { bold: boolean; italic: boolean; underline: boolean; strikethrough?: boolean; fontSize?: number; fontFamily?: string };
   onExecCmd: (cmd: string) => void;
+  onParaStyle: (styleId: string) => void;
   onFontFamily: (font: string) => void;
   onFontSize: (size: number) => void;
   onColor: (color: string) => void;
   onHighlight: (color: string) => void;
+  onInsertList?: (tag: "ul" | "ol") => void;
   onClearFormat: () => void;
+  onLink?: (url: string) => void;
+  onLineSpacing?: (value: string) => void;
+  onInsertCheckbox?: () => void;
   onDismiss: () => void;
+  hideAlignment?: boolean;
 }) {
-  const [sizeInput, setSizeInput] = useState("");
+  const [currentSize, setCurrentSize] = useState(16);
+  const [showSizePicker, setShowSizePicker] = useState(false);
+  useEffect(() => {
+    if (selState.fontSize !== undefined) setCurrentSize(selState.fontSize);
+  }, [selState.fontSize]);
+  const [linkInput, setLinkInput] = useState<string | null>(null);
+  const [linkSelText, setLinkSelText] = useState("");
+  const [hlColor, setHlColor] = useState("#ffff00");
+  const [showHlPicker, setShowHlPicker] = useState(false);
+  const hlBtnRef = useRef<HTMLButtonElement>(null);
+  const hlPickerRef = useRef<HTMLDivElement>(null);
+  const sizeBtnRef = useRef<HTMLButtonElement>(null);
+  const sizePickerRef = useRef<HTMLDivElement>(null);
+
   const toolbarTop = Math.max(8, top - 52);
-  const left = Math.max(8, cx - 180);
+  const toolbarWidth = 660;
+  const left = Math.max(8, Math.min((typeof window !== "undefined" ? window.innerWidth : 1200) - toolbarWidth - 8, cx - toolbarWidth / 2));
+
+  const applySize = (n: number) => {
+    const clamped = Math.max(6, Math.min(200, Math.round(n)));
+    setCurrentSize(clamped);
+    onFontSize(clamped);
+  };
+
+  // Close size picker on outside click
+  useEffect(() => {
+    if (!showSizePicker) return;
+    const handler = (e: MouseEvent) => {
+      if (!sizePickerRef.current?.contains(e.target as Node) && !sizeBtnRef.current?.contains(e.target as Node))
+        setShowSizePicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showSizePicker]);
+
+  // Close highlight picker on outside click
+  useEffect(() => {
+    if (!showHlPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (!hlPickerRef.current?.contains(e.target as Node) && !hlBtnRef.current?.contains(e.target as Node))
+        setShowHlPicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showHlPicker]);
 
   return (
     <div
+      data-richtoolbar="true"
       style={{ position: "fixed", top: toolbarTop, left, zIndex: 99999, pointerEvents: "auto" }}
       onMouseDown={(e) => e.preventDefault()}
     >
@@ -713,39 +1071,197 @@ function RichSelToolbar({
         className="flex items-center gap-0.5 rounded-xl border border-[var(--border)] shadow-2xl px-2 py-1.5"
         style={{ background: "var(--surface-raised)", whiteSpace: "nowrap" }}
       >
-        {/* Font family */}
-        <FontPicker compact value="" onChange={onFontFamily} />
-        {/* Font size */}
-        <input
-          type="number" min={6} max={200} placeholder="px"
-          value={sizeInput}
-          onChange={(e) => setSizeInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && sizeInput) { onFontSize(Number(sizeInput)); setSizeInput(""); } }}
+        {/* Para style */}
+        <select
+          value=""
+          onChange={(e) => { onParaStyle(e.target.value); (e.target as HTMLSelectElement).value = ""; }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
-          className="w-11 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-xs text-[var(--text-primary)] outline-none"
-          title="Font size (press Enter)"
-        />
+          className="rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-[11px] text-[var(--text-primary)] outline-none cursor-pointer"
+          style={{ maxWidth: 76 }}
+          title="Paragraph style"
+        >
+          <option value="" disabled>Style</option>
+          {PARA_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
         <Divider />
+        {/* Font family */}
+        <FontPicker compact value={selState.fontFamily ?? ""} onChange={onFontFamily} />
+        <Divider />
+        {/* Font size: − input + */}
+        <div className="relative flex items-center gap-0.5">
+          <button
+            className="flex items-center justify-center w-5 h-5 rounded text-[var(--text-primary)] hover:bg-[var(--surface-overlay)] text-sm font-bold leading-none"
+            onClick={() => applySize(currentSize - 1)}
+            title="Decrease font size"
+          >−</button>
+          <button
+            ref={sizeBtnRef}
+            className="min-w-[36px] rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-xs text-center text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors"
+            onClick={() => setShowSizePicker(v => !v)}
+            title="Font size"
+          >{currentSize}</button>
+          <button
+            className="flex items-center justify-center w-5 h-5 rounded text-[var(--text-primary)] hover:bg-[var(--surface-overlay)] text-sm font-bold leading-none"
+            onClick={() => applySize(currentSize + 1)}
+            title="Increase font size"
+          >+</button>
+          {showSizePicker && (
+            <div
+              ref={sizePickerRef}
+              className="absolute left-0 top-full mt-1 rounded-lg border border-[var(--border)] shadow-2xl overflow-y-auto"
+              style={{ background: "var(--surface-raised)", zIndex: 2, maxHeight: 220, minWidth: 56 }}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              {SIZE_PRESETS.map(s => (
+                <button
+                  key={s}
+                  className="block w-full text-left px-3 py-0.5 text-xs text-[var(--text-primary)] hover:bg-[var(--surface-overlay)] transition-colors"
+                  style={{ fontWeight: s === currentSize ? 700 : 400 }}
+                  onClick={() => { applySize(s); setShowSizePicker(false); }}
+                >{s}</button>
+              ))}
+            </div>
+          )}
+        </div>
+        <Divider />
+        {/* B / I / U / S */}
         <TBtn active={selState.bold} onClick={() => onExecCmd("bold")} title="Bold"><span className="font-bold text-xs">B</span></TBtn>
         <TBtn active={selState.italic} onClick={() => onExecCmd("italic")} title="Italic"><span className="italic text-xs">I</span></TBtn>
         <TBtn active={selState.underline} onClick={() => onExecCmd("underline")} title="Underline"><span className="underline text-xs">U</span></TBtn>
-        <TBtn active={false} onClick={() => onExecCmd("strikeThrough")} title="Strikethrough"><span className="line-through text-xs">S</span></TBtn>
+        <TBtn active={selState.strikethrough ?? false} onClick={() => onExecCmd("strikeThrough")} title="Strikethrough"><span className="line-through text-xs">S</span></TBtn>
         <Divider />
         {/* Text color */}
         <label className="cursor-pointer flex items-center" title="Text color">
           <span className="font-bold text-xs text-[var(--text-primary)] px-1" style={{ textDecoration: "underline 2px var(--accent)" }}>A</span>
           <input type="color" defaultValue="#ffffff" onChange={(e) => onColor(e.target.value)} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} className="h-4 w-4 cursor-pointer border-0 bg-transparent p-0 outline-none" />
         </label>
-        {/* Highlight */}
-        <label className="cursor-pointer flex items-center ml-0.5" title="Highlight">
-          <span className="text-[10px] px-1 bg-yellow-300 text-black rounded-sm font-medium">H</span>
-          <input type="color" defaultValue="#ffff00" onChange={(e) => onHighlight(e.target.value)} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} className="h-4 w-4 cursor-pointer border-0 bg-transparent p-0 outline-none" />
-        </label>
+        {/* Highlight button + swatch picker */}
+        <button
+          ref={hlBtnRef}
+          title="Highlight"
+          className="flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-4 text-black transition-opacity hover:opacity-80"
+          style={{ background: hlColor }}
+          onClick={() => setShowHlPicker(v => !v)}
+        >H</button>
+        {!hideAlignment && (<>
+        <Divider />
+        {/* Alignment */}
+        <TBtn active={false} onClick={() => onExecCmd("justifyLeft")} title="Align left"><span className="text-[10px] font-mono">≡L</span></TBtn>
+        <TBtn active={false} onClick={() => onExecCmd("justifyCenter")} title="Align center"><span className="text-[10px] font-mono">≡C</span></TBtn>
+        <TBtn active={false} onClick={() => onExecCmd("justifyRight")} title="Align right"><span className="text-[10px] font-mono">≡R</span></TBtn>
+        <TBtn active={false} onClick={() => onExecCmd("justifyFull")} title="Justify"><span className="text-[10px] font-mono">≡J</span></TBtn>
+        </>)}
+        {/* Line spacing */}
+        {onLineSpacing && (<>
+          <Divider />
+          <select
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) { onLineSpacing(e.target.value); e.target.value = ""; } }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            className="rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-[10px] text-[var(--text-primary)] outline-none cursor-pointer"
+            style={{ width: 40 }}
+            title="Line spacing"
+          >
+            <option value="" disabled>↕</option>
+            <option value="1">1</option>
+            <option value="1.15">1.15</option>
+            <option value="1.5">1.5</option>
+            <option value="2">2</option>
+            <option value="2.5">2.5</option>
+          </select>
+        </>)}
+        {/* Lists + checklist */}
+        {onInsertList && (<>
+          <TBtn active={false} onClick={() => onInsertList("ul")} title="Bullet list"><span className="text-[10px] font-mono">•≡</span></TBtn>
+          <TBtn active={false} onClick={() => onInsertList("ol")} title="Numbered list"><span className="text-[10px] font-mono">1.</span></TBtn>
+        </>)}
+        {onInsertCheckbox && <TBtn active={false} onClick={onInsertCheckbox} title="Checklist"><span className="text-[10px]">☑</span></TBtn>}
+        <Divider />
+        {/* Indent */}
+        <TBtn active={false} onClick={() => onExecCmd("outdent")} title="Decrease indent"><span className="text-[10px]">⇤</span></TBtn>
+        <TBtn active={false} onClick={() => onExecCmd("indent")} title="Increase indent"><span className="text-[10px]">⇥</span></TBtn>
+        <Divider />
+        {/* Link */}
+        {onLink && (
+          linkInput !== null ? (
+            <div className="flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              {linkSelText && (
+                <span className="max-w-[80px] truncate rounded bg-[var(--accent)]/15 px-1.5 py-0.5 text-[10px] text-[var(--accent)]" title={linkSelText}>
+                  "{linkSelText}"
+                </span>
+              )}
+              <input
+                autoFocus
+                placeholder="https://…"
+                value={linkInput}
+                onChange={(e) => setLinkInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && linkInput) { onLink(linkInput); setLinkInput(null); }
+                  if (e.key === "Escape") setLinkInput(null);
+                }}
+                className="w-36 rounded border border-[var(--accent)] bg-[var(--surface)] px-2 py-0.5 text-xs text-[var(--text-primary)] outline-none"
+              />
+            </div>
+          ) : (
+            <TBtn active={false} onClick={() => { setLinkSelText(window.getSelection()?.toString() || ""); setLinkInput(""); }} title="Insert link">
+              <span className="text-[11px]">🔗</span>
+            </TBtn>
+          )
+        )}
+        {onLink && <TBtn active={false} onClick={() => onExecCmd("unlink")} title="Remove link"><span className="text-[10px] opacity-60 line-through">🔗</span></TBtn>}
         <Divider />
         <TBtn active={false} onClick={onClearFormat} title="Clear formatting"><span className="text-[10px]">T↩</span></TBtn>
         <button onClick={onDismiss} className="ml-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] px-1 leading-none" title="Dismiss">✕</button>
       </div>
+
+      {/* Highlight color picker */}
+      {showHlPicker && (
+        <div
+          ref={hlPickerRef}
+          className="absolute left-0 top-full mt-1 flex flex-wrap gap-1 rounded-xl border border-[var(--border)] p-2 shadow-2xl"
+          style={{ background: "var(--surface-raised)", zIndex: 1 }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <button
+            title="Remove highlight"
+            className="relative rounded border border-[var(--border)] hover:border-[var(--accent)] transition-colors overflow-hidden"
+            style={{ width: 22, height: 22, background: "#fff", flexShrink: 0 }}
+            onClick={() => { onHighlight("transparent"); setShowHlPicker(false); }}
+          >
+            <svg viewBox="0 0 22 22" className="absolute inset-0 w-full h-full pointer-events-none">
+              <line x1="4" y1="18" x2="18" y2="4" stroke="red" strokeWidth="2" />
+            </svg>
+          </button>
+          {(["#ffff00","#ffd700","#90ee90","#87ceeb","#ffb6c1","#ffa07a","#da70d6","#ffffff"] as const).map(c => (
+            <button
+              key={c}
+              title={c}
+              className="rounded transition-all hover:scale-110"
+              style={{
+                width: 22, height: 22, background: c, flexShrink: 0,
+                border: c === hlColor ? "2px solid var(--accent)" : "1px solid var(--border)",
+                borderRadius: 4,
+              }}
+              onClick={() => { setHlColor(c); onHighlight(c); setShowHlPicker(false); }}
+            />
+          ))}
+          <label
+            title="Custom color"
+            className="relative rounded border border-[var(--border)] hover:border-[var(--accent)] transition-all cursor-pointer overflow-hidden hover:scale-110"
+            style={{ width: 22, height: 22, flexShrink: 0, background: "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)" }}
+          >
+            <input
+              type="color"
+              value={hlColor}
+              onMouseDown={(e) => e.stopPropagation()}
+              onChange={(e) => { const c = e.target.value; setHlColor(c); onHighlight(c); setShowHlPicker(false); }}
+              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+            />
+          </label>
+        </div>
+      )}
     </div>
   );
 }
@@ -826,23 +1342,12 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
       <div>
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <FontPicker
-              compact
-              value={item.listFontFamily ?? "Inter"}
-              onChange={(font) => { loadGoogleFont(font); upd({ listFontFamily: font }); }}
-            />
-            <input
-              type="number" min={8} max={72}
-              value={item.listFontSize ?? 14}
-              onChange={(e) => upd({ listFontSize: Number(e.target.value) })}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none"
-              title="Font size"
-            />
-            <span className="text-[10px] text-[var(--text-muted)]">px</span>
-          </div>
+          <FontPicker
+            compact
+            value={item.listFontFamily ?? "Inter"}
+            onChange={(font) => { loadGoogleFont(font); upd({ listFontFamily: font }); }}
+          />
+          <PanelSlider label="Size" value={item.listFontSize ?? 14} min={8} max={48} onChange={(v) => upd({ listFontSize: v })} />
           <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
             <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: item.listFontColor ?? "#f2f2f2" }}>
               <input type="color" value={item.listFontColor ?? "#f2f2f2"} onChange={(e) => upd({ listFontColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
@@ -850,42 +1355,6 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
             <span className="flex-1 text-[var(--text-secondary)]">Text color</span>
             <span className="font-mono text-[10px] text-[var(--text-muted)]">{item.listFontColor ?? "default"}</span>
           </label>
-        </div>
-      </div>
-
-      {/* Variable value appearance */}
-      <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Variable value</p>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <FontPicker
-              compact
-              value={item.listVarValueFontFamily ?? "monospace"}
-              onChange={(font) => { loadGoogleFont(font); upd({ listVarValueFontFamily: font }); }}
-            />
-            <input
-              type="number" min={8} max={72}
-              value={item.listVarValueFontSize ?? 10}
-              onChange={(e) => upd({ listVarValueFontSize: Number(e.target.value) })}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none"
-              title="Font size"
-            />
-            <span className="text-[10px] text-[var(--text-muted)]">px</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 flex-1 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
-              <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: item.listVarValueFontColor ?? "#888888" }}>
-                <input type="color" value={item.listVarValueFontColor ?? "#888888"} onChange={(e) => upd({ listVarValueFontColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-              </span>
-              <span className="flex-1 text-[var(--text-secondary)]">Value color</span>
-            </label>
-            <button
-              onClick={() => upd({ listVarValueBold: !item.listVarValueBold })}
-              className={cn("rounded px-2.5 py-2 text-xs font-bold border transition-colors", item.listVarValueBold ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]")}
-            >B</button>
-          </div>
         </div>
       </div>
 
@@ -939,10 +1408,6 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
               <div className="flex items-center gap-1">
                 <span className="text-[10px] text-[var(--text-muted)]">W</span>
                 <input type="number" min={1} max={16} value={item.listBorderWidth ?? 1} onChange={(e) => upd({ listBorderWidth: Number(e.target.value) })} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} className="w-12 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none" />
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-[var(--text-muted)]">R</span>
-                <input type="number" min={0} max={200} value={item.listBorderRadius ?? 0} onChange={(e) => upd({ listBorderRadius: Number(e.target.value) })} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} className="w-12 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none" />
               </div>
             </div>
             <div className="grid grid-cols-4 gap-1">
@@ -1042,13 +1507,64 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
         )}
       </div>
 
-      {/* Progress bar */}
+      {/* Progress bar — only for checkbox marker */}
       <div>
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Progress</p>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={!!item.listShowProgress} onChange={(e) => upd({ listShowProgress: e.target.checked })} className="accent-[var(--accent)]" />
-          <span className="text-[var(--text-secondary)]">Show progress bar</span>
-        </label>
+        {(item.listMarker ?? "checkbox") !== "checkbox" ? (
+          <p className="text-[11px] text-[var(--text-muted)]">Only available with the Checkbox marker.</p>
+        ) : (
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={!!item.listShowProgress} onChange={(e) => upd({ listShowProgress: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[var(--text-secondary)]">Show progress bar</span>
+          </label>
+          {item.listShowProgress && (<>
+            {/* Bar color */}
+            <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
+              <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: item.listProgressColor ?? item.listCheckColor ?? "var(--accent)" }}>
+                <input type="color" value={item.listProgressColor ?? item.listCheckColor ?? "#6c63ff"} onChange={(e) => upd({ listProgressColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              </span>
+              <span className="flex-1 text-[var(--text-secondary)]">Bar color</span>
+              {item.listProgressColor && (
+                <button onClick={() => upd({ listProgressColor: undefined })} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset</button>
+              )}
+            </label>
+            {/* Height */}
+            <PanelSlider label="Height" value={item.listProgressHeight ?? 6} min={2} max={20} onChange={(v) => upd({ listProgressHeight: v })} />
+            {/* Style */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-secondary)] flex-1">Style</span>
+              <div className="flex rounded overflow-hidden border border-[var(--border)]">
+                {(["rounded", "square"] as const).map(s => (
+                  <button key={s} onClick={() => upd({ listProgressStyle: s })}
+                    className="px-2.5 py-1 text-[11px] transition-colors capitalize"
+                    style={{ background: (item.listProgressStyle ?? "rounded") === s ? "var(--accent)" : "transparent", color: (item.listProgressStyle ?? "rounded") === s ? "#fff" : "var(--text-muted)" }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Position */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-secondary)] flex-1">Position</span>
+              <div className="flex rounded overflow-hidden border border-[var(--border)]">
+                {(["top", "bottom"] as const).map(p => (
+                  <button key={p} onClick={() => upd({ listProgressPosition: p })}
+                    className="px-2.5 py-1 text-[11px] transition-colors capitalize"
+                    style={{ background: (item.listProgressPosition ?? "top") === p ? "var(--accent)" : "transparent", color: (item.listProgressPosition ?? "top") === p ? "#fff" : "var(--text-muted)" }}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Label */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={item.listProgressShowLabel !== false} onChange={(e) => upd({ listProgressShowLabel: e.target.checked })} className="accent-[var(--accent)]" />
+              <span className="text-[var(--text-secondary)]">Show label</span>
+            </label>
+          </>)}
+        </div>
+        )}
       </div>
 
       {/* Checkbox */}
@@ -1143,12 +1659,10 @@ function PanelSlider({ label, value, min, max, step = 1, decimals = 0, onChange 
   );
 }
 
-function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; vars?: Record<string, number>; collapsed?: boolean; isFinished?: boolean }) {
+function ListItem({ item, upd, collapsed, isFinished, boardId, boxId }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; boardId: string; boxId: string }) {
   const entries = item.listItems ?? [];
   const shown = collapsed ? entries.slice(0, 4) : entries;
-  const [hoveredValueId, setHoveredValueId] = useState<string | null>(null);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
-  const [editingValueId, setEditingValueId] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const marker = item.listMarker ?? "checkbox";
@@ -1159,14 +1673,24 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
   const listContainerRef = useRef<HTMLDivElement>(null);
   const entryHTMLRef = useRef<Map<string, string>>(new Map());
   const editingDivRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const pendingFocusId = useRef<string | null>(null);
 
-  // Close context menu on outside click (bubble phase so menu's stopPropagation works)
-  useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    window.addEventListener("mousedown", close);
-    return () => window.removeEventListener("mousedown", close);
-  }, [contextMenu]);
+  // Auto-focus newly created entries (after Enter key)
+  useLayoutEffect(() => {
+    const id = pendingFocusId.current;
+    if (!id) return;
+    const el = editingDivRefs.current.get(id);
+    if (el) {
+      pendingFocusId.current = null;
+      el.focus();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
+  });
 
   const handleEntryHTMLChange = useCallback((el: HTMLElement) => {
     const id = el.dataset.entryId;
@@ -1177,7 +1701,7 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries]);
 
-  const { selRect, selState, withSavedRange, wrapSelectionSpan, dismissSelToolbar } = useRichSel(
+  const { showToolbar: listShowToolbar, toolbarPos: listToolbarPos, selState, withSavedRange, wrapSelectionSpan, applyFontSizeRange, dismissSelToolbar } = useRichSel(
     listContainerRef,
     handleEntryHTMLChange,
   );
@@ -1229,13 +1753,31 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
     overflow: "hidden",
   };
 
-  const checkableEntries = entries.filter((e) => !e.isVariable);
-  const checkedCount = checkableEntries.filter((e) => e.checked).length;
-  const progressPct = checkableEntries.length > 0 ? (checkedCount / checkableEntries.length) * 100 : 0;
+  const checkedCount = entries.filter((e) => e.checked).length;
+  const progressPct = entries.length > 0 ? (checkedCount / entries.length) * 100 : 0;
+
+  const progressBar = item.listShowProgress && !collapsed && entries.length > 0 && marker === "checkbox" ? (() => {
+    const barH = item.listProgressHeight ?? 6;
+    const barR = item.listProgressStyle === "square" ? 2 : 9999;
+    const barColor = item.listProgressColor ?? item.listCheckColor ?? "var(--accent)";
+    return (
+      <div className="relative z-10 flex flex-col gap-1">
+        {item.listProgressShowLabel !== false && (
+          <div className="flex items-center justify-between text-[10px]" style={{ color: item.listFontColor ? item.listFontColor + "90" : "var(--text-muted)" }}>
+            <span>{checkedCount} / {entries.length} done</span>
+            <span className="font-semibold">{Math.round(progressPct)}%</span>
+          </div>
+        )}
+        <div style={{ height: barH, borderRadius: barR, overflow: "hidden", background: "var(--border)" }}>
+          <div style={{ height: "100%", borderRadius: barR, width: `${progressPct}%`, background: barColor, transition: "width 300ms" }} />
+        </div>
+      </div>
+    );
+  })() : null;
 
   return (
     <div ref={listContainerRef} className="flex flex-col w-full h-full" style={containerStyle}
-      onContextMenu={(e) => { if (isFinished) { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }); } }}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (!isFinished) setContextMenu({ x: e.clientX, y: e.clientY }); }}
     >
       {/* Wallpaper layer */}
       {item.listWallpaperUrl && (
@@ -1258,17 +1800,9 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
           {item.listTitle}
         </p>
       )}
-      {/* Progress bar */}
-      {item.listShowProgress && !collapsed && checkableEntries.length > 0 && (
-        <div className="relative z-10 mb-2 flex flex-col gap-1">
-          <div className="flex items-center justify-between text-[10px]" style={{ color: item.listFontColor ? item.listFontColor + "90" : "var(--text-muted)" }}>
-            <span>{checkedCount} / {checkableEntries.length} done</span>
-            <span className="font-semibold">{Math.round(progressPct)}%</span>
-          </div>
-          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
-            <div className="h-full rounded-full transition-all duration-300" style={{ width: `${progressPct}%`, background: item.listCheckColor ?? "var(--accent)" }} />
-          </div>
-        </div>
+      {/* Progress bar — top position (default) */}
+      {(item.listProgressPosition ?? "top") === "top" && progressBar && (
+        <div className="mb-2">{progressBar}</div>
       )}
       {shown.map((entry, i) => {
         // Divider
@@ -1297,9 +1831,9 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
             {marker === "checkbox" && (
               hasCustomIcon ? (
                 <button
-                  onClick={() => { if (!isFinished || !locked) setEntries(entries.map((e) => e.id === entry.id ? { ...e, checked: !e.checked } : e)); }}
+                  onClick={(e) => { e.stopPropagation(); if (!isFinished) setEntries(entries.map((ev) => ev.id === entry.id ? { ...ev, checked: !ev.checked } : ev)); }}
                   className="flex-shrink-0 transition-opacity"
-                  style={{ width: iconSize, height: iconSize, cursor: isFinished && locked ? "default" : undefined }}
+                  style={{ width: iconSize, height: iconSize, cursor: isFinished ? "default" : undefined }}
                 >
                   {entry.checked && item.listCheckCheckedIcon ? (
                     <img src={item.listCheckCheckedIcon} alt="" style={{ width: iconSize, height: iconSize, objectFit: "contain" }} />
@@ -1313,10 +1847,10 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
                 </button>
               ) : (
                 <button
-                  onClick={() => { if (!isFinished || !locked) setEntries(entries.map((e) => e.id === entry.id ? { ...e, checked: !e.checked } : e)); }}
+                  onClick={(e) => { e.stopPropagation(); if (!isFinished) setEntries(entries.map((ev) => ev.id === entry.id ? { ...ev, checked: !ev.checked } : ev)); }}
                   className={cn("flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors",
                     entry.checked ? "border-transparent" : "border-[var(--border)] hover:border-[var(--accent)]",
-                    isFinished && locked && "cursor-default")}
+                    isFinished && "cursor-default")}
                   style={entry.checked ? { backgroundColor: checkColor, borderColor: checkColor } : undefined}
                 >
                   {entry.checked && <Check size={10} className="text-white" />}
@@ -1330,103 +1864,12 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
               <span className="w-5 flex-shrink-0 text-right text-xs" style={{ color: item.listFontColor || "var(--text-muted)" }}>{i + 1}.</span>
             )}
 
-            {entry.isVariable ? (
-              /* Variable entries: label (contentEditable) + value on right */
-              <>
-                {collapsed ? (
-                  <span className={cn("flex-1", entry.checked && marker === "checkbox" && "line-through opacity-40")} style={{ fontSize: "inherit" }} dangerouslySetInnerHTML={{ __html: entry.text ?? "" }} />
-                ) : (
-                  <div
-                    data-entry-id={entry.id}
-                    contentEditable
-                    suppressContentEditableWarning
-                    className={cn("flex-1 min-w-0 outline-none", entry.checked && marker === "checkbox" && "line-through opacity-40")}
-                    style={{ fontSize: "inherit", fontFamily: "inherit", color: "inherit", wordBreak: "break-word", whiteSpace: "pre-wrap", minHeight: "1em", caretColor: isFinished && editingEntryId !== entry.id ? "transparent" : undefined }}
-                    ref={(el) => { if (el) editingDivRefs.current.set(entry.id, el); else editingDivRefs.current.delete(entry.id); }}
-                    onFocus={() => { if (isFinished && !locked) setEditingEntryId(entry.id); }}
-                    onBlur={() => { if (isFinished) setEditingEntryId(null); }}
-                    onInput={(e) => {
-                      if (isFinished && (locked || editingEntryId !== entry.id)) {
-                        e.currentTarget.innerHTML = entryHTMLRef.current.get(entry.id) ?? entry.text ?? "";
-                        return;
-                      }
-                      const html = (e.currentTarget as HTMLDivElement).innerHTML;
-                      const plain = html.replace(/<[^>]*>/g, "").trim();
-                      const autoName = plain.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 20) || "var";
-                      entryHTMLRef.current.set(entry.id, html);
-                      setEntries(entries.map((x) => x.id === entry.id ? { ...x, text: html, variableName: autoName } : x));
-                    }}
-                    onKeyDown={(e) => {
-                      if (isFinished && (locked || editingEntryId !== entry.id)) { e.preventDefault(); return; }
-                      if (isFinished && e.key === "Escape") { e.currentTarget.blur(); }
-                    }}
-                  />
-                )}
-                {/* Value: right-aligned, mode-aware */}
-                {(() => {
-                  const name = entry.variableName?.trim();
-                  const computedVal = name && name in vars
-                    ? String(vars[name])
-                    : (() => { const raw = entry.variableRawValue ?? String(entry.variableValue ?? ""); const n = Number(raw); return isNaN(n) ? raw : String(n); })();
-                  const valStyle: React.CSSProperties = {
-                    fontFamily: item.listVarValueFontFamily ?? "monospace",
-                    fontSize: item.listVarValueFontSize ? `${item.listVarValueFontSize}px` : "10px",
-                    color: item.listVarValueFontColor || "var(--text-muted)",
-                    fontWeight: item.listVarValueBold ? "bold" : undefined,
-                  };
-                  if (collapsed) {
-                    return <span className="flex-shrink-0 ml-2 tabular-nums" style={valStyle}>{computedVal || "—"}</span>;
-                  }
-                  if (isFinished) {
-                    return editingValueId === entry.id && !locked ? (
-                      <input
-                        autoFocus
-                        className="w-20 flex-shrink-0 bg-transparent text-right text-[var(--text-primary)] outline-none border-b border-[var(--accent)] ml-2"
-                        style={valStyle}
-                        placeholder="0"
-                        value={entry.variableRawValue ?? String(entry.variableValue ?? "")}
-                        onChange={(e) => setEntries(entries.map((x) => x.id === entry.id ? { ...x, variableRawValue: e.target.value } : x))}
-                        onBlur={() => setEditingValueId(null)}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur(); }}
-                      />
-                    ) : (
-                      <span
-                        className={cn("flex-shrink-0 ml-2 tabular-nums transition-colors", !locked && "cursor-text")}
-                        style={valStyle}
-                        onClick={() => { if (!locked) setEditingValueId(entry.id); }}
-                      >
-                        {computedVal || "—"}
-                      </span>
-                    );
-                  }
-                  return hoveredValueId === entry.id ? (
-                    <input
-                      autoFocus
-                      className="w-20 flex-shrink-0 bg-transparent text-right text-[var(--text-primary)] outline-none ml-2"
-                      style={valStyle}
-                      placeholder="0"
-                      value={entry.variableRawValue ?? String(entry.variableValue ?? "")}
-                      onChange={(e) => setEntries(entries.map((x) => x.id === entry.id ? { ...x, variableRawValue: e.target.value } : x))}
-                      onBlur={() => setHoveredValueId(null)}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur(); }}
-                    />
-                  ) : (
-                    <span
-                      className="flex-shrink-0 ml-2 tabular-nums cursor-text select-none transition-colors"
-                      style={valStyle}
-                      onMouseEnter={() => setHoveredValueId(entry.id)}
-                    >
-                      {computedVal || "—"}
-                    </span>
-                  );
-                })()}
-              </>
-            ) : collapsed ? (
-              <span className={cn("flex-1", entry.checked && marker === "checkbox" && "line-through opacity-40")} style={{ fontSize: "inherit" }} dangerouslySetInnerHTML={{ __html: entry.text ?? "" }} />
+            {collapsed ? (
+              <span className={cn("flex-1", entry.checked && marker === "checkbox" && "line-through opacity-40")} style={{ fontSize: "inherit" }} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(entry.text ?? "") }} />
             ) : (
               <div
                 data-entry-id={entry.id}
-                contentEditable
+                contentEditable={!isFinished}
                 suppressContentEditableWarning
                 className={cn("flex-1 min-w-0 outline-none", entry.checked && marker === "checkbox" && "line-through opacity-40")}
                 style={{ fontSize: "inherit", fontFamily: "inherit", color: "inherit", wordBreak: "break-word", whiteSpace: "pre-wrap", minHeight: "1em", caretColor: isFinished && editingEntryId !== entry.id ? "transparent" : undefined }}
@@ -1441,7 +1884,6 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
                     e.currentTarget.innerHTML = entryHTMLRef.current.get(entry.id) ?? entry.text ?? "";
                     return;
                   }
-                  dismissSelToolbar();
                   const html = (e.currentTarget as HTMLDivElement).innerHTML;
                   entryHTMLRef.current.set(entry.id, html);
                   setEntries(entries.map((x) => x.id === entry.id ? { ...x, text: html } : x));
@@ -1451,11 +1893,26 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
                   const el = e.currentTarget as HTMLDivElement;
                   if (!isFinished && e.key === "Enter") {
                     e.preventDefault();
+                    const newId = nanoid();
+                    pendingFocusId.current = newId;
                     const next = [...entries];
-                    next.splice(i + 1, 0, { id: nanoid(), text: "", checked: false });
+                    next.splice(i + 1, 0, { id: newId, text: "", checked: false });
                     setEntries(next);
                   } else if (!isFinished && e.key === "Backspace" && (el.innerHTML === "" || el.innerHTML === "<br>") && entries.length > 1) {
                     e.preventDefault();
+                    const prevEntry = entries[i - 1];
+                    if (prevEntry) {
+                      const prevEl = editingDivRefs.current.get(prevEntry.id);
+                      if (prevEl) {
+                        prevEl.focus();
+                        const range = document.createRange();
+                        range.selectNodeContents(prevEl);
+                        range.collapse(false);
+                        const sel = window.getSelection();
+                        sel?.removeAllRanges();
+                        sel?.addRange(range);
+                      }
+                    }
                     setEntries(entries.filter((x) => x.id !== entry.id));
                   } else if (isFinished && e.key === "Escape") {
                     el.blur();
@@ -1465,13 +1922,6 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
             )}
             {!isFinished && !collapsed && (
               <div className="flex items-center gap-0.5 flex-shrink-0">
-                <button
-                  title={entry.isVariable ? "Remove variable" : "Make variable — expose value to other items"}
-                  onClick={() => setEntries(entries.map((x) => x.id === entry.id ? { ...x, isVariable: !x.isVariable, variableName: x.isVariable ? x.variableName : (x.text.replace(/<[^>]*>/g, "").trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 20) || "var") } : x))}
-                  className={cn("rounded p-0.5 transition-colors", entry.isVariable ? "text-[var(--accent)]" : "text-[var(--text-muted)]/40 hover:text-[var(--accent)]")}
-                >
-                  <Hash size={10} />
-                </button>
                 <button onClick={() => setEntries(entries.filter((x) => x.id !== entry.id))} className="text-[var(--text-muted)] opacity-0 group-hover/le:opacity-100 hover:text-red-400 transition-colors rounded p-0.5">
                   <Trash2 size={11} />
                 </button>
@@ -1483,6 +1933,10 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
       {collapsed && entries.length > 4 && (
         <p className="text-xs text-[var(--text-muted)] px-1" style={{ position: "relative", zIndex: 1, paddingTop: rowSpacing / 2 }}>+{entries.length - 4} more items</p>
       )}
+      {/* Progress bar — bottom position */}
+      {item.listProgressPosition === "bottom" && progressBar && (
+        <div className="mt-2">{progressBar}</div>
+      )}
       {!isFinished && !collapsed && (
         <button onClick={() => setEntries([...entries, { id: nanoid(), text: "", checked: false }])}
           className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors w-full px-1"
@@ -1493,131 +1947,88 @@ function ListItem({ item, upd, vars = {}, collapsed, isFinished }: { item: Block
           <Plus size={11} /> Add item
         </button>
       )}
-      {selRect && !collapsed && createPortal(
+      {listShowToolbar && listToolbarPos && !collapsed && !isFinished && createPortal(
         <RichSelToolbar
-          cx={selRect.cx}
-          top={selRect.top}
+          cx={listToolbarPos.cx}
+          top={listToolbarPos.top}
           selState={selState}
           onExecCmd={(cmd) => withSavedRange(() => document.execCommand(cmd))}
-          onFontFamily={(font) => { loadGoogleFont(font); wrapSelectionSpan({ fontFamily: font }); }}
-          onFontSize={(size) => wrapSelectionSpan({ fontSize: `${size}px` })}
-          onColor={(color) => withSavedRange(() => document.execCommand("foreColor", false, color))}
-          onHighlight={(color) => withSavedRange(() => document.execCommand("hiliteColor", false, color))}
+          onParaStyle={(styleId) => {
+            const tagMap: Record<string, string> = { h1: "h1", h2: "h2", h3: "h3", code: "pre", normal: "p" };
+            withSavedRange(() => document.execCommand("formatBlock", false, tagMap[styleId] ?? "p"));
+          }}
+          onFontFamily={(font) => { loadGoogleFont(font); if (!wrapSelectionSpan({ fontFamily: font })) upd({ listFontFamily: font }); }}
+          onFontSize={(size) => {
+            if (!applyFontSizeRange(size)) {
+              // Apply to all entries in one upd call to avoid stale-closure issues with handleEntryHTMLChange
+              const editables = Array.from(listContainerRef.current?.querySelectorAll<HTMLElement>('[contenteditable="true"]') ?? []);
+              const updatedItems = entries.map(e => {
+                const el = editables.find(div => div.dataset.entryId === e.id);
+                if (!el) return e;
+                el.querySelectorAll<HTMLElement>('[style*="font-size"]').forEach(child => {
+                  child.style.removeProperty('font-size');
+                  if (!child.getAttribute('style')?.trim()) child.removeAttribute('style');
+                });
+                const html = el.innerHTML;
+                entryHTMLRef.current.set(e.id, html);
+                return { ...e, text: html };
+              });
+              upd({ listItems: updatedItems, listFontSize: size });
+            }
+          }}
+          onColor={(color) => withSavedRange(() => {
+            document.execCommand("styleWithCSS", false, "true");
+            document.execCommand("foreColor", false, color);
+            document.execCommand("styleWithCSS", false, "false");
+          })}
+          onHighlight={(color) => withSavedRange(() => {
+            document.execCommand("styleWithCSS", false, "true");
+            document.execCommand("hiliteColor", false, color);
+            document.execCommand("styleWithCSS", false, "false");
+          })}
           onClearFormat={() => { withSavedRange(() => document.execCommand("removeFormat")); dismissSelToolbar(); }}
           onDismiss={dismissSelToolbar}
         />,
         document.body
       )}
-      {contextMenu && createPortal(
-        <div
-          style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
-          className="bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-xl py-1 min-w-[168px] text-[13px]"
-          onMouseDown={e => e.stopPropagation()}
-        >
-          <button onClick={() => { setEntries([...entries, { id: nanoid(), text: "", checked: false }]); setContextMenu(null); }}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
-            <Plus size={12} /> Add item
-          </button>
-          <div className="my-1 border-t border-[var(--border)]" />
-          <button onClick={() => { setLocked(v => !v); setContextMenu(null); }}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
-            {locked ? <LockOpen size={12} /> : <Lock size={12} />}
-            {locked ? "Unlock editing" : "Lock editing"}
-          </button>
-          {marker === "checkbox" && (
-            <>
-              <div className="my-1 border-t border-[var(--border)]" />
-              <button onClick={() => { setEntries(entries.map(e => ({ ...e, checked: true }))); setContextMenu(null); }}
-                className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
-                <CheckSquare size={12} /> Check all
-              </button>
-              <button onClick={() => { setEntries(entries.map(e => ({ ...e, checked: false }))); setContextMenu(null); }}
-                className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
-                <Square size={12} /> Uncheck all
-              </button>
-              <button onClick={() => { setEntries(entries.filter(e => !e.checked)); setContextMenu(null); }}
-                className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-red-400 hover:text-red-300">
-                <Trash2 size={12} /> Delete checked
-              </button>
-            </>
-          )}
-          <div className="my-1 border-t border-[var(--border)]" />
-          <button onClick={() => {
-            const text = entries.map(e => (e.text ?? "").replace(/<[^>]*>/g, "")).filter(Boolean).join("\n");
-            navigator.clipboard.writeText(text);
-            setContextMenu(null);
-          }}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
-            <Copy size={12} /> Copy as text
-          </button>
-        </div>,
-        document.body
-      )}
-    </div>
-  );
-}
-
-// ─── Variable ────────────────────────────────────────────────────────────────
-
-function VariableItem({ item, upd, vars, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; vars: Record<string, number>; collapsed?: boolean; isFinished?: boolean }) {
-  // Compute result using current known vars (which includes previously resolved vars in this block)
-  const name = item.varName ?? "";
-  const value = name in vars ? vars[name] : undefined;
-  const isNum = typeof value === "number";
-  const displayVal = isNum ? (isNaN(value) ? "Error" : String(Math.round(value * 10000) / 10000)) : "…";
-
-  if (collapsed) {
-    return (
-      <div className="flex items-center justify-between rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm font-mono">
-        <span className="text-[var(--text-secondary)]">{name || "unnamed"}</span>
-        <span className={cn("font-semibold", displayVal === "Error" ? "text-red-400" : "text-[var(--accent)]")}>{displayVal}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded border border-[var(--border)] bg-[var(--surface)] p-2 flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)]">Variable</span>
-        <span className={cn("ml-auto text-sm font-mono font-bold", displayVal === "Error" ? "text-red-400" : "text-[var(--accent)]")}>= {displayVal}</span>
-      </div>
-      {isFinished ? (
-        <div className="flex items-center gap-2 font-mono text-sm">
-          <span className="font-semibold text-[var(--text-primary)]">{name}</span>
-          <span className="text-[var(--text-muted)]">=</span>
-          <span className="text-[var(--text-secondary)]">{item.varFormula}</span>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] text-[var(--text-muted)]">Variable name</label>
-            <input
-              className="w-full rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1 font-mono text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
-              placeholder='e.g. "cost of car"'
-              value={name}
-              onChange={(e) => upd({ varName: e.target.value })}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] text-[var(--text-muted)]">Value / formula — use {"{variable name}"} to reference others</label>
-            <input
-              className="w-full rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1 font-mono text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
-              placeholder='e.g. 32000 or {cost of car} - {what I have}'
-              value={item.varFormula ?? ""}
-              onChange={(e) => upd({ varFormula: e.target.value })}
-            />
-          </div>
-          {Object.keys(vars).length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {Object.entries(vars).filter(([n]) => n !== name).map(([n, v]) => (
-                <button key={n} onClick={() => upd({ varFormula: (item.varFormula ?? "") + `{${n}}` })} className="rounded bg-[var(--accent)]/10 px-1.5 py-0.5 text-[10px] font-mono text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-colors" title={`Insert {${n}}`}>
-                  +{`{${n}}`}
-                </button>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+      {contextMenu && (() => {
+        const isBoardLevel = boxId === "";
+        const isFoc = item.isFocused ?? false;
+        const s = useBoardStore.getState();
+        const tmp = document.createElement("div");
+        const ctxItems: ContextMenuEntry[] = [
+          ...(!isFinished ? [
+            { label: "Add item", icon: <Plus size={14} />, onClick: () => setEntries([...entries, { id: nanoid(), text: "", checked: false }]) },
+            "separator" as const,
+          ] : []),
+          { label: locked ? "Unlock editing" : "Lock editing", icon: locked ? <LockOpen size={14} /> : <Lock size={14} />, onClick: () => setLocked(v => !v) },
+          ...(!isFinished ? [
+            "separator" as const,
+            { label: "Sort A → Z", icon: <ArrowUpDown size={14} />, onClick: () => setEntries([...entries].sort((a, b) => (a.text ?? "").replace(/<[^>]*>/g, "").localeCompare((b.text ?? "").replace(/<[^>]*>/g, "")))) },
+            { label: "Sort Z → A", icon: <ArrowUpDown size={14} />, onClick: () => setEntries([...entries].sort((a, b) => (b.text ?? "").replace(/<[^>]*>/g, "").localeCompare((a.text ?? "").replace(/<[^>]*>/g, "")))) },
+          ] : []),
+          ...(marker === "checkbox" ? [
+            "separator" as const,
+            { label: "Check all", icon: <CheckSquare size={14} />, onClick: () => setEntries(entries.map(e => ({ ...e, checked: true }))) },
+            { label: "Uncheck all", icon: <Square size={14} />, onClick: () => setEntries(entries.map(e => ({ ...e, checked: false }))) },
+            ...(!isFinished ? [{ label: "Delete checked", icon: <Trash2 size={14} />, danger: true, onClick: () => setEntries(entries.filter(e => !e.checked)) }] : []),
+          ] : []),
+          ...(!isFinished ? [
+            "separator" as const,
+            { label: "Clear all items", icon: <Trash2 size={14} />, danger: true, onClick: () => setEntries([]) },
+          ] : []),
+          "separator" as const,
+          { label: "Copy as text", icon: <Copy size={14} />, onClick: () => { const text = entries.map(e => { tmp.innerHTML = e.text ?? ""; return tmp.textContent ?? ""; }).filter(Boolean).join("\n"); navigator.clipboard.writeText(text); } },
+          "separator" as const,
+          { label: isFoc ? "Unfocus" : "Focus", icon: isFoc ? <EyeOff size={14} /> : <Eye size={14} />, onClick: () => isBoardLevel ? s.focusBoardItem(boardId, isFoc ? null : item.id) : s.focusItem(boardId, boxId, isFoc ? null : item.id) },
+          { label: "Bring to front", icon: <ArrowUpToLine size={14} />, onClick: () => isBoardLevel ? s.bringBoardItemToFront(boardId, item.id) : s.bringToFront(boardId, boxId) },
+          { label: "Send to back", icon: <ArrowDownToLine size={14} />, onClick: () => isBoardLevel ? s.sendBoardItemToBack(boardId, item.id) : s.sendToBack(boardId, boxId) },
+          { label: "Duplicate", icon: <CopyPlus size={14} />, onClick: () => isBoardLevel ? s.duplicateBoardItem(boardId, item.id) : s.duplicateBox(boardId, boxId) },
+          "separator" as const,
+          { label: "Delete", icon: <Trash2 size={14} />, danger: true, onClick: () => isBoardLevel ? s.removeBoardItem(boardId, item.id) : s.removeBox(boardId, boxId) },
+        ];
+        return <ContextMenu x={contextMenu.x} y={contextMenu.y} items={ctxItems} onClose={() => setContextMenu(null)} />;
+      })()}
     </div>
   );
 }
@@ -1626,10 +2037,17 @@ function VariableItem({ item, upd, vars, collapsed, isFinished }: { item: BlockI
 
 function EmbedItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
   const [playing, setPlaying] = useState(false);
+  const [editingUrl, setEditingUrl] = useState(false);
   const url = item.embedUrl ?? "";
   const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
   const ytId = ytMatch?.[1];
-  const embedSrc = ytId ? `https://www.youtube.com/embed/${ytId}` : null;
+  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+  const vimeoId = vimeoMatch?.[1];
+  const embedSrc = ytId
+    ? `https://www.youtube.com/embed/${ytId}`
+    : vimeoId
+    ? `https://player.vimeo.com/video/${vimeoId}`
+    : null;
 
   const br = item.embedBorderRadius ?? 8;
   const bw = item.embedBorderWidth ?? 0;
@@ -1662,24 +2080,61 @@ function EmbedItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
     filter: filterStr,
   };
 
-  if (!url) {
+  const commitUrl = (val: string) => {
+    const trimmed = val.trim();
+    if (trimmed) upd({ embedUrl: trimmed });
+    setEditingUrl(false);
+  };
+
+  if ((!url || editingUrl) && !isFinished) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 rounded border border-dashed border-[var(--border)] p-4 text-[var(--text-muted)]">
-        <span className="text-2xl">🎥</span>
+      <div className="flex flex-col items-center justify-center gap-2 w-full h-full rounded border border-dashed border-[var(--border)] p-4 text-[var(--text-muted)]">
+        <ExternalLink size={22} className="opacity-50" />
         <input
+          key={String(editingUrl)}
+          autoFocus={editingUrl}
           className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm text-[var(--text-primary)] outline-none text-center placeholder:text-[var(--text-muted)]"
-          placeholder="Paste YouTube or URL…"
-          onBlur={(e) => { if (e.target.value) upd({ embedUrl: e.target.value }); }}
+          placeholder="Paste a YouTube, Vimeo, or any URL…"
+          defaultValue={editingUrl ? url : ""}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitUrl((e.target as HTMLInputElement).value);
+            if (e.key === "Escape") setEditingUrl(false);
+          }}
+          onBlur={(e) => { if (e.target.value.trim()) commitUrl(e.target.value); else setEditingUrl(false); }}
         />
+        {editingUrl && (
+          <button onClick={() => setEditingUrl(false)} className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+            Cancel
+          </button>
+        )}
       </div>
     );
   }
+
+  const editBar = !isFinished && (
+    <div className="flex items-center gap-2 mt-1">
+      <button onClick={() => setEditingUrl(true)}
+        className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+        <ExternalLink size={11} /> Change URL
+      </button>
+      <span className="text-[var(--border)]">·</span>
+      <a href={url} target="_blank" rel="noopener noreferrer"
+        className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
+        Open in new tab
+      </a>
+      <span className="text-[var(--border)]">·</span>
+      <button onClick={() => upd({ embedUrl: "" })}
+        className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors">
+        <Trash2 size={11} /> Remove
+      </button>
+    </div>
+  );
 
   if (collapsed) {
     if (ytId) {
       if (playing) {
         return (
-          <div className="relative w-full h-full min-h-[120px] overflow-hidden" style={wrapStyle}>
+          <div className="relative w-full h-full min-h-[120px]" style={wrapStyle}>
             <iframe
               src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
               className="absolute inset-0 w-full h-full"
@@ -1693,7 +2148,7 @@ function EmbedItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
       }
       return (
         <div
-          className="relative w-full h-full min-h-[120px] overflow-hidden cursor-pointer group/thumb"
+          className="relative w-full h-full min-h-[120px] cursor-pointer group/thumb"
           style={wrapStyle}
           onClick={(e) => { e.stopPropagation(); setPlaying(true); }}
         >
@@ -1712,28 +2167,26 @@ function EmbedItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
       );
     }
     return (
-      <iframe src={url} className="w-full h-full min-h-[80px]" title="embed" style={{ border: "none", borderRadius: br }} />
+      <div className="w-full h-full min-h-[80px]" style={wrapStyle}>
+        <iframe src={url} className="w-full h-full" title="embed" style={{ border: "none", display: "block" }} />
+      </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-1 w-full h-full">
       {embedSrc ? (
-        <div className="relative w-full flex-1" style={{ ...wrapStyle, paddingBottom: url ? undefined : "56.25%" }}>
-          <div className="relative w-full" style={{ paddingBottom: "56.25%", borderRadius: br, overflow: "hidden", ...wrapStyle }}>
+        <div className="relative w-full flex-1 min-h-0">
+          <div className="relative w-full" style={{ paddingBottom: "56.25%", ...wrapStyle }}>
             <iframe src={embedSrc} className="absolute inset-0 h-full w-full" allowFullScreen title="embed" style={{ border: "none" }} />
           </div>
         </div>
       ) : (
-        <div style={wrapStyle} className="flex-1">
+        <div style={wrapStyle} className="flex-1 min-h-0">
           <iframe src={url} className="h-full w-full min-h-[120px]" title="embed" style={{ border: "none", display: "block" }} />
         </div>
       )}
-      {!isFinished && (
-        <button onClick={() => upd({ embedUrl: "" })} className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors mt-1">
-          <Trash2 size={11} /> Remove embed
-        </button>
-      )}
+      {editBar}
     </div>
   );
 }
@@ -1865,90 +2318,95 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
   const pomodoroLongBreakSecs = item.timerPomodoroLongBreakSecs ?? 900;
   const cyclesBeforeLong = item.timerPomodoroCyclesBeforeLongBreak ?? 4;
 
-  const [remaining, setRemaining] = useState(pomodoroEnabled ? pomodoroWorkSecs : total);
-  const [elapsed, setElapsed] = useState(0);
-  const [running, setRunning] = useState(false);
+  // Store-backed runtime state — shared across collapsed + expanded instances
+  const storeRunning = item.timerRunning ?? false;
+  const startEpoch = item.timerStartEpoch;
+  const baseRemaining = item.timerRemainingSecs ?? (pomodoroEnabled ? pomodoroWorkSecs : total);
+  const baseElapsed = item.timerElapsedSecs ?? 0;
+  const phase = (item.timerPhase ?? "work") as "work" | "break" | "long-break";
+  const displayCycles = item.timerDisplayCycles ?? 0;
+
+  // Compute current time from epoch — no per-tick store writes needed
+  const sinceStart = (storeRunning && startEpoch) ? Math.max(0, Math.floor((Date.now() - startEpoch) / 1000)) : 0;
+  const remaining = Math.max(0, baseRemaining - sinceStart);
+  const elapsed = baseElapsed + sinceStart;
+
+  // Local UI-only state
+  const [, setTick] = useState(0);
   const [now, setNow] = useState(new Date());
-  const [phase, setPhase] = useState<"work" | "break" | "long-break">("work");
-  const [displayCycles, setDisplayCycles] = useState(0);
-  const [phaseAdvance, setPhaseAdvance] = useState(false);
-  const cycleCountRef = useRef(0);
-  // Refs for stable closure access when syncing to store
-  const elapsedRef = useRef(elapsed);
-  const remainingRef = useRef(remaining);
-  elapsedRef.current = elapsed;
-  remainingRef.current = remaining;
+  const [hovered, setHovered] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const prevTotalRef = useRef(total);
+  const prevPomoRef = useRef(pomodoroEnabled);
 
-  // Sync elapsed/remaining to store when timer pauses — makes values available as variables
-  useEffect(() => {
-    if (!running && item.timerVarName?.trim()) {
-      upd({ timerElapsedSecs: elapsedRef.current, timerRemainingSecs: remainingRef.current });
+  const advancePhase = useCallback(() => {
+    const newCycles = phase === "work" ? displayCycles + 1 : displayCycles;
+    const nextPhase: "work" | "break" | "long-break" = phase === "work"
+      ? (newCycles % cyclesBeforeLong === 0 ? "long-break" : "break")
+      : "work";
+    const nextSecs = nextPhase === "work" ? pomodoroWorkSecs
+      : nextPhase === "long-break" ? pomodoroLongBreakSecs
+      : pomodoroBreakSecs;
+    upd({ timerRunning: true, timerPhase: nextPhase, timerDisplayCycles: newCycles, timerRemainingSecs: nextSecs, timerStartEpoch: Date.now(), timerElapsedSecs: 0 });
+  }, [phase, displayCycles, cyclesBeforeLong, pomodoroWorkSecs, pomodoroBreakSecs, pomodoroLongBreakSecs, upd]);
+
+  const toggleRunning = useCallback(() => {
+    if (storeRunning) {
+      upd({ timerRunning: false, timerRemainingSecs: remaining, timerElapsedSecs: elapsed });
+    } else {
+      upd({ timerRunning: true, timerStartEpoch: Date.now(), timerRemainingSecs: remaining, timerElapsedSecs: elapsed });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running]);
+  }, [storeRunning, remaining, elapsed, upd]);
 
-  // When pomodoro is toggled or work secs change, reset to work phase
-  useEffect(() => {
-    if (pomodoroEnabled) {
-      setPhase("work");
-      setRemaining(pomodoroWorkSecs);
-      cycleCountRef.current = 0;
-      setDisplayCycles(0);
-      setRunning(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pomodoroEnabled]);
-
-  // When total changes and NOT in pomodoro mode, reset remaining
-  useEffect(() => {
-    if (!pomodoroEnabled) setRemaining(total);
-  }, [total, pomodoroEnabled]);
-
-  // Phase transition effect
-  useEffect(() => {
-    if (!phaseAdvance) return;
-    setPhaseAdvance(false);
-    setPhase((currentPhase) => {
-      let nextPhase: "work" | "break" | "long-break";
-      if (currentPhase === "work") {
-        const newCount = cycleCountRef.current + 1;
-        cycleCountRef.current = newCount;
-        setDisplayCycles(newCount);
-        nextPhase = newCount % cyclesBeforeLong === 0 ? "long-break" : "break";
-      } else {
-        nextPhase = "work";
-      }
-      const nextSecs = nextPhase === "work" ? pomodoroWorkSecs
-        : nextPhase === "long-break" ? pomodoroLongBreakSecs
-        : pomodoroBreakSecs;
-      setRemaining(nextSecs);
-      setRunning(true);
-      return nextPhase;
-    });
-  }, [phaseAdvance, pomodoroWorkSecs, pomodoroBreakSecs, pomodoroLongBreakSecs, cyclesBeforeLong]);
-
+  // Tick interval — just re-renders, does not mutate state
   useEffect(() => {
     if (mode === "clock") {
-      const id = setInterval(() => setNow(new Date()), 1000);
+      const id = setInterval(() => { setNow(new Date()); setTick((t) => t + 1); }, 1000);
       return () => clearInterval(id);
     }
-    if (!running) return;
-    const id = setInterval(() => {
-      if (mode === "countdown") {
-        setRemaining((r) => {
-          if (r <= 1) {
-            setRunning(false);
-            if (pomodoroEnabled) setPhaseAdvance(true);
-            return 0;
-          }
-          return r - 1;
-        });
-      } else {
-        setElapsed((e) => e + 1);
-      }
-    }, 1000);
+    if (!storeRunning) return;
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, [running, mode, pomodoroEnabled]);
+  }, [storeRunning, mode]);
+
+  // Stop detection — when countdown hits 0
+  useEffect(() => {
+    if (!storeRunning || mode !== "countdown" || remaining > 0) return;
+    if (pomodoroEnabled) {
+      advancePhase();
+    } else {
+      upd({ timerRunning: false, timerRemainingSecs: 0 });
+      setCompleted(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remaining, storeRunning, mode, pomodoroEnabled]);
+
+  // Completed glow clear
+  useEffect(() => {
+    if (!completed) return;
+    const t = setTimeout(() => setCompleted(false), 1800);
+    return () => clearTimeout(t);
+  }, [completed]);
+
+  // Pomodoro toggle — reset (skip mount fire)
+  useEffect(() => {
+    if (prevPomoRef.current === pomodoroEnabled) return;
+    prevPomoRef.current = pomodoroEnabled;
+    if (pomodoroEnabled) {
+      upd({ timerRunning: false, timerPhase: "work", timerRemainingSecs: pomodoroWorkSecs, timerDisplayCycles: 0, timerStartEpoch: undefined });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pomodoroEnabled, pomodoroWorkSecs]);
+
+  // Total duration change — reset (skip mount fire)
+  useEffect(() => {
+    if (prevTotalRef.current === total) return;
+    prevTotalRef.current = total;
+    if (!pomodoroEnabled) {
+      upd({ timerRunning: false, timerRemainingSecs: total, timerElapsedSecs: 0, timerStartEpoch: undefined });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total, pomodoroEnabled]);
 
   const fmtSecs = (secs: number) => {
     const h = Math.floor(secs / 3600);
@@ -1957,6 +2415,8 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
     if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
+
+  const running = storeRunning;
 
   const effectiveTotal = pomodoroEnabled
     ? (phase === "work" ? pomodoroWorkSecs : phase === "long-break" ? pomodoroLongBreakSecs : pomodoroBreakSecs)
@@ -1989,18 +2449,10 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
   const label = item.timerLabel?.trim();
 
   const handleReset = () => {
-    setRunning(false);
     if (pomodoroEnabled) {
-      setPhase("work");
-      setRemaining(pomodoroWorkSecs);
-      cycleCountRef.current = 0;
-      setDisplayCycles(0);
+      upd({ timerRunning: false, timerPhase: "work", timerRemainingSecs: pomodoroWorkSecs, timerDisplayCycles: 0, timerStartEpoch: undefined, timerElapsedSecs: 0 });
     } else {
-      setRemaining(total);
-      setElapsed(0);
-    }
-    if (item.timerVarName?.trim()) {
-      upd({ timerElapsedSecs: 0, timerRemainingSecs: pomodoroEnabled ? pomodoroWorkSecs : total });
+      upd({ timerRunning: false, timerRemainingSecs: total, timerElapsedSecs: 0, timerStartEpoch: undefined });
     }
   };
 
@@ -2013,15 +2465,13 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
         <span className="font-mono font-bold shrink-0" style={{ fontSize: collapsedFontSize, color: accent }}>{displayTime}</span>
         {label && <span className="truncate" style={{ fontSize: Math.max(9, collapsedFontSize * 0.65), color: "var(--text-muted)" }}>{label}</span>}
         {mode !== "clock" && (
-          <button onClick={() => setRunning((r) => !r)} className="ml-auto rounded-full p-1 shrink-0 transition-colors" style={{ color: accent, background: accent + "20" }}>
+          <button onClick={(e) => { e.stopPropagation(); toggleRunning(); }} className="ml-auto rounded-full p-1 shrink-0 transition-colors" style={{ color: accent, background: accent + "20" }}>
             {running ? <Pause size={btnSize} /> : <Play size={btnSize} />}
           </button>
         )}
       </div>
     );
   }
-
-  const [hovered, setHovered] = useState(false);
 
   const bw = item.timerBorderWidth ?? 0;
   const bc = item.timerBorderColor ?? "var(--accent)";
@@ -2070,7 +2520,7 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
         const dir = item.timerProgressDir ?? "btt";
         const pc = item.timerProgressColor ?? accent;
         const pct = progress * 100;
-        if (mode === "clock" || ps === "none" || ps === "bar" || ps === "thick-bar" || ps === "ring") return null;
+        if (mode !== "countdown" || ps === "none" || ps === "bar" || ps === "thick-bar" || ps === "ring") return null;
 
         if (ps === "bg-fill") {
           // Accent-tinted fill that shrinks as time runs out
@@ -2124,7 +2574,7 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
       })()}
 
       {/* Ring progress (SVG, sits above bg layers, below content) */}
-      {mode !== "clock" && (item.timerProgressStyle ?? "bar") === "ring" && (() => {
+      {mode === "countdown" && (item.timerProgressStyle ?? "bar") === "ring" && (() => {
         const pc = item.timerProgressColor ?? accent;
         const r = 46;
         const circumference = 2 * Math.PI * r;
@@ -2149,16 +2599,19 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
       {/* Content above bg */}
       <div className="relative z-10 flex flex-col items-center gap-3 w-full px-4">
 
-        {/* Pomodoro phase + cycles */}
+        {/* Pomodoro phase + cycle dots */}
         {pomodoroEnabled && (
           <div className="flex items-center gap-3">
             <span className="text-[11px] font-semibold tracking-wide px-2.5 py-0.5 rounded-full"
               style={{ background: accent + "25", color: accent }}>
               {PHASE_LABELS[phase]}
             </span>
-            <span className="text-[10px] tabular-nums" style={{ color: fontColor + "60" }}>
-              {displayCycles % cyclesBeforeLong}/{cyclesBeforeLong} cycles
-            </span>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: cyclesBeforeLong }).map((_, i) => (
+                <div key={i} className="w-1.5 h-1.5 rounded-full transition-colors"
+                  style={{ background: i < (displayCycles % cyclesBeforeLong) ? accent : accent + "30" }} />
+              ))}
+            </div>
           </div>
         )}
 
@@ -2169,14 +2622,17 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
 
         {/* Number */}
         <span
-          className="font-mono tabular-nums leading-none"
-          style={{ fontSize, color: fontColor, fontFamily: fontFamily || undefined, fontWeight: bold ? 700 : 400 }}
+          className="font-mono tabular-nums leading-none transition-all duration-300"
+          style={{
+            fontSize, color: fontColor, fontFamily: fontFamily || undefined, fontWeight: bold ? 700 : 400,
+            ...(completed ? { textShadow: `0 0 16px ${accent}, 0 0 32px ${accent}88`, color: accent } : {}),
+          }}
         >
           {displayTime}
         </span>
 
         {/* Progress bar — bar / thick-bar styles only */}
-        {mode !== "clock" && (() => {
+        {mode === "countdown" && (() => {
           const ps = item.timerProgressStyle ?? "bar";
           const pc = item.timerProgressColor ?? accent;
           if (ps === "bar") return (
@@ -2200,27 +2656,19 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
           <span className="text-xs font-medium tracking-wide" style={{ color: fontColor + "70" }}>{label}</span>
         )}
 
-        {/* Controls — fade in on hover */}
+        {/* Controls — always visible, full opacity on hover or while running */}
         {mode !== "clock" && (
           <div
-            className="flex items-center gap-2 transition-opacity duration-150"
-            style={{ opacity: hovered ? 1 : 0, pointerEvents: hovered ? "auto" : "none" }}
+            className="flex items-center gap-2 transition-opacity duration-200"
+            style={{ opacity: hovered || running ? 1 : 0.3 }}
           >
             <button
-              onMouseDown={(e) => { e.stopPropagation(); setRunning(true); }}
-              title="Start"
-              className="rounded-full p-2 transition-colors"
-              style={{ background: running ? accent : "var(--surface-overlay)", color: running ? "#fff" : "var(--text-muted)" }}
+              onMouseDown={(e) => { e.stopPropagation(); toggleRunning(); }}
+              title={running ? "Pause" : "Start"}
+              className="rounded-full p-2.5 transition-colors"
+              style={{ background: accent, color: "#fff" }}
             >
-              <Play size={13} />
-            </button>
-            <button
-              onMouseDown={(e) => { e.stopPropagation(); setRunning(false); }}
-              title="Pause"
-              className="rounded-full p-2 transition-colors"
-              style={{ background: !running ? accent : "var(--surface-overlay)", color: !running ? "#fff" : "var(--text-muted)" }}
-            >
-              <Pause size={13} />
+              {running ? <Pause size={13} /> : <Play size={13} />}
             </button>
             <button
               onMouseDown={(e) => { e.stopPropagation(); handleReset(); }}
@@ -2717,32 +3165,6 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
         </div>
       </section>
 
-      {/* Variable export */}
-      <section>
-        <PLabel>Export as variable</PLabel>
-        <div className="flex flex-col gap-2">
-          <input
-            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-muted)]"
-            value={item.timerVarName ?? ""}
-            onChange={(e) => upd({ timerVarName: e.target.value || undefined })}
-            placeholder="Variable name (e.g. focus_time)"
-          />
-          {item.timerVarName?.trim() && (
-            <div className="rounded border border-[var(--border)] bg-[var(--surface-overlay)] p-2 flex flex-col gap-1">
-              <p className="text-[10px] text-[var(--text-muted)]">
-                On pause/stop, exports:
-              </p>
-              <p className="font-mono text-[10px] text-[var(--accent)]">{`{${item.timerVarName.trim()}}`} → elapsed seconds</p>
-              {mode !== "stopwatch" && (
-                <p className="font-mono text-[10px] text-[var(--accent)]">{`{${item.timerVarName.trim()}_remaining}`} → remaining seconds</p>
-              )}
-              <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                Use these in text formulas or graph data fields.
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
 
     </div>
   );
@@ -2841,28 +3263,19 @@ const DEFAULT_GRAPH_DATA: GraphPoint[] = [
 const TT_STYLE = { background: "var(--surface-raised)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 11 };
 const AXIS_TICK = { fill: "var(--text-muted)", fontSize: 10 };
 
-function resolveGraphValue(val: string | number, vars: Record<string, number>): number {
+function resolveGraphValue(val: string | number): number {
   if (typeof val === "number") return val;
   const str = String(val).trim();
-  // Pure number string
   const n = Number(str);
   if (!isNaN(n) && str !== "") return n;
-  // Formula with {varName} references
-  let expr = str;
-  const refs = [...expr.matchAll(/\{([^}]+)\}/g)];
-  for (const [full, name] of refs) {
-    const v = vars[name.trim()];
-    if (v === undefined) return NaN;
-    expr = expr.replace(full, String(v));
-  }
   try {
-    if (!/^[\d\s+\-*/%.(),]+$/.test(expr)) return NaN;
+    if (!/^[\d\s+\-*/%.(),]+$/.test(str)) return NaN;
     // eslint-disable-next-line no-new-func
-    return Number(Function(`"use strict"; return (${expr})`)());
+    return Number(Function(`"use strict"; return (${str})`)());
   } catch { return NaN; }
 }
 
-function GraphItem({ item, vars = {}, collapsed, containerW, containerH, boardId, boxId }: { item: BlockItem; vars?: Record<string, number>; collapsed?: boolean; containerW?: number; containerH?: number; boardId?: string; boxId?: string }) {
+function GraphItem({ item, collapsed, containerW, containerH, boardId, boxId }: { item: BlockItem; collapsed?: boolean; containerW?: number; containerH?: number; boardId?: string; boxId?: string }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => {
@@ -2891,37 +3304,19 @@ function GraphItem({ item, vars = {}, collapsed, containerW, containerH, boardId
   const barRadius = item.graphBarRadius ?? 3;
   const strokeWidth = item.graphStrokeWidth ?? 2;
 
-  // If connected to a list, derive data live from its variable entries.
-  // Use getState() (non-reactive) so we don't cause a re-render loop from the selector.
-  // The graph re-derives whenever vars changes (variable values) or the source item ID changes.
-  const listDerivedData: GraphPoint[] | null = useMemo(() => {
-    if (!item.graphListSourceItemId || !boardId || !boxId) return null;
-    const state = useBoardStore.getState();
-    const board = state.boards.find((b) => b.id === boardId);
-    const box = (board as any)?.boxes?.find((b: any) => b.id === boxId);
-    const source: BlockItem | undefined = (box as any)?.items?.find((i: any) => i.id === item.graphListSourceItemId);
-    if (!source) return null;
-    const variableEntries = (source.listItems ?? []).filter((e) => e.isVariable);
-    if (variableEntries.length === 0) return null;
-    return variableEntries.map((e) => {
-      const label = (e.text ?? "").replace(/<[^>]*>/g, "").trim() || e.variableName || "?";
-      const name = e.variableName?.trim();
-      const val = name && name in vars ? vars[name] : Number(e.variableRawValue ?? e.variableValue ?? 0);
-      return { label, value: isNaN(val) ? 0 : val };
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.graphListSourceItemId, boardId, boxId, vars]);
 
   // If connected to a table, derive data reactively using subscribe (not useMemo+getState)
   // to avoid the re-render loop that crashed the app before.
   const [tableDerived, setTableDerived] = useState<{ data: GraphPoint[]; seriesKeys: string[] } | null>(null);
   useEffect(() => {
-    if (!item.graphTableSourceItemId || !boardId || !boxId) { setTableDerived(null); return; }
+    if (!item.graphTableSourceItemId || !boardId) { setTableDerived(null); return; }
     const compute = () => {
       const state = useBoardStore.getState();
-      const board = state.boards.find((b) => b.id === boardId);
-      const box = (board as any)?.boxes?.find((b: any) => b.id === boxId);
-      const source: BlockItem | undefined = (box as any)?.items?.find((i: any) => i.id === item.graphTableSourceItemId);
+      const board = state.boards.find((b) => b.id === boardId) ?? state.serverBoards[boardId];
+      if (!board) { setTableDerived(null); return; }
+      const source: BlockItem | undefined = boxId
+        ? board.boxes.find((b) => b.id === boxId)?.items.find((i) => i.id === item.graphTableSourceItemId)
+        : (board.boardItems ?? []).find((i) => i.id === item.graphTableSourceItemId) as BlockItem | undefined;
       if (!source) { setTableDerived(null); return; }
       const cols: TableColumn[] = source.tableColumns ?? [];
       const rows: TableRow[] = source.tableRows ?? [];
@@ -2942,26 +3337,27 @@ function GraphItem({ item, vars = {}, collapsed, containerW, containerH, boardId
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.graphTableSourceItemId, item.graphTableLabelColId, (item.graphTableValueColIds ?? []).join(","), boardId, boxId]);
 
-  const safeData = listDerivedData
-    ? listDerivedData
-    : tableDerived
+  const safeData = tableDerived
     ? tableDerived.data
     : data.map((r) => {
         const row: GraphPoint = { label: r.label };
-        seriesKeys.forEach((k) => { row[k] = resolveGraphValue(r[k] ?? 0, vars); });
+        seriesKeys.forEach((k) => { row[k] = resolveGraphValue(r[k] ?? 0); });
         return row;
       });
-  const effectiveSeriesKeys = listDerivedData ? ["value"] : tableDerived ? tableDerived.seriesKeys : seriesKeys;
+  const effectiveSeriesKeys = tableDerived ? tableDerived.seriesKeys : seriesKeys;
 
   const w = dims?.w ?? 300;
   const h = dims?.h ?? (collapsed ? 80 : 220);
 
+  const borderRadius = item.graphBorderRadius ?? 4;
   const bgStyle: React.CSSProperties = {
     width: "100%", height: "100%", minHeight: collapsed ? 80 : 160,
     position: "relative", overflow: "hidden",
     backgroundColor: item.graphBgColor,
-    borderRadius: 4,
+    borderRadius,
   };
+
+  const title = item.graphTitle?.trim();
 
   return (
     <div ref={wrapRef} style={bgStyle}>
@@ -2975,49 +3371,55 @@ function GraphItem({ item, vars = {}, collapsed, containerW, containerH, boardId
           pointerEvents: "none",
         }} />
       )}
-      <div style={{ position: "relative", zIndex: 1, width: "100%", height: "100%" }}>
+      <div style={{ position: "relative", zIndex: 1, width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+        {title && !collapsed && (
+          <div className="px-3 pt-2 pb-0.5 shrink-0 text-[11px] font-semibold text-[var(--text-secondary)] truncate">{title}</div>
+        )}
         {dims && (
-          <ChartRenderer
-            type={type} data={safeData} seriesKeys={effectiveSeriesKeys} colors={colors}
-            showGrid={showGrid} showLegend={showLegend} curve={curve}
-            collapsed={!!collapsed} width={w} height={h}
-            fontFamily={fontFamily} fontSize={fontSize} fontColor={fontColor}
-            barRadius={barRadius} strokeWidth={strokeWidth}
-          />
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <ChartRenderer
+              type={type} data={safeData} seriesKeys={effectiveSeriesKeys} colors={colors}
+              showGrid={showGrid} showLegend={showLegend} curve={curve}
+              collapsed={!!collapsed} width={w} height={title && !collapsed ? h - 28 : h}
+              fontFamily={fontFamily} fontSize={fontSize} fontColor={fontColor}
+              barRadius={barRadius} strokeWidth={strokeWidth}
+              showDataLabels={item.graphShowDataLabels}
+              xAxisTitle={item.graphXAxisTitle}
+              yAxisTitle={item.graphYAxisTitle}
+            />
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-export function GraphStylePanel({ item, upd, vars = {}, boardId, boxId }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; vars?: Record<string, number>; boardId?: string; boxId?: string }) {
+export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId?: string; boxId?: string }) {
   const [tab, setTab] = useState<"type" | "data" | "style">("type");
   const data = item.graphData ?? DEFAULT_GRAPH_DATA;
   const seriesKeys = item.graphSeriesKeys ?? ["value"];
-  // List items in this box that have variable entries — candidates for data source.
-  // Computed once per render from getState() to avoid reactive selector re-render loops.
-  const listCandidates = useMemo(() => {
-    if (!boardId || !boxId) return [] as BlockItem[];
-    const state = useBoardStore.getState();
-    const board = state.boards.find((b) => b.id === boardId);
-    const box = (board as any)?.boxes?.find((b: any) => b.id === boxId);
-    const items: BlockItem[] = (box as any)?.items ?? [];
-    return items.filter((i) => i.type === "list" && (i.listItems ?? []).some((e) => e.isVariable));
-  // Re-derive when the source selection changes so the UI reflects the connected state
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, boxId, item.graphListSourceItemId]);
-  const sourceItem = listCandidates.find((i) => i.id === item.graphListSourceItemId);
 
   // Columns from the linked table item — used for column mapping in table source mode
   const tableSourceCols = useMemo(() => {
-    if (!item.graphTableSourceItemId || !boardId || !boxId) return [] as TableColumn[];
+    if (!item.graphTableSourceItemId || !boardId) return [] as TableColumn[];
     const state = useBoardStore.getState();
-    const board = state.boards.find((b) => b.id === boardId);
-    const box = (board as any)?.boxes?.find((b: any) => b.id === boxId);
-    const source = (box as any)?.items?.find((i: any) => i.id === item.graphTableSourceItemId);
+    const board = state.boards.find((b) => b.id === boardId) ?? state.serverBoards[boardId];
+    if (!board) return [] as TableColumn[];
+    const source = boxId
+      ? board.boxes.find((b) => b.id === boxId)?.items.find((i) => i.id === item.graphTableSourceItemId)
+      : (board.boardItems ?? []).find((i) => i.id === item.graphTableSourceItemId) as BlockItem | undefined;
     return ((source?.tableColumns ?? []) as TableColumn[]).filter((c) => c.type !== "checkbox");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.graphTableSourceItemId, boardId, boxId]);
+
+  // Initialize scatter series when switching to scatter type — avoids calling upd during render
+  useEffect(() => {
+    if (item.graphType !== "scatter" || (item.graphSeriesKeys?.length ?? 0) >= 2) return;
+    const existing = item.graphSeriesKeys ?? [];
+    const toAdd = existing.length === 0 ? ["x", "Dataset 1"] : ["Dataset 1"];
+    upd({ graphSeriesKeys: [...existing, ...toAdd], graphData: (item.graphData ?? DEFAULT_GRAPH_DATA).map((r) => { const n = { ...r }; toAdd.forEach((k) => { n[k] = 0; }); return n; }) });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.graphType]);
 
   const colors = item.graphColors ?? CHART_COLORS;
   const showGrid = item.graphShowGrid ?? true;
@@ -3082,34 +3484,7 @@ export function GraphStylePanel({ item, upd, vars = {}, boardId, boxId }: { item
         {/* ── Data ── */}
         {tab === "data" && (
           <div className="pt-1">
-            {/* Data source connector */}
-            {listCandidates.length > 0 && (
-              <div className="mb-3 rounded-lg border border-[var(--border)] p-2.5 flex flex-col gap-2">
-                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">Data source</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {listCandidates.map(li => {
-                    const label = li.listTitle || (li.listItems ?? []).find(e => !e.isVariable)?.text?.replace(/<[^>]*>/g, "").trim() || "List";
-                    const active = item.graphListSourceItemId === li.id;
-                    return (
-                      <button key={li.id}
-                        onClick={() => upd({ graphListSourceItemId: active ? undefined : li.id })}
-                        className={cn("px-2 py-1 rounded text-[11px] border transition-colors", active
-                          ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
-                          : "border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                        )}>
-                        {active ? <span className="mr-1">✓</span> : null}{label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {sourceItem && (
-                  <p className="text-[10px] text-[var(--text-muted)]">
-                    Connected — {(sourceItem.listItems ?? []).filter(e => e.isVariable).length} variables. Manual data editing is disabled while connected.
-                  </p>
-                )}
-              </div>
-            )}
-            {item.graphTableSourceItemId && boardId && boxId && (
+            {item.graphTableSourceItemId && boardId && (
               <div className="mb-3 rounded-lg border border-[var(--border)] p-2.5 flex flex-col gap-2">
                 <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">Table source</p>
                 <p className="text-[11px] text-[var(--text-secondary)]">Live data from linked table.</p>
@@ -3160,7 +3535,7 @@ export function GraphStylePanel({ item, upd, vars = {}, boardId, boxId }: { item
                 <button
                   onClick={() => {
                     const store = useBoardStore.getState();
-                    store.updateItem(boardId, boxId, item.graphTableSourceItemId!, {
+                    const patch = {
                       tableChartEnabled: true,
                       tableChartType: item.graphType ?? "bar",
                       tableChartColors: item.graphColors,
@@ -3169,8 +3544,14 @@ export function GraphStylePanel({ item, upd, vars = {}, boardId, boxId }: { item
                       tableChartSmooth: item.graphSmooth ?? true,
                       tableChartStrokeWidth: item.graphStrokeWidth ?? 2,
                       tableChartBarRadius: item.graphBarRadius ?? 3,
-                    });
-                    store.removeItem(boardId, boxId, item.id);
+                    };
+                    if (boxId) {
+                      store.updateItem(boardId, boxId, item.graphTableSourceItemId!, patch);
+                      store.removeItem(boardId, boxId, item.id);
+                    } else {
+                      store.updateBoardItem(boardId, item.graphTableSourceItemId!, patch);
+                      store.removeBoardItem(boardId, item.id);
+                    }
                   }}
                   className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-2 text-left text-[11px] hover:border-[var(--accent)]/50 transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 >Merge back into table</button>
@@ -3180,7 +3561,7 @@ export function GraphStylePanel({ item, upd, vars = {}, boardId, boxId }: { item
                 >Disconnect (keep as manual chart)</button>
               </div>
             )}
-            {(item.graphListSourceItemId || item.graphTableSourceItemId) ? null : (() => {
+            {item.graphTableSourceItemId ? null : (() => {
               const cellCls = "border-b border-r border-[var(--border)] py-1.5 px-2";
               const hdrCls = `${cellCls} bg-[var(--surface-overlay)] text-[10px] text-[var(--text-muted)] font-semibold`;
               const valInput = "w-full bg-transparent outline-none text-[var(--text-primary)] text-xs font-mono focus:text-[var(--accent)] transition-colors";
@@ -3188,8 +3569,8 @@ export function GraphStylePanel({ item, upd, vars = {}, boardId, boxId }: { item
 
               /* helper: formula hint */
               const hint = (v: string | number) =>
-                typeof v === "string" && v.includes("{") ? (
-                  <span className="text-[9px] font-mono text-[var(--accent)]/70 ml-1 flex-shrink-0">={resolveGraphValue(v, vars)}</span>
+                typeof v === "string" && /[+\-*/]/.test(v) ? (
+                  <span className="text-[9px] font-mono text-[var(--accent)]/70 ml-1 flex-shrink-0">={resolveGraphValue(v)}</span>
                 ) : null;
 
               /* ── PIE / DONUT ── */
@@ -3239,10 +3620,7 @@ export function GraphStylePanel({ item, upd, vars = {}, boardId, boxId }: { item
               if (type === "scatter") {
                 const xKey = seriesKeys[0] ?? "x";
                 const yKeys = seriesKeys.length > 1 ? seriesKeys.slice(1) : [];
-                if (seriesKeys.length < 2) {
-                  const init = seriesKeys.length === 0 ? ["x","Dataset 1"] : ["Dataset 1"];
-                  setTimeout(() => upd({ graphSeriesKeys: [...seriesKeys, ...init], graphData: data.map((r) => { const n = {...r}; init.forEach((k) => { n[k] = 0; }); return n; }) }), 0);
-                }
+                if (seriesKeys.length < 2) return null;
                 const addDs = () => { const k = `Dataset ${yKeys.length + 2}`; upd({ graphSeriesKeys: [...seriesKeys, k], graphData: data.map((r) => ({ ...r, [k]: 0 })) }); };
                 const removeDs = (k: string) => { if (yKeys.length <= 1) return; upd({ graphSeriesKeys: seriesKeys.filter((s) => s !== k), graphData: data.map((r) => { const n={...r}; delete n[k]; return n; }) }); };
                 return (
@@ -3301,7 +3679,7 @@ export function GraphStylePanel({ item, upd, vars = {}, boardId, boxId }: { item
               }
 
               /* ── STANDARD: bar, line, area, radar ── */
-              const catLabel = type === "radar" ? "Axis" : type === "bar-h" ? "Category" : "Category";
+              const catLabel = type === "radar" ? "Axis" : "Category";
               const addBtn = type === "radar" ? "Add axis" : "Add row";
               return (
                 <div className="rounded border border-[var(--border)] overflow-x-auto">
@@ -3357,9 +3735,52 @@ export function GraphStylePanel({ item, upd, vars = {}, boardId, boxId }: { item
         {tab === "style" && (
           <div className="pt-1 flex flex-col gap-5">
 
+            {/* Title */}
+            <div>
+              <p className="mb-1.5 text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Title</p>
+              <input
+                className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] placeholder:text-[var(--text-muted)] transition-colors"
+                placeholder="Chart title…"
+                value={item.graphTitle ?? ""}
+                onChange={(e) => upd({ graphTitle: e.target.value || undefined })}
+              />
+            </div>
+
+            {/* Labels */}
+            <div className="flex flex-col gap-2">
+              <p className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Labels</p>
+              <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors select-none">
+                <input type="checkbox" checked={!!item.graphShowDataLabels} onChange={(e) => upd({ graphShowDataLabels: e.target.checked || undefined })} className="accent-[var(--accent)]" />
+                <span className="text-xs text-[var(--text-secondary)]">Show data labels</span>
+              </label>
+              {type !== "pie" && type !== "donut" && (
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-[var(--text-muted)]">X axis title</span>
+                    <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] placeholder:text-[var(--text-muted)] transition-colors"
+                      placeholder="e.g. Month"
+                      value={item.graphXAxisTitle ?? ""}
+                      onChange={(e) => upd({ graphXAxisTitle: e.target.value || undefined })} />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-[var(--text-muted)]">Y axis title</span>
+                    <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] placeholder:text-[var(--text-muted)] transition-colors"
+                      placeholder="e.g. Value"
+                      value={item.graphYAxisTitle ?? ""}
+                      onChange={(e) => upd({ graphYAxisTitle: e.target.value || undefined })} />
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Series colors */}
             <div>
-              <p className="mb-2 text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Series colors</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Series colors</p>
+                {item.graphColors && (
+                  <button onClick={() => upd({ graphColors: undefined })} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">Reset</button>
+                )}
+              </div>
               <div className="flex flex-col gap-2">
                 {seriesKeys.map((k, ki) => (
                   <label key={k} className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
@@ -3490,6 +3911,15 @@ export function GraphStylePanel({ item, upd, vars = {}, boardId, boxId }: { item
                   onChange={(e) => upd({ graphStrokeWidth: Number(e.target.value) })}
                   className="w-full accent-[var(--accent)]" />
               </div>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-[var(--text-muted)]">Corner radius</label>
+                  <span className="text-[10px] text-[var(--text-muted)] font-mono">{item.graphBorderRadius ?? 4}px</span>
+                </div>
+                <input type="range" min={0} max={24} value={item.graphBorderRadius ?? 4}
+                  onChange={(e) => upd({ graphBorderRadius: Number(e.target.value) })}
+                  className="w-full accent-[var(--accent)]" />
+              </div>
               {[
                 { label: "Show grid", key: "graphShowGrid" as const, val: showGrid },
                 { label: "Show legend", key: "graphShowLegend" as const, val: showLegend },
@@ -3557,8 +3987,8 @@ function ChartRenderer({ type, data, seriesKeys, colors, showGrid, showLegend, c
     return (
       <BarChart {...dims} data={data} layout="vertical">
         {grid}
-        <XAxis type="number" tick={tickStyle} hide={collapsed} />
-        <YAxis type="category" dataKey="label" tick={tickStyle} hide={collapsed} width={40} />
+        <XAxis type="number" tick={tickStyle} hide={collapsed} label={xAxisTitle && !collapsed ? { value: xAxisTitle, position: "insideBottom", offset: -4, style: { fontSize: (fontSize ?? 10) - 1, fill: fontColor ?? "var(--text-muted)" } } : undefined} />
+        <YAxis type="category" dataKey="label" tick={tickStyle} hide={collapsed} width={40} label={yAxisTitle && !collapsed ? { value: yAxisTitle, angle: -90, position: "insideLeft", style: { fontSize: (fontSize ?? 10) - 1, fill: fontColor ?? "var(--text-muted)" } } : undefined} />
         {tt}{legend}
         {seriesKeys.map((k, i) => (
           <Bar key={k} dataKey={k} fill={colors[i % colors.length]} radius={[0,br,br,0]}>
@@ -3600,6 +4030,7 @@ function ChartRenderer({ type, data, seriesKeys, colors, showGrid, showLegend, c
         {tt}{legend}
         <Pie data={data} dataKey={seriesKeys[0] ?? "value"} nameKey="label" cx="50%" cy="50%" innerRadius={inner} outerRadius={collapsed ? "90%" : "75%"}>
           {data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
+          {showDataLabels && !collapsed && <LabelList dataKey="label" position="outside" style={lblStyle} />}
         </Pie>
       </PieChart>
     );
@@ -3609,19 +4040,20 @@ function ChartRenderer({ type, data, seriesKeys, colors, showGrid, showLegend, c
     const xKey = seriesKeys[0] ?? "x";
     const yKeys = seriesKeys.length > 1 ? seriesKeys.slice(1) : [seriesKeys[0] ?? "y"];
     const labelStyle = { fontSize: collapsed ? 0 : (fontSize ?? 9), fill: fontColor ?? "var(--text-muted)", fontFamily };
+    const xLabel = xAxisTitle ?? xKey;
     return (
       <ScatterChart {...dims}>
         {grid}
-        <XAxis dataKey="x" type="number" name={xKey} tick={tickStyle} hide={collapsed} label={collapsed ? undefined : { value: xKey, position: "insideBottom", offset: -2, style: { fontSize: 9, fill: fontColor ?? "var(--text-muted)" } }} />
-        <YAxis dataKey="y" type="number" tick={tickStyle} hide={collapsed} />
+        <XAxis dataKey="x" type="number" name={xKey} tick={tickStyle} hide={collapsed} label={collapsed ? undefined : { value: xLabel, position: "insideBottom", offset: -4, style: { fontSize: (fontSize ?? 10) - 1, fill: fontColor ?? "var(--text-muted)" } }} />
+        <YAxis dataKey="y" type="number" tick={tickStyle} hide={collapsed} label={yAxisTitle && !collapsed ? { value: yAxisTitle, angle: -90, position: "insideLeft", style: { fontSize: (fontSize ?? 10) - 1, fill: fontColor ?? "var(--text-muted)" } } : undefined} />
         <ZAxis range={[sw * 20, sw * 20]} />
         {tt}
         {showLegend && !collapsed && <Legend wrapperStyle={{ fontSize: fontSize ?? 10, fontFamily }} />}
         {yKeys.map((yKey, i) => {
           const pts = data.map((r) => ({ x: Number(r[xKey] ?? 0), y: Number(r[yKey] ?? 0), label: r.label }));
           return (
-            <Scatter key={yKey} name={yKey} data={pts} fill={colors[(i + 1) % colors.length]}>
-              {!collapsed && <LabelList dataKey="label" position="top" style={labelStyle} />}
+            <Scatter key={yKey} name={yKey} data={pts} fill={colors[i % colors.length]}>
+              {showDataLabels && !collapsed && <LabelList dataKey="label" position="top" style={labelStyle} />}
             </Scatter>
           );
         })}
@@ -3635,7 +4067,9 @@ function ChartRenderer({ type, data, seriesKeys, colors, showGrid, showLegend, c
         <PolarAngleAxis dataKey="label" tick={{ ...tickStyle, fontSize: collapsed ? 8 : (fontSize ?? 10) }} />
         {tt}{legend}
         {seriesKeys.map((k, i) => (
-          <Radar key={k} name={k} dataKey={k} stroke={colors[i % colors.length]} fill={colors[i % colors.length]} fillOpacity={0.2} />
+          <Radar key={k} name={k} dataKey={k} stroke={colors[i % colors.length]} fill={colors[i % colors.length]} fillOpacity={0.2}>
+            {showDataLabels && !collapsed && <LabelList dataKey={k} style={lblStyle} />}
+          </Radar>
         ))}
       </RadarChart>
     );
@@ -3674,9 +4108,15 @@ function ApiItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => { return () => { abortRef.current?.abort(); }; }, []);
 
   const doFetch = useCallback(async () => {
-    if (!item.apiUrl) return;
+    if (!item.apiUrl || isFinished) return;
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
     setLoading(true); setError(null);
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -3691,30 +4131,32 @@ function ApiItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (
         method: item.apiMethod ?? "GET",
         headers,
         body: item.apiMethod !== "GET" && item.apiBody ? item.apiBody : undefined,
+        signal,
       });
+      if (signal.aborted) return;
       if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
       const json = await res.json();
       setData(json);
       setLastFetched(new Date().toLocaleTimeString());
-      if (item.apiVarName?.trim()) {
-        const extracted = item.apiResponsePath ? extractPath(json, item.apiResponsePath) : json;
-        const num = typeof extracted === "number" ? extracted : Number(extracted);
-        if (!isNaN(num)) upd({ apiCachedValue: num });
-      }
+      // Persist extracted numeric value so widgets can consume it via vars
+      const extracted = item.apiResponsePath ? extractPath(json, item.apiResponsePath) : json;
+      const num = Number(extracted);
+      if (!Number.isNaN(num)) upd({ apiCachedValue: num });
     } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return;
       setError(e instanceof Error ? e.message : "Request failed");
-    } finally { setLoading(false); }
-  }, [item.apiUrl, item.apiMethod, item.apiHeaders, item.apiBody, item.apiAuthType, item.apiAuthValue, item.apiAuthHeader, item.apiAuthUser]);
+    } finally { if (!signal.aborted) setLoading(false); }
+  }, [item.apiUrl, item.apiMethod, item.apiHeaders, item.apiBody, item.apiAuthType, item.apiAuthValue, item.apiAuthHeader, item.apiAuthUser, item.apiResponsePath, isFinished, upd]);
 
   useEffect(() => {
-    if (item.apiUrl) doFetch();
-  }, []);
+    if (item.apiUrl && !isFinished) doFetch();
+  }, [doFetch, isFinished]);
 
   useEffect(() => {
-    if (!item.apiRefreshInterval || item.apiRefreshInterval <= 0) return;
+    if (!item.apiRefreshInterval || item.apiRefreshInterval <= 0 || isFinished) return;
     const id = setInterval(doFetch, item.apiRefreshInterval * 1000);
     return () => clearInterval(id);
-  }, [item.apiRefreshInterval, doFetch]);
+  }, [item.apiRefreshInterval, doFetch, isFinished]);
 
   const extracted = data != null && item.apiResponsePath ? extractPath(data, item.apiResponsePath) : data;
   const displayMode = item.apiDisplayMode ?? "value";
@@ -3919,33 +4361,6 @@ export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial
         </div>
       </section>
 
-      {/* Variable export */}
-      <section>
-        <PLabel>Export as variable</PLabel>
-        <div className="flex flex-col gap-2">
-          <Input
-            value={item.apiVarName ?? ""}
-            onChange={(v) => upd({ apiVarName: v || undefined })}
-            placeholder="Variable name (e.g. temperature)"
-          />
-          {item.apiVarName?.trim() && (
-            <div className="rounded border border-[var(--border)] bg-[var(--surface-overlay)] p-2 flex flex-col gap-1">
-              <p className="text-[10px] text-[var(--text-muted)]">
-                After each fetch, the numeric value at the response path is exported as:
-              </p>
-              <p className="font-mono text-[10px] text-[var(--accent)]">{`{${item.apiVarName.trim()}}`}</p>
-              {item.apiCachedValue !== undefined && (
-                <p className="text-[10px] text-[var(--text-muted)]">
-                  Current value: <span className="font-mono text-[var(--text-primary)]">{item.apiCachedValue}</span>
-                </p>
-              )}
-              <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                Use in text formulas, graph data cells, or list variable formulas.
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
 
     </div>
   );
@@ -4007,6 +4422,12 @@ function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished
   const [allDay, setAllDay] = useState(event?.allDay ?? !event?.startTime);
   const readOnly = !!event?.feedId || isFinished;
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const save = () => {
     if (!title.trim() || !dateVal) return;
     onSave({ id: event?.id ?? crypto.randomUUID(), date: dateVal, title: title.trim(), color, startTime: allDay ? undefined : startTime || undefined, endTime: allDay ? undefined : endTime || undefined, description: description || undefined, location: location || undefined, allDay, feedId: event?.feedId });
@@ -4024,7 +4445,7 @@ function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished
             readOnly={readOnly}
             value={title}
             onChange={e => setTitle(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") onClose(); }}
+            onKeyDown={e => { if (e.key === "Enter") save(); }}
             placeholder="Event title…"
             className="w-full text-sm font-semibold bg-transparent border-b border-[var(--border)] pb-1 outline-none text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
           />
@@ -4122,17 +4543,20 @@ function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished
 function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId?: string; boxId?: string; collapsed?: boolean; isFinished?: boolean }) {
   const today = new Date();
   const view = item.calendarView ?? "month";
+  const mondayFirst = item.calendarFirstDayMonday ?? false;
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [viewWeekStart, setViewWeekStart] = useState(() => {
-    const d = new Date(today); d.setDate(d.getDate() - d.getDay()); return d;
+    const d = new Date(today);
+    const dow = d.getDay();
+    d.setDate(d.getDate() - (mondayFirst ? (dow === 0 ? 6 : dow - 1) : dow));
+    return d;
   });
   const [popup, setPopup] = useState<{ event: CalendarEvent | null; date: string | null } | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const accent = item.calendarAccentColor ?? "#5865f2";
   const todayColor = item.calendarTodayColor ?? accent;
-  const mondayFirst = item.calendarFirstDayMonday ?? false;
   const showWeekends = item.calendarShowWeekends !== false;
   const fontFamily = item.calendarFontFamily;
   const fontSize = item.calendarFontSize ?? 11;
@@ -4156,7 +4580,7 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished }: { it
   // Return all linked tables' rows as a stable map (tableId → rows[])
   const linkedTablesData = useBoardStore(useShallow(s => {
     if (!boardId || !boxId || links.length === 0) return {} as Record<string, typeof s.boards[0]["boxes"][0]["items"][0]["tableRows"]>;
-    const box = s.boards.find(b => b.id === boardId)?.boxes.find(b => b.id === boxId);
+    const box = (s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId])?.boxes.find(b => b.id === boxId);
     const result: Record<string, BlockItem["tableRows"]> = {};
     for (const lk of links) {
       const tableItem = box?.items.find(i => i.id === lk.tableId);
@@ -4223,7 +4647,14 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished }: { it
     else if (view === "week") { setViewWeekStart(d => { const nd = new Date(d); nd.setDate(nd.getDate()+7); return nd; }); }
     else { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y+1); } else setViewMonth(m => m+1); }
   };
-  const goToday = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); const d = new Date(today); d.setDate(d.getDate()-d.getDay()); setViewWeekStart(d); };
+  const goToday = () => {
+    setViewYear(today.getFullYear());
+    setViewMonth(today.getMonth());
+    const d = new Date(today);
+    const dow = d.getDay();
+    d.setDate(d.getDate() - (mondayFirst ? (dow === 0 ? 6 : dow - 1) : dow));
+    setViewWeekStart(d);
+  };
 
   const navLabel = () => {
     if (view === "week") {
@@ -4236,7 +4667,7 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished }: { it
   const dayKey = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
 
   // Upcoming for collapsed
-  const upcoming = [...allEvents].filter(e => e.date >= tKey).sort((a,b) => a.date.localeCompare(b.date)||((a.startTime??"")<(b.startTime??"") ? -1:1)).slice(0,4);
+  const upcoming = [...allEvents].filter(e => e.date >= tKey).sort((a,b) => a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? "")).slice(0,4);
 
   if (collapsed) {
     return (
@@ -4530,7 +4961,7 @@ function useCalendarFeedSync(item: BlockItem, upd: (p: Partial<BlockItem>) => vo
         if (r.ok) text = await r.text();
       } catch {}
       if (!text) {
-        const proxy = `https://corsproxy.io/?${encodeURIComponent(feed.url)}`;
+        const proxy = `/api/proxy-ical?url=${encodeURIComponent(feed.url)}`;
         const r = await fetch(proxy, { cache: "no-cache" });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         text = await r.text();
@@ -4557,11 +4988,14 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
   const [newFeedName, setNewFeedName] = useState("");
   const [newFeedColor, setNewFeedColor] = useState("#5865f2");
   const fileRef = useRef<HTMLInputElement>(null);
+  const headerFileRef = useRef<HTMLInputElement>(null);
+  const cellBgFileRef = useRef<HTMLInputElement>(null);
+  const wkndCellBgFileRef = useRef<HTMLInputElement>(null);
 
   // All table items in this box — top-level hook
   const tableItems = useBoardStore(useShallow(s => {
     if (!boardId || !boxId) return [] as BlockItem[];
-    const box = s.boards.find(b => b.id === boardId)?.boxes.find(b => b.id === boxId);
+    const box = (s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId])?.boxes.find(b => b.id === boxId);
     return (box?.items ?? []).filter(i => i.type === "table");
   }));
 
@@ -4586,8 +5020,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
     const updated = [...feeds, feed];
     upd({ calendarFeeds: updated });
     setNewFeedUrl(""); setNewFeedName("");
-    // Auto-sync new feed
-    setTimeout(() => syncFeed(feed), 100);
+    syncFeed(feed);
   };
 
   const removeFeed = (id: string) => {
@@ -4779,53 +5212,47 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
       {/* Header image */}
       <section>
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Header image</p>
-        {(() => {
-          const headerFileRef = { current: null as HTMLInputElement | null };
-          return (
-            <div className="flex flex-col gap-1.5">
-              <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
-                placeholder="Image URL…" value={item.calendarHeaderBgImage?.startsWith("data:") ? "" : (item.calendarHeaderBgImage ?? "")}
-                onChange={e => upd({ calendarHeaderBgImage: e.target.value || undefined })} />
-              <div className="flex gap-1.5">
-                <button onClick={() => headerFileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
-                  <Upload size={10} /> Upload
-                </button>
-                {item.calendarHeaderBgImage && <button onClick={() => upd({ calendarHeaderBgImage: undefined })} className="rounded border border-[var(--border)] px-2 text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>}
+        <div className="flex flex-col gap-1.5">
+          <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+            placeholder="Image URL…" value={item.calendarHeaderBgImage?.startsWith("data:") ? "" : (item.calendarHeaderBgImage ?? "")}
+            onChange={e => upd({ calendarHeaderBgImage: e.target.value || undefined })} />
+          <div className="flex gap-1.5">
+            <button onClick={() => headerFileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+              <Upload size={10} /> Upload
+            </button>
+            {item.calendarHeaderBgImage && <button onClick={() => upd({ calendarHeaderBgImage: undefined })} className="rounded border border-[var(--border)] px-2 text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>}
+          </div>
+          <input ref={headerFileRef} type="file" accept="image/*" className="hidden" onChange={e => {
+            const f = e.target.files?.[0]; if (!f) return;
+            const r = new FileReader(); r.onload = ev => upd({ calendarHeaderBgImage: ev.target?.result as string }); r.readAsDataURL(f); e.target.value = "";
+          }} />
+          {item.calendarHeaderBgImage && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[var(--text-muted)] w-14 shrink-0 text-[10px]">Opacity</span>
+                <input type="range" min={0} max={100} value={item.calendarHeaderBgImageOpacity ?? 100} onChange={e => upd({ calendarHeaderBgImageOpacity: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+                <span className="w-8 text-right text-[var(--text-muted)] text-[10px]">{item.calendarHeaderBgImageOpacity ?? 100}%</span>
               </div>
-              <input ref={headerFileRef} type="file" accept="image/*" className="hidden" onChange={e => {
-                const f = e.target.files?.[0]; if (!f) return;
-                const r = new FileReader(); r.onload = ev => upd({ calendarHeaderBgImage: ev.target?.result as string }); r.readAsDataURL(f); e.target.value = "";
-              }} />
-              {item.calendarHeaderBgImage && (
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[var(--text-muted)] w-14 shrink-0 text-[10px]">Opacity</span>
-                    <input type="range" min={0} max={100} value={item.calendarHeaderBgImageOpacity ?? 100} onChange={e => upd({ calendarHeaderBgImageOpacity: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
-                    <span className="w-8 text-right text-[var(--text-muted)] text-[10px]">{item.calendarHeaderBgImageOpacity ?? 100}%</span>
-                  </div>
-                  <div className="flex gap-1">
-                    {(["cover","contain","fill"] as const).map(s => (
-                      <button key={s} onClick={() => upd({ calendarHeaderBgImageSize: s })}
-                        className={cn("flex-1 rounded py-0.5 text-[9px] border transition-colors", (item.calendarHeaderBgImageSize ?? "cover") === s ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)]")}>
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div className="flex gap-1">
+                {(["cover","contain","fill"] as const).map(s => (
+                  <button key={s} onClick={() => upd({ calendarHeaderBgImageSize: s })}
+                    className={cn("flex-1 rounded py-0.5 text-[9px] border transition-colors", (item.calendarHeaderBgImageSize ?? "cover") === s ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)]")}>
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
-          );
-        })()}
+          )}
+        </div>
       </section>
 
       {/* Cell image */}
       <section>
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Cell image</p>
         {([
-          { label: "All cells", imgKey: "calendarCellBgImage" as const, sizeKey: "calendarCellBgImageSize" as const, opacityKey: "calendarCellBgImageOpacity" as const },
-          { label: "Weekend cells", imgKey: "calendarWeekendBgImage" as const, sizeKey: "calendarWeekendBgImageSize" as const, opacityKey: "calendarWeekendBgImageOpacity" as const },
-        ] as const).map(({ label, imgKey, sizeKey, opacityKey }) => {
-          const cellFileRef = { current: null as HTMLInputElement | null };
+          { label: "All cells", imgKey: "calendarCellBgImage" as const, sizeKey: "calendarCellBgImageSize" as const, opacityKey: "calendarCellBgImageOpacity" as const, fileRef: cellBgFileRef },
+          { label: "Weekend cells", imgKey: "calendarWeekendBgImage" as const, sizeKey: "calendarWeekendBgImageSize" as const, opacityKey: "calendarWeekendBgImageOpacity" as const, fileRef: wkndCellBgFileRef },
+        ]).map(({ label, imgKey, sizeKey, opacityKey, fileRef }) => {
           return (
             <div key={imgKey} className="mb-3">
               <p className="text-[9px] text-[var(--text-muted)] mb-1">{label}</p>
@@ -4833,12 +5260,12 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
                 placeholder="Image URL…" value={item[imgKey]?.startsWith("data:") ? "" : (item[imgKey] ?? "")}
                 onChange={e => upd({ [imgKey]: e.target.value || undefined })} />
               <div className="flex gap-1.5 mb-1">
-                <button onClick={() => cellFileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+                <button onClick={() => fileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
                   <Upload size={10} /> Upload
                 </button>
                 {item[imgKey] && <button onClick={() => upd({ [imgKey]: undefined })} className="rounded border border-[var(--border)] px-2 text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>}
               </div>
-              <input ref={cellFileRef} type="file" accept="image/*" className="hidden" onChange={e => {
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => {
                 const f = e.target.files?.[0]; if (!f) return;
                 const r = new FileReader(); r.onload = ev => upd({ [imgKey]: ev.target?.result as string }); r.readAsDataURL(f); e.target.value = "";
               }} />
@@ -4942,7 +5369,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
           ? <p className="text-[var(--text-muted)]">Click a day to add events.</p>
           : (
             <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-              {[...events].sort((a,b) => a.date.localeCompare(b.date)||(a.startTime??"")<(b.startTime??"") ? -1:1).map(e => (
+              {[...events].sort((a,b) => a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? "")).map(e => (
                 <div key={e.id} className="flex items-center gap-2 rounded border border-[var(--border)] px-2 py-1.5">
                   <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: e.color ?? accent }} />
                   <div className="flex-1 min-w-0">
@@ -5263,7 +5690,11 @@ function TableCell({ col, value, onChange, isFinished, onKeyDown, fontColor, fon
   }
 
   // Number, URL, formula cells — plain input with formula display
-  const displayValue = !focused && formulaResult !== null ? formulaResult : strValue;
+  // When not focused: show the computed result. When focused/editing: strip the leading = so
+  // the cell always shows the expression without the formula-prefix character.
+  const displayValue = !focused && formulaResult !== null
+    ? formulaResult
+    : (isFormula ? strValue.slice(1) : strValue);
 
   return (
     <div className="relative flex items-center w-full">
@@ -5274,7 +5705,10 @@ function TableCell({ col, value, onChange, isFinished, onKeyDown, fontColor, fon
         readOnly={isFinished}
         onChange={e => {
           const v = e.target.value;
-          if (col.type === "number" && !v.startsWith('=')) {
+          if (isFormula) {
+            // displayValue strips the leading = so re-add it (unless user typed one themselves)
+            onChange(v ? (v.startsWith('=') ? v : '=' + v) : '');
+          } else if (col.type === "number" && !v.startsWith('=')) {
             // allow partial input while typing (e.g. "-", "1.", "1.0")
             onChange(v);
           } else {
@@ -5442,7 +5876,41 @@ function FilterPanel({ cols, filters, onChange }: {
   );
 }
 
-function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+const SUMMARY_FN_OPTIONS: { id: TableColumn["summaryFn"]; label: string; icon: string }[] = [
+  { id: "none",            label: "None",           icon: "—"  },
+  { id: "count",           label: "Count",          icon: "#"  },
+  { id: "sum",             label: "Sum",            icon: "∑"  },
+  { id: "avg",             label: "Average",        icon: "x̄"  },
+  { id: "min",             label: "Min",            icon: "↓"  },
+  { id: "max",             label: "Max",            icon: "↑"  },
+  { id: "count_checked",   label: "Count checked",  icon: "✓"  },
+  { id: "percent_checked", label: "% checked",      icon: "%"  },
+  { id: "count_empty",     label: "Count empty",    icon: "∅"  },
+  { id: "count_filled",    label: "Count filled",   icon: "■"  },
+];
+
+function computeColSummary(col: TableColumn, rows: TableRow[]): string {
+  const fn = col.summaryFn ?? "none";
+  if (fn === "none") return "";
+  const vals = rows.map(r => r.cells[col.id]);
+  if (fn === "count") return String(rows.length);
+  if (fn === "count_empty") return String(vals.filter(v => v === "" || v === undefined || v === null || v === false).length);
+  if (fn === "count_filled") return String(vals.filter(v => v !== "" && v !== undefined && v !== null && v !== false).length);
+  if (fn === "count_checked") return String(vals.filter(v => v === true).length);
+  if (fn === "percent_checked") {
+    if (rows.length === 0) return "0%";
+    return Math.round((vals.filter(v => v === true).length / rows.length) * 100) + "%";
+  }
+  const nums = vals.map(v => typeof v === "string" ? parseFloat(v) : Number(v)).filter(n => !isNaN(n));
+  if (nums.length === 0) return "—";
+  if (fn === "sum") { const s = nums.reduce((a, b) => a + b, 0); return String(Math.round(s * 1000) / 1000); }
+  if (fn === "avg") { const s = nums.reduce((a, b) => a + b, 0); return String(Math.round(s / nums.length * 100) / 100); }
+  if (fn === "min") return String(Math.min(...nums));
+  if (fn === "max") return String(Math.max(...nums));
+  return "";
+}
+
+function TableItem({ item, upd, collapsed, isFinished, boardId, boxId }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; boardId?: string; boxId?: string }) {
   const cols: TableColumn[] = item.tableColumns ?? [{ id: "c1", name: "Name", type: "text" }];
   const rows: TableRow[] = item.tableRows ?? [];
   const striped = item.tableStriped ?? false;
@@ -5465,7 +5933,7 @@ function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
   const [activeCell, setActiveCell] = useState<{ ref: string; formula?: string } | null>(null);
   const [locked, setLocked] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const cellsReadOnly = isFinished && locked;
+  const cellsReadOnly = isFinished || locked;
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<TableFilter[]>([]);
   const [sortBy, setSortBy] = useState<{ colId: string; dir: "asc" | "desc" } | null>(null);
@@ -5473,35 +5941,35 @@ function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
   const [showSortPanel, setShowSortPanel] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [resizingColId, setResizingColId] = useState<string | null>(null);
+  const [summaryPopover, setSummaryPopover] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const resizeRef = useRef<{ colId: string; startX: number; startW: number } | null>(null);
+  const colResizeCleanupRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    window.addEventListener("mousedown", close);
-    return () => window.removeEventListener("mousedown", close);
-  }, [contextMenu]);
+  useEffect(() => { return () => { colResizeCleanupRef.current?.(); }; }, []);
 
   const startColResize = (e: React.MouseEvent, col: TableColumn) => {
     e.preventDefault();
     e.stopPropagation();
     setResizingColId(col.id);
     resizeRef.current = { colId: col.id, startX: e.clientX, startW: col.width ?? 140 };
-    const onMove = (ev: MouseEvent) => {
+    const onMove = (ev: PointerEvent) => {
       if (!resizeRef.current) return;
       const delta = ev.clientX - resizeRef.current.startX;
       const newW = Math.max(60, resizeRef.current.startW + delta);
       upd({ tableColumns: cols.map(c => c.id === resizeRef.current!.colId ? { ...c, width: newW } : c) });
     };
-    const onUp = () => {
+    const cleanup = () => {
       setResizingColId(null);
       resizeRef.current = null;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      colResizeCleanupRef.current = null;
     };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    const onUp = () => cleanup();
+    colResizeCleanupRef.current = cleanup;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   };
 
   const updCols = (c: TableColumn[]) => upd({ tableColumns: c });
@@ -5548,6 +6016,10 @@ function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
     return () => ro.disconnect();
   }, []);
 
+  const splitDragCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => { return () => { splitDragCleanupRef.current?.(); }; }, []);
+
   const startSplitDrag = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -5558,15 +6030,20 @@ function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
       const ratio = Math.max(0.15, Math.min(0.85, (ev.clientY - rect.top) / rect.height));
       setSplitRatio(ratio);
     };
-    const onUp = (ev: MouseEvent) => {
-      isDraggingSplit.current = false;
+    const cleanup = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      splitDragCleanupRef.current = null;
+    };
+    const onUp = (ev: MouseEvent) => {
+      isDraggingSplit.current = false;
+      cleanup();
       if (!tableContainerRef.current) return;
       const rect = tableContainerRef.current.getBoundingClientRect();
       const ratio = Math.max(0.15, Math.min(0.85, (ev.clientY - rect.top) / rect.height));
       upd({ tableChartSplitRatio: ratio });
     };
+    splitDragCleanupRef.current = cleanup;
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
@@ -5589,19 +6066,14 @@ function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
     return { points, seriesKeys: sKeys };
   }, [item.tableChartEnabled, item.tableChartLabelColId, item.tableChartValueColIds, cols, rows]);
 
-  function handleCellHTMLChange(el: HTMLElement) {
+  const handleCellHTMLChange = useCallback((el: HTMLElement) => {
     const key = el.dataset.cellKey;
     if (!key) return;
     const [rowId, colId] = key.split(":");
     const html = el.innerHTML;
     cellHTMLRef.current.set(key, html);
     updRows(rows.map(r => r.id === rowId ? { ...r, cells: { ...r.cells, [colId]: html } } : r));
-  }
-
-  const { selRect: tableSelRect, selState: tableSelState, withSavedRange: tableWithSavedRange, wrapSelectionSpan: tableWrapSpan, dismissSelToolbar: tableDismissSel } = useRichSel(
-    tableContainerRef,
-    handleCellHTMLChange,
-  );
+  }, [rows, updRows]);
 
   // Initialize text cell divs on mount
   useEffect(() => {
@@ -5719,8 +6191,8 @@ function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
 
   return (
     <div ref={tableContainerRef} className="relative flex h-full flex-col overflow-hidden" style={{ borderRadius: br }}
-      onClick={() => { setColMenu(null); setShowFilterPanel(false); setShowSortPanel(false); }}
-      onContextMenu={(e) => { if (isFinished) { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }); } }}
+      onClick={() => { setColMenu(null); setShowFilterPanel(false); setShowSortPanel(false); setSummaryPopover(null); }}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY }); }}
     >
       {/* Background layers */}
       {item.tableBgColor && (
@@ -6060,16 +6532,16 @@ function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
                     return (
                       <td key={col.id} title={ref} style={{ borderRight: cellBorder, borderBottom: cellBorder, paddingLeft: 8, paddingRight: 8, textAlign: col.type === "checkbox" ? "center" : undefined }}>
                         <TableCell col={col} value={row.cells[col.id] ?? (col.type === "checkbox" ? false : "")}
+                          key={`${row.id}:${col.id}:${String(row.cells[col.id] ?? '').startsWith('=') ? 'f' : 'v'}`}
                           onChange={v => setCell(row.id, col.id, v)} isFinished={cellsReadOnly}
                           fontColor={fontColor} fontSize={fontSize} fontFamily={fontFamily}
                           cellKey={`${row.id}:${col.id}`}
                           onHTMLInput={(el) => handleCellHTMLChange(el)}
-                          dismissSel={tableDismissSel}
                           cols={cols} rows={rows}
                           cellRef={ref}
                           onCellFocus={(r, f) => setActiveCell({ ref: r, formula: f })}
                           onCellBlur={() => setActiveCell(null)}
-                          onKeyDown={e => { if (e.key === "Tab" && col.id === cols[cols.length-1].id) { e.preventDefault(); if (ri === rows.length - 1) addRow(); } }}
+                          onKeyDown={e => { if (e.key === "Tab" && col.id === cols[cols.length-1].id) { e.preventDefault(); if (ri === visibleRows.length - 1) addRow(); } }}
                         />
                       </td>
                     );
@@ -6084,6 +6556,58 @@ function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
               );
             })}
           </tbody>
+          {item.tableShowSummary && (
+            <tfoot>
+              <tr style={{ background: headerColor ?? "var(--surface-overlay)" }}>
+                {cols.map((col) => {
+                  const fn = col.summaryFn ?? "none";
+                  const value = computeColSummary(col, visibleRows);
+                  return (
+                    <td
+                      key={col.id}
+                      style={{ borderRight: cellBorder, borderTop: `2px solid ${borderColor}`, paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4, position: "relative", cursor: isFinished ? "default" : "pointer" }}
+                      className="group/sum"
+                      onClick={e => { if (isFinished) return; e.stopPropagation(); setSummaryPopover(v => v === col.id ? null : col.id); }}
+                    >
+                      {fn !== "none" ? (
+                        <span className="font-mono font-semibold tabular-nums" style={{ fontSize: (fontSize ?? 12) - 1, color: "var(--accent)" }}>{value}</span>
+                      ) : (
+                        <span className="font-mono text-[var(--text-muted)] opacity-0 group-hover/sum:opacity-30 transition-opacity select-none" style={{ fontSize: (fontSize ?? 12) - 1 }}>∑</span>
+                      )}
+                      {summaryPopover === col.id && (
+                        <div
+                          className="absolute bottom-full left-0 z-50 mb-1 w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] shadow-xl p-1"
+                          onClick={e => e.stopPropagation()}
+                          onMouseDown={e => e.stopPropagation()}
+                        >
+                          <p className="px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Aggregation</p>
+                          {SUMMARY_FN_OPTIONS.map(opt => (
+                            <button
+                              key={opt.id}
+                              onClick={() => {
+                                upd({ tableColumns: cols.map(c => c.id === col.id ? { ...c, summaryFn: opt.id } : c) });
+                                setSummaryPopover(null);
+                              }}
+                              className={cn(
+                                "flex w-full items-center gap-2 rounded px-2 py-1 text-[11px] transition-colors hover:bg-[var(--surface-overlay)]",
+                                fn === opt.id ? "text-[var(--accent)]" : "text-[var(--text-secondary)]"
+                              )}
+                            >
+                              <span className="w-4 text-center font-mono shrink-0 text-[10px]">{opt.icon}</span>
+                              {opt.label}
+                              {fn === opt.id && <Check size={10} className="ml-auto shrink-0" />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
+                {!isFinished && <td style={{ borderTop: `2px solid ${borderColor}` }} />}
+                {!isFinished && <td style={{ borderTop: `2px solid ${borderColor}` }} className="w-5" />}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
@@ -6118,12 +6642,50 @@ function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
               <div className="w-8 h-0.5 rounded bg-[var(--text-muted)] group-hover:bg-[var(--accent)] transition-colors" />
             </div>
           </div>
-          <div ref={chartContainerRef} className="relative overflow-hidden min-h-0"
+          <div ref={chartContainerRef} className="group relative overflow-hidden min-h-0"
             style={{ flex: `0 0 calc(${(1 - splitRatio) * 100}% - 5px)`, backgroundColor: item.tableChartBgColor ?? "transparent" }}>
             {item.tableChartTitle && (
               <p className="absolute top-1 left-0 right-0 text-center text-[11px] font-semibold pointer-events-none" style={{ color: item.tableChartFontColor ?? "var(--text-muted)", fontFamily: item.tableChartFontFamily }}>
                 {item.tableChartTitle}
               </p>
+            )}
+            {boardId && !isFinished && (
+              <button
+                title="Detach chart"
+                onMouseDown={e => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const store = useBoardStore.getState();
+                  const chartProps = {
+                    type: "graph" as const,
+                    graphTableSourceItemId: item.id,
+                    graphType: (item.tableChartType ?? "bar") as BlockItem["graphType"],
+                    graphColors: item.tableChartColors,
+                    graphShowGrid: item.tableChartShowGrid ?? true,
+                    graphShowLegend: item.tableChartShowLegend ?? true,
+                    graphSmooth: item.tableChartSmooth ?? true,
+                    graphStrokeWidth: item.tableChartStrokeWidth ?? 2,
+                    graphBarRadius: item.tableChartBarRadius ?? 3,
+                  };
+                  if (boxId) {
+                    store.addItem(boardId, boxId, chartProps as Omit<BlockItem, "id">);
+                  } else {
+                    const bi = item as BlockItem & { boardX?: number; boardY?: number; boardW?: number; boardH?: number; zIndex?: number };
+                    store.addBoardItem(boardId, {
+                      ...chartProps,
+                      boardX: (bi.boardX ?? 0) + (bi.boardW ?? 300) + 20,
+                      boardY: bi.boardY ?? 0,
+                      boardW: bi.boardW ?? 300,
+                      boardH: bi.boardH ?? 200,
+                      zIndex: (bi.zIndex ?? 0) + 1,
+                    } as Omit<BoardLevelItem, "id">);
+                  }
+                  upd({ tableChartEnabled: false });
+                }}
+                className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-[var(--surface-overlay)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)]"
+              >
+                <ExternalLink size={11} />
+              </button>
             )}
             <ChartRenderer
               type={(item.tableChartType ?? "bar") as BlockItem["graphType"]}
@@ -6143,54 +6705,37 @@ function TableItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
       )}
 
 
-      {tableSelRect && !cellsReadOnly && createPortal(
-        <RichSelToolbar
-          cx={tableSelRect.cx}
-          top={tableSelRect.top}
-          selState={tableSelState}
-          onExecCmd={(cmd) => tableWithSavedRange(() => document.execCommand(cmd))}
-          onFontFamily={(font) => { loadGoogleFont(font); tableWrapSpan({ fontFamily: font }); }}
-          onFontSize={(size) => tableWrapSpan({ fontSize: `${size}px` })}
-          onColor={(color) => tableWithSavedRange(() => document.execCommand("foreColor", false, color))}
-          onHighlight={(color) => tableWithSavedRange(() => document.execCommand("hiliteColor", false, color))}
-          onClearFormat={() => { tableWithSavedRange(() => document.execCommand("removeFormat")); tableDismissSel(); }}
-          onDismiss={tableDismissSel}
-        />,
-        document.body
-      )}
-      {contextMenu && createPortal(
-        <div
-          style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
-          className="bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-xl py-1 min-w-[168px] text-[13px]"
-          onMouseDown={e => e.stopPropagation()}
-        >
-          <button onClick={() => { setLocked(v => !v); setContextMenu(null); }}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
-            {locked ? <LockOpen size={12} /> : <Lock size={12} />}
-            {locked ? "Unlock editing" : "Lock editing"}
-          </button>
-          <div className="my-1 border-t border-[var(--border)]" />
-          <button onClick={() => {
-            const header = cols.map(c => c.name).join(",");
-            const body = rows.map(r => cols.map(c => {
-              const v = String(r.cells[c.id] ?? "");
-              return v.includes(",") ? `"${v}"` : v;
-            }).join(",")).join("\n");
-            navigator.clipboard.writeText(header + "\n" + body);
-            setContextMenu(null);
-          }}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-[var(--text-primary)]">
-            <FileDown size={12} /> Copy as CSV
-          </button>
-          <button onClick={() => {
-            upd({ tableRows: rows.map(r => ({ ...r, cells: Object.fromEntries(cols.map(c => [c.id, c.type === "checkbox" ? false : ""])) })) });
-            setContextMenu(null);
-          }}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-[var(--surface-overlay)] transition-colors text-red-400 hover:text-red-300">
-            <Square size={12} /> Clear all cells
-          </button>
-        </div>,
-        document.body
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={[
+            ...(isFinished ? [
+              { label: locked ? "Unlock editing" : "Lock editing", icon: locked ? <LockOpen size={14} /> : <Lock size={14} />, onClick: () => setLocked(v => !v) },
+              "separator" as const,
+            ] : []),
+            {
+              label: "Copy as CSV",
+              icon: <FileDown size={14} />,
+              onClick: () => {
+                const header = cols.map(c => c.name).join(",");
+                const body = rows.map(r => cols.map(c => {
+                  const v = String(r.cells[c.id] ?? "");
+                  return v.includes(",") ? `"${v}"` : v;
+                }).join(",")).join("\n");
+                navigator.clipboard.writeText(header + "\n" + body);
+              },
+            },
+            "separator" as const,
+            {
+              label: "Clear all cells",
+              icon: <Square size={14} />,
+              danger: true,
+              onClick: () => upd({ tableRows: rows.map(r => ({ ...r, cells: Object.fromEntries(cols.map(c => [c.id, c.type === "checkbox" ? false : ""])) })) }),
+            },
+          ]}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );
@@ -6230,6 +6775,18 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
             placeholder="Enter title…"
             className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
           />
+        )}
+      </section>
+
+      {/* Summary row */}
+      <section>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Summary row</p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={item.tableShowSummary ?? false} onChange={e => upd({ tableShowSummary: e.target.checked })} className="accent-[var(--accent)]" />
+          <span className="text-[var(--text-secondary)]">Show summary row</span>
+        </label>
+        {item.tableShowSummary && (
+          <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">Click any cell in the summary row to set its aggregation (Sum, Avg, Count…)</p>
         )}
       </section>
 
@@ -6660,6 +7217,8 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished }: {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => { return () => { if (debounceRef.current) clearTimeout(debounceRef.current); }; }, []);
+
   // Sync draft → store with debounce
   const handleCodeChange = (code: string) => {
     setDraft(code);
@@ -6908,12 +7467,17 @@ function PlaylistItem({ item, upd, collapsed, isFinished }: { item: BlockItem; u
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const scWidgetRef = useRef<{ setVolume: (v: number) => void; bind: (ev: string, cb: () => void) => void } | null>(null);
   const ytReadyRef = useRef(false);
+  const mountedRef = useRef(true);
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
+
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
   const currentTrack = tracks[currentIdx] ?? null;
   const embed = currentTrack ? resolveEmbed(currentTrack.url, !!item.playlistAutoplay) : null;
 
   const vol = item.playlistVolume ?? 80;
+  const volRef = useRef(vol);
+  volRef.current = vol;
   const accent = item.playlistAccentColor || "var(--accent)";
   const showList = item.playlistShowList !== false;
   const volSupported = !embed || embed.kind === "audio" || embed.platform === "YouTube" || embed.platform === "SoundCloud";
@@ -6955,7 +7519,7 @@ function PlaylistItem({ item, upd, collapsed, isFinished }: { item: BlockItem; u
       if (e.source !== iframeRef.current?.contentWindow) return;
       try {
         const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        if (d?.event === "onReady" || d?.info === 1) { ytReadyRef.current = true; sendVol(vol); }
+        if (d?.event === "onReady" || d?.info === 1) { ytReadyRef.current = true; sendVol(volRef.current); }
       } catch {}
     };
     window.addEventListener("message", onMsg);
@@ -6991,7 +7555,13 @@ function PlaylistItem({ item, upd, collapsed, isFinished }: { item: BlockItem; u
       s.onload = bindWidget;
       document.head.appendChild(s);
     } else {
-      document.getElementById("sc-widget-api")!.addEventListener("load", bindWidget, { once: true });
+      const el = document.getElementById("sc-widget-api")!;
+      // Use a setTimeout to check if SC is already available (race: script may have loaded before listener)
+      const tid = setTimeout(() => {
+        el.removeEventListener("load", bindWidget);
+        if (!scWidgetRef.current && (window as any).SC) bindWidget();
+      }, 0);
+      el.addEventListener("load", () => { clearTimeout(tid); bindWidget(); }, { once: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [embed?.url]);
@@ -7070,15 +7640,17 @@ function PlaylistItem({ item, upd, collapsed, isFinished }: { item: BlockItem; u
     try {
       const res = await fetch(`/api/import-playlist?platform=${importInfo.platform.toLowerCase()}&id=${importInfo.id}`);
       const data: { tracks?: { title: string; url: string }[]; error?: string } = await res.json();
+      if (!mountedRef.current) return;
       if (data.error) { setImportError(data.error); return; }
       const newTracks: PlaylistTrack[] = (data.tracks ?? []).map((t) => ({ id: nanoid(), url: t.url, title: t.title }));
       upd({ playlistTracks: [...tracks, ...newTracks] });
       setUrlInput("");
       setTitleInput("");
     } catch {
+      if (!mountedRef.current) return;
       setImportError("Failed to reach import API");
     } finally {
-      setImporting(false);
+      if (mountedRef.current) setImporting(false);
     }
   };
 
@@ -7089,8 +7661,8 @@ function PlaylistItem({ item, upd, collapsed, isFinished }: { item: BlockItem; u
         <span className="text-sm text-[var(--text-secondary)] truncate">{currentTrack?.title ?? "No tracks"}</span>
         {tracks.length > 1 && (
           <div className="flex gap-1 ml-auto">
-            <button onClick={goPrev} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"><SkipBack size={11} /></button>
-            <button onClick={goNext} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"><SkipForward size={11} /></button>
+            <button onClick={(e) => { e.stopPropagation(); goPrev(); }} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"><SkipBack size={11} /></button>
+            <button onClick={(e) => { e.stopPropagation(); goNext(); }} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"><SkipForward size={11} /></button>
           </div>
         )}
       </div>
@@ -7682,6 +8254,788 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
                 onChange={(e) => upd({ playlistBorderRadius: Number(e.target.value) })}
                 className="w-20 cursor-pointer" style={{ accentColor: accent }} />
               <span className="tabular-nums w-6 text-right text-[var(--text-muted)]">{item.playlistBorderRadius ?? 0}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ─── Kanban ───────────────────────────────────────────────────────────────────
+
+const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
+  { id: "col-todo",       title: "To Do",       color: "#5865f2" },
+  { id: "col-inprogress", title: "In Progress",  color: "#f2994a" },
+  { id: "col-done",       title: "Done",         color: "#48cfa6" },
+];
+
+function KanbanSortableCard({
+  card, isFinished, onEdit, onDelete,
+  cardBg, fontSize, fontFamily, borderRadius, cardGap,
+}: {
+  card: KanbanCard; isFinished: boolean;
+  onEdit: (id: string) => void; onDelete: (id: string) => void;
+  cardBg: string; fontSize: number; fontFamily: string; borderRadius: number; cardGap: number;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: card.id,
+    data: { type: "card", cardId: card.id },
+  });
+  const style: React.CSSProperties = {
+    transform: DndCSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.35 : 1,
+    background: cardBg,
+    borderRadius,
+    marginBottom: cardGap,
+    fontSize,
+    fontFamily: fontFamily || undefined,
+    borderLeft: card.color ? `3px solid ${card.color}` : undefined,
+    cursor: "grab",
+    userSelect: "none",
+    padding: "8px 10px",
+    boxShadow: isDragging ? "0 4px 16px rgba(0,0,0,0.3)" : "0 1px 3px rgba(0,0,0,0.15)",
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}
+      onDoubleClick={(e) => { e.stopPropagation(); if (!isFinished) onEdit(card.id); }}
+    >
+      <div className="flex items-start justify-between gap-1">
+        <span style={{ flex: 1, wordBreak: "break-word", color: "var(--text-primary)", lineHeight: 1.4 }}>
+          {card.text || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Empty card</span>}
+        </span>
+        {!isFinished && (
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onDelete(card.id); }}
+            className="flex-shrink-0 opacity-0 group-hover/kcard:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-red-400"
+            style={{ marginTop: 1 }}
+          >
+            <XIcon size={11} />
+          </button>
+        )}
+      </div>
+      {card.description && (
+        <p style={{ fontSize: fontSize - 1, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.35 }}>
+          {card.description}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Bug fix: accept onCancel so empty new-card can be cleaned up on dismiss
+function KanbanEditModal({
+  card, onSave, onClose, onCancel,
+}: {
+  card: KanbanCard;
+  onSave: (patch: Partial<KanbanCard>) => void;
+  onClose: () => void;
+  onCancel?: () => void;
+}) {
+  const [text, setText] = useState(card.text);
+  const [desc, setDesc] = useState(card.description ?? "");
+  const [color, setColor] = useState(card.color ?? "");
+
+  const handleDismiss = () => {
+    if (!text.trim() && onCancel) { onCancel(); } else { onClose(); }
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.55)" }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) handleDismiss(); }}
+    >
+      <div
+        className="relative flex flex-col gap-3 rounded-xl border border-[var(--border)] p-5 shadow-2xl"
+        style={{ background: "var(--surface-raised)", minWidth: 280, maxWidth: 360, width: "90vw" }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-[var(--text-primary)]">Edit card</span>
+          <button onClick={handleDismiss} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><XIcon size={14} /></button>
+        </div>
+        <textarea
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") handleDismiss(); }}
+          placeholder="Card title…"
+          rows={2}
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none resize-none focus:border-[var(--accent)]"
+        />
+        <textarea
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          placeholder="Description (optional)…"
+          rows={3}
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none resize-none focus:border-[var(--accent)]"
+        />
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--text-muted)]">Card color</span>
+          <input type="color" value={color || "#5865f2"} onChange={(e) => setColor(e.target.value)}
+            className="h-6 w-10 cursor-pointer rounded border-0 p-0" />
+          {color && (
+            <button onClick={() => setColor("")} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
+          )}
+        </div>
+        <button
+          onClick={() => { onSave({ text: text.trim(), description: desc.trim() || undefined, color: color || undefined }); onClose(); }}
+          disabled={!text.trim()}
+          className="rounded-lg py-1.5 text-sm font-semibold transition-colors disabled:opacity-40"
+          style={{ background: "var(--accent)", color: "#fff" }}
+        >
+          Save
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// Bug fix: useDroppable per column so empty columns accept drops
+function KanbanColumnContainer({
+  col, colCards, isFinished, renamingColId, renameVal, setRenamingColId, setRenameVal,
+  renameColumn, deleteColumn, addCard, deleteCard, setEditCardId, showCount,
+  headerBg, accent, columnBg, borderRadius, cardBg, fontSize, fontFamily, cardGap,
+}: {
+  col: KanbanColumn;
+  colCards: KanbanCard[];
+  isFinished: boolean;
+  renamingColId: string | null;
+  renameVal: string;
+  setRenamingColId: (id: string | null) => void;
+  setRenameVal: (v: string) => void;
+  renameColumn: (colId: string, title: string) => void;
+  deleteColumn: (colId: string) => void;
+  addCard: (colId: string) => void;
+  deleteCard: (cardId: string) => void;
+  setEditCardId: (id: string) => void;
+  showCount: boolean;
+  headerBg: string;
+  accent: string;
+  columnBg: string;
+  borderRadius: number;
+  cardBg: string;
+  fontSize: number;
+  fontFamily: string;
+  cardGap: number;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: col.id });
+  const atLimit = col.limit != null && colCards.length >= col.limit;
+  const escapeRenameRef = useRef(false);
+
+  return (
+    // setNodeRef on the outer column div so the full column (including header) is a drop target
+    <div
+      ref={setNodeRef}
+      className="flex flex-shrink-0 flex-col"
+      style={{
+        width: 200,
+        background: isOver ? `color-mix(in srgb, ${col.color ?? columnBg} 10%, ${columnBg})` : columnBg,
+        borderRadius,
+        overflow: "hidden",
+        border: `1px solid ${isOver ? (col.color ?? "var(--accent)") : "var(--border)"}`,
+        transition: "border-color 0.15s, background 0.15s",
+      }}
+    >
+      {/* Column header */}
+      <div
+        className="flex items-center gap-1.5 px-2.5 py-2"
+        style={{ background: headerBg, borderBottom: `2px solid ${col.color ?? accent}` }}
+      >
+        <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: col.color ?? accent }} />
+        {renamingColId === col.id ? (
+          <input
+            autoFocus
+            value={renameVal}
+            onChange={(e) => setRenameVal(e.target.value)}
+            onBlur={() => {
+              if (escapeRenameRef.current) { escapeRenameRef.current = false; setRenamingColId(null); return; }
+              renameColumn(col.id, renameVal || col.title);
+              setRenamingColId(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { renameColumn(col.id, renameVal || col.title); setRenamingColId(null); }
+              if (e.key === "Escape") { escapeRenameRef.current = true; setRenamingColId(null); }
+            }}
+            className="flex-1 min-w-0 bg-transparent text-xs font-semibold text-[var(--text-primary)] outline-none border-b border-[var(--accent)]"
+            onPointerDown={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span
+            className="flex-1 min-w-0 truncate text-xs font-semibold text-[var(--text-primary)] select-none"
+            onDoubleClick={() => { if (!isFinished) { setRenamingColId(col.id); setRenameVal(col.title); } }}
+            title="Double-click to rename"
+          >
+            {col.title}
+          </span>
+        )}
+        {showCount && (
+          <span className="text-[10px] text-[var(--text-muted)] tabular-nums flex-shrink-0">
+            {colCards.length}{col.limit != null ? `/${col.limit}` : ""}
+          </span>
+        )}
+        {!isFinished && (
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => deleteColumn(col.id)}
+            className="flex-shrink-0 text-[var(--text-muted)] hover:text-red-400 transition-colors ml-0.5"
+          >
+            <XIcon size={11} />
+          </button>
+        )}
+      </div>
+
+      {/* Cards drop zone */}
+      <SortableContext items={colCards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+        <div
+          className="flex flex-1 flex-col overflow-y-auto p-2"
+          style={{ minHeight: 80 }}
+        >
+          {colCards.map((card) => (
+            <div key={card.id} className="group/kcard">
+              <KanbanSortableCard
+                card={card}
+                isFinished={isFinished}
+                onEdit={(id) => setEditCardId(id)}
+                onDelete={deleteCard}
+                cardBg={cardBg}
+                fontSize={fontSize}
+                fontFamily={fontFamily}
+                borderRadius={borderRadius}
+                cardGap={cardGap}
+              />
+            </div>
+          ))}
+          {!isFinished && !atLimit && (
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => addCard(col.id)}
+              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors mt-1"
+              style={{ width: "100%" }}
+            >
+              <Plus size={11} /> Add card
+            </button>
+          )}
+          {atLimit && (
+            <div className="mt-1 text-center text-[10px] text-amber-400">WIP limit reached</div>
+          )}
+        </div>
+      </SortableContext>
+    </div>
+  );
+}
+
+function KanbanItem({
+  item, upd, collapsed, isFinished: isFinishedProp,
+}: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+  const isFinished = isFinishedProp ?? false;
+  const columns: KanbanColumn[] = item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS;
+  const cards: KanbanCard[] = item.kanbanCards ?? [];
+  const accent = item.kanbanAccentColor ?? "#5865f2";
+  const fontSize = item.kanbanFontSize ?? 13;
+  const fontFamily = item.kanbanFontFamily ?? "";
+  const borderRadius = item.kanbanBorderRadius ?? 8;
+  const cardGap = item.kanbanCardGap ?? 6;
+  const cardBg = item.kanbanCardBgColor ?? "var(--surface-overlay)";
+  const columnBg = item.kanbanColumnBgColor ?? "var(--surface)";
+  const headerBg = item.kanbanHeaderBgColor ?? "transparent";
+  const showCount = item.kanbanShowCardCount !== false;
+
+  const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [editCardId, setEditCardId] = useState<string | null>(null);
+  const [renamingColId, setRenamingColId] = useState<string | null>(null);
+  const [renameVal, setRenameVal] = useState("");
+  // Track IDs of freshly created cards so cancel = delete
+  const newCardIdRef = useRef<string | null>(null);
+  const activeCard = cards.find((c) => c.id === activeCardId) ?? null;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const cardsInCol = useCallback((colId: string) =>
+    cards.filter((c) => c.columnId === colId).sort((a, b) => a.order - b.order),
+  [cards]);
+
+  const handleDragStart = useCallback((e: DragStartEvent) => {
+    setActiveCardId(e.active.id as string);
+  }, []);
+
+  // Bug fix: use live cards state (not stale drag data); update order when moving cross-column
+  const handleDragOver = useCallback((e: DragOverEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+
+    const activeData = active.data.current as { type: string; cardId: string } | undefined;
+    if (activeData?.type !== "card") return;
+
+    const liveCard = cards.find((c) => c.id === (active.id as string));
+    if (!liveCard) return;
+
+    const overIsCol = columns.some((c) => c.id === (over.id as string));
+    const overCard = cards.find((c) => c.id === (over.id as string));
+    const newColId = overIsCol ? (over.id as string) : overCard?.columnId;
+
+    if (!newColId || newColId === liveCard.columnId) return;
+
+    // Set order to end of target column so it appends cleanly
+    const targetCount = cards.filter((c) => c.columnId === newColId).length;
+    upd({
+      kanbanCards: cards.map((c) =>
+        c.id === liveCard.id ? { ...c, columnId: newColId, order: targetCount } : c
+      ),
+    });
+  }, [cards, columns, upd]);
+
+  // Bug fix: handle column as drop target (empty column drop) + proper same-column reorder
+  const handleDragEnd = useCallback((e: DragEndEvent) => {
+    setActiveCardId(null);
+    const { active, over } = e;
+    if (!over) return;
+
+    // Use item.kanbanCards via upd's closure snapshot to get post-handleDragOver state;
+    // fall back to the hook-closure cards if the item prop hasn't re-rendered yet.
+    const liveCard = cards.find((c) => c.id === (active.id as string));
+    if (!liveCard) return;
+
+    const overIsCol = columns.some((c) => c.id === (over.id as string));
+
+    if (overIsCol) {
+      // Same column background drop — no-op (handleDragOver already handles cross-column)
+      if ((over.id as string) === liveCard.columnId) return;
+      // Cross-column drop onto empty column background: normalize to end
+      const targetColCards = cards
+        .filter((c) => c.columnId === (over.id as string) && c.id !== liveCard.id)
+        .sort((a, b) => a.order - b.order);
+      upd({
+        kanbanCards: cards.map((c) =>
+          c.id === liveCard.id ? { ...c, order: targetColCards.length } : c
+        ),
+      });
+      return;
+    }
+
+    if (active.id === over.id) return;
+
+    // Dropped onto a card
+    const overCard = cards.find((c) => c.id === (over.id as string));
+    if (!overCard) return;
+
+    // Cross-column card-over-card: handleDragOver moved the card; now position it relative to overCard
+    if (overCard.columnId !== liveCard.columnId) {
+      const targetColCards = cards
+        .filter((c) => c.columnId === overCard.columnId)
+        .sort((a, b) => a.order - b.order);
+      const overIdx = targetColCards.findIndex((c) => c.id === overCard.id);
+      const withoutActive = targetColCards.filter((c) => c.id !== liveCard.id);
+      const insertAt = overIdx === -1 ? withoutActive.length : overIdx;
+      const reordered = [...withoutActive.slice(0, insertAt), liveCard, ...withoutActive.slice(insertAt)];
+      upd({
+        kanbanCards: cards.map((c) => {
+          const idx = reordered.findIndex((r) => r.id === c.id);
+          return idx !== -1 ? { ...c, columnId: overCard.columnId, order: idx } : c;
+        }),
+      });
+      return;
+    }
+
+    const colCards = cards
+      .filter((c) => c.columnId === liveCard.columnId)
+      .sort((a, b) => a.order - b.order);
+    const activeIdx = colCards.findIndex((c) => c.id === liveCard.id);
+    const overIdx = colCards.findIndex((c) => c.id === overCard.id);
+    if (activeIdx === -1 || overIdx === -1) return;
+
+    const reordered = arrayMove(colCards, activeIdx, overIdx);
+    upd({
+      kanbanCards: cards.map((c) => {
+        const idx = reordered.findIndex((r) => r.id === c.id);
+        return idx !== -1 ? { ...c, order: idx } : c;
+      }),
+    });
+  }, [cards, columns, upd]);
+
+  const addCard = useCallback((colId: string) => {
+    const colCards = cards.filter((c) => c.columnId === colId);
+    // Use max+1 not length — avoids order collisions after deletions leave gaps
+    const maxOrder = colCards.length > 0 ? Math.max(...colCards.map((c) => c.order)) : -1;
+    const newCard: KanbanCard = { id: nanoid(), columnId: colId, text: "", order: maxOrder + 1 };
+    newCardIdRef.current = newCard.id;
+    upd({ kanbanCards: [...cards, newCard] });
+    setEditCardId(newCard.id);
+  }, [cards, upd]);
+
+  const deleteCard = useCallback((cardId: string) => {
+    upd({ kanbanCards: cards.filter((c) => c.id !== cardId) });
+  }, [cards, upd]);
+
+  const updateCard = useCallback((cardId: string, patch: Partial<KanbanCard>) => {
+    upd({ kanbanCards: cards.map((c) => c.id === cardId ? { ...c, ...patch } : c) });
+  }, [cards, upd]);
+
+  const addColumn = useCallback(() => {
+    upd({ kanbanColumns: [...columns, { id: nanoid(), title: "New Column", color: accent }] });
+  }, [columns, accent, upd]);
+
+  const deleteColumn = useCallback((colId: string) => {
+    upd({
+      kanbanColumns: columns.filter((c) => c.id !== colId),
+      kanbanCards: cards.filter((c) => c.columnId !== colId),
+    });
+  }, [columns, cards, upd]);
+
+  const renameColumn = useCallback((colId: string, title: string) => {
+    upd({ kanbanColumns: columns.map((c) => c.id === colId ? { ...c, title } : c) });
+  }, [columns, upd]);
+
+  const handleEditSave = useCallback((cardId: string, patch: Partial<KanbanCard>) => {
+    newCardIdRef.current = null;
+    updateCard(cardId, patch);
+  }, [updateCard]);
+
+  const handleEditClose = useCallback((cardId: string) => {
+    // Clear stale ref when closing a new card that had text typed (Escape with content)
+    if (newCardIdRef.current === cardId) newCardIdRef.current = null;
+    setEditCardId(null);
+  }, []);
+
+  const handleEditCancel = useCallback((cardId: string) => {
+    // New card with no text — remove it
+    if (newCardIdRef.current === cardId) {
+      newCardIdRef.current = null;
+      deleteCard(cardId);
+    }
+    setEditCardId(null);
+  }, [deleteCard]);
+
+  const editCard = cards.find((c) => c.id === editCardId);
+
+  if (collapsed) {
+    const total = cards.length;
+    return (
+      <div className="flex h-full items-center gap-3 overflow-hidden px-3 py-2" style={{ fontSize: fontSize - 1, fontFamily: fontFamily || undefined }}>
+        {columns.slice(0, 4).map((col) => {
+          const count = cards.filter((c) => c.columnId === col.id).length;
+          return (
+            <div key={col.id} className="flex flex-col items-center gap-0.5">
+              <div className="h-1.5 w-1.5 rounded-full" style={{ background: col.color ?? accent }} />
+              <span className="text-[10px] text-[var(--text-muted)]">{col.title}</span>
+              <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{count}</span>
+            </div>
+          );
+        })}
+        {total > 0 && <span className="ml-auto text-[10px] text-[var(--text-muted)]">{total} card{total !== 1 ? "s" : ""}</span>}
+      </div>
+    );
+  }
+
+  const bgStyle: React.CSSProperties = item.kanbanBgImage
+    ? {
+        backgroundImage: `url(${item.kanbanBgImage})`,
+        backgroundSize: item.kanbanBgImageSize ?? "cover",
+        backgroundPosition: "center",
+        opacity: item.kanbanBgOpacity ?? 1,
+      }
+    : {
+        background: item.kanbanBgColor ?? "transparent",
+        opacity: item.kanbanBgOpacity ?? 1,
+      };
+
+  const columnList = (
+    <div className="relative flex flex-1 gap-2 overflow-x-auto overflow-y-hidden p-2">
+      {columns.map((col) => (
+        <KanbanColumnContainer
+          key={col.id}
+          col={col}
+          colCards={cardsInCol(col.id)}
+          isFinished={isFinished}
+          renamingColId={renamingColId}
+          renameVal={renameVal}
+          setRenamingColId={setRenamingColId}
+          setRenameVal={setRenameVal}
+          renameColumn={renameColumn}
+          deleteColumn={deleteColumn}
+          addCard={addCard}
+          deleteCard={deleteCard}
+          setEditCardId={setEditCardId}
+          showCount={showCount}
+          headerBg={headerBg}
+          accent={accent}
+          columnBg={columnBg}
+          borderRadius={borderRadius}
+          cardBg={cardBg}
+          fontSize={fontSize}
+          fontFamily={fontFamily}
+          cardGap={cardGap}
+        />
+      ))}
+      {!isFinished && (
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={addColumn}
+          className="flex h-fit flex-shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-[var(--border)] px-3 py-2.5 text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+          style={{ alignSelf: "flex-start", minWidth: 120 }}
+        >
+          <Plus size={13} /> Add column
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div
+      className="relative flex h-full flex-col"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {/* Background layer — opacity isolated so card content stays at full opacity */}
+      <div className="pointer-events-none absolute inset-0" style={bgStyle} />
+
+      <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+        >
+          {columnList}
+          {createPortal(
+            <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
+              {activeCard && (
+                <div
+                  style={{
+                    background: cardBg,
+                    borderRadius,
+                    padding: "8px 10px",
+                    fontSize,
+                    fontFamily: fontFamily || undefined,
+                    borderLeft: activeCard.color ? `3px solid ${activeCard.color}` : undefined,
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                    width: 200,
+                    opacity: 0.9,
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  {activeCard.text || <span style={{ fontStyle: "italic", color: "var(--text-muted)" }}>Empty card</span>}
+                </div>
+              )}
+            </DragOverlay>,
+            document.body
+          )}
+        </DndContext>
+
+      {editCard && (
+        <KanbanEditModal
+          card={editCard}
+          onSave={(patch) => handleEditSave(editCard.id, patch)}
+          onClose={() => handleEditClose(editCard.id)}
+          onCancel={() => handleEditCancel(editCard.id)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── KanbanStylePanel ─────────────────────────────────────────────────────────
+
+export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const SLabel = ({ children }: { children: React.ReactNode }) => (
+    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</div>
+  );
+  const accent = item.kanbanAccentColor ?? "#5865f2";
+  const [openPicker, setOpenPicker] = useState<string | null>(null);
+
+  return (
+    <div className="flex flex-col gap-0 divide-y divide-[var(--border)] text-xs">
+      {/* Columns */}
+      <section className="p-3">
+        <SLabel>Columns</SLabel>
+        <div className="flex flex-col gap-2">
+          {(item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).map((col) => (
+            <div key={col.id} className="flex items-center gap-2">
+              <input
+                value={col.title}
+                onChange={(e) => upd({
+                  kanbanColumns: (item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).map((c) =>
+                    c.id === col.id ? { ...c, title: e.target.value } : c
+                  ),
+                })}
+                className="flex-1 min-w-0 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              />
+              <div className="relative">
+                <button
+                  className="h-5 w-5 rounded border border-[var(--border)] flex-shrink-0"
+                  style={{ background: col.color ?? "#5865f2" }}
+                  onClick={() => setOpenPicker(openPicker === `col-${col.id}` ? null : `col-${col.id}`)}
+                />
+                {openPicker === `col-${col.id}` && (
+                  <div className="absolute right-0 top-7 z-50 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
+                    <input type="color" value={col.color ?? "#5865f2"}
+                      onChange={(e) => upd({
+                        kanbanColumns: (item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).map((c) =>
+                          c.id === col.id ? { ...c, color: e.target.value } : c
+                        ),
+                      })}
+                      className="h-8 w-24 cursor-pointer border-0 p-0" />
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[var(--text-muted)]">WIP</span>
+                <input
+                  type="number" min={0} value={col.limit ?? ""}
+                  placeholder="∞"
+                  onChange={(e) => upd({
+                    kanbanColumns: (item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).map((c) =>
+                      c.id === col.id ? { ...c, limit: e.target.value ? Number(e.target.value) : undefined } : c
+                    ),
+                  })}
+                  className="w-10 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-center text-xs text-[var(--text-primary)] outline-none"
+                />
+              </div>
+              <button
+                onClick={() => upd({
+                  kanbanColumns: (item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).filter((c) => c.id !== col.id),
+                  kanbanCards: (item.kanbanCards ?? []).filter((c) => c.columnId !== col.id),
+                })}
+                className="text-[var(--text-muted)] hover:text-red-400 transition-colors flex-shrink-0"
+              ><Trash2 size={11} /></button>
+            </div>
+          ))}
+          <button
+            onClick={() => upd({
+              kanbanColumns: [...(item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS), { id: nanoid(), title: "New Column", color: "#5865f2" }],
+            })}
+            className="flex items-center gap-1 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
+          >
+            <Plus size={11} /> Add column
+          </button>
+        </div>
+      </section>
+
+      {/* Typography */}
+      <section className="p-3">
+        <SLabel>Typography</SLabel>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-secondary)]">Font</span>
+            <FontPicker value={item.kanbanFontFamily ?? ""} onChange={(v) => upd({ kanbanFontFamily: v })} />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-secondary)]">Size</span>
+            <div className="flex items-center gap-1.5">
+              <input type="range" min={10} max={20} value={item.kanbanFontSize ?? 13}
+                onChange={(e) => upd({ kanbanFontSize: Number(e.target.value) })}
+                className="w-20 h-1 cursor-pointer" style={{ accentColor: accent }} />
+              <span className="tabular-nums w-5 text-right text-[var(--text-muted)]">{item.kanbanFontSize ?? 13}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Colors */}
+      <section className="p-3">
+        <SLabel>Colors</SLabel>
+        <div className="flex flex-col gap-2">
+          {[
+            { key: "kanbanAccentColor", label: "Accent", default: "#5865f2" },
+            { key: "kanbanCardBgColor", label: "Card bg", default: "var(--surface-overlay)" },
+            { key: "kanbanColumnBgColor", label: "Column bg", default: "var(--surface)" },
+            { key: "kanbanHeaderBgColor", label: "Header bg", default: "transparent" },
+          ].map(({ key, label, default: def }) => (
+            <div key={key} className="flex items-center justify-between">
+              <span className="text-[var(--text-secondary)]">{label}</span>
+              <div className="relative">
+                <button
+                  className="h-5 w-5 rounded border border-[var(--border)]"
+                  style={{ background: (item as unknown as Record<string, string>)[key] ?? def }}
+                  onClick={() => setOpenPicker(openPicker === key ? null : key)}
+                />
+                {openPicker === key && (
+                  <div className="absolute right-0 top-7 z-50 flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
+                    <input type="color"
+                      value={(item as unknown as Record<string, string>)[key] ?? def}
+                      onChange={(e) => upd({ [key]: e.target.value } as Partial<BlockItem>)}
+                      className="h-8 w-24 cursor-pointer border-0 p-0" />
+                    <button onClick={() => { upd({ [key]: undefined } as Partial<BlockItem>); setOpenPicker(null); }}
+                      className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Layout */}
+      <section className="p-3">
+        <SLabel>Layout</SLabel>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-secondary)]">Corner radius</span>
+            <div className="flex items-center gap-1.5">
+              <input type="range" min={0} max={24} value={item.kanbanBorderRadius ?? 8}
+                onChange={(e) => upd({ kanbanBorderRadius: Number(e.target.value) })}
+                className="w-20 h-1 cursor-pointer" style={{ accentColor: accent }} />
+              <span className="tabular-nums w-5 text-right text-[var(--text-muted)]">{item.kanbanBorderRadius ?? 8}</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-secondary)]">Card gap</span>
+            <div className="flex items-center gap-1.5">
+              <input type="range" min={2} max={20} value={item.kanbanCardGap ?? 6}
+                onChange={(e) => upd({ kanbanCardGap: Number(e.target.value) })}
+                className="w-20 h-1 cursor-pointer" style={{ accentColor: accent }} />
+              <span className="tabular-nums w-5 text-right text-[var(--text-muted)]">{item.kanbanCardGap ?? 6}</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-secondary)]">Show card count</span>
+            <button
+              onClick={() => upd({ kanbanShowCardCount: !(item.kanbanShowCardCount !== false) })}
+              className={cn("h-4 w-8 rounded-full transition-colors", item.kanbanShowCardCount !== false ? "bg-[var(--accent)]" : "bg-[var(--surface-overlay)]")}
+            >
+              <div className={cn("h-3 w-3 rounded-full bg-white shadow transition-transform mx-0.5", item.kanbanShowCardCount !== false ? "translate-x-4" : "translate-x-0")} />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Background */}
+      <section className="p-3">
+        <SLabel>Background</SLabel>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-secondary)]">Color</span>
+            <div className="relative">
+              <button
+                className="h-5 w-5 rounded border border-[var(--border)]"
+                style={{ background: item.kanbanBgColor ?? "transparent" }}
+                onClick={() => setOpenPicker(openPicker === "bg" ? null : "bg")}
+              />
+              {openPicker === "bg" && (
+                <div className="absolute right-0 top-7 z-50 flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
+                  <input type="color" value={item.kanbanBgColor ?? "#1e2030"}
+                    onChange={(e) => upd({ kanbanBgColor: e.target.value })}
+                    className="h-8 w-24 cursor-pointer border-0 p-0" />
+                  <button onClick={() => { upd({ kanbanBgColor: undefined }); setOpenPicker(null); }}
+                    className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-secondary)]">Opacity</span>
+            <div className="flex items-center gap-1.5">
+              <input type="range" min={0} max={1} step={0.05} value={item.kanbanBgOpacity ?? 1}
+                onChange={(e) => upd({ kanbanBgOpacity: Number(e.target.value) })}
+                className="w-20 h-1 cursor-pointer" style={{ accentColor: accent }} />
+              <span className="tabular-nums w-8 text-right text-[var(--text-muted)]">{Math.round((item.kanbanBgOpacity ?? 1) * 100)}%</span>
             </div>
           </div>
         </div>

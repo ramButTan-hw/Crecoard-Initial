@@ -31,6 +31,7 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
   const [tab, setTab] = useState<Tab>("colors");
   const [saveNameInput, setSaveNameInput] = useState("");
   const bgFileRef = useRef<HTMLInputElement>(null);
+  const themeBgFileRef = useRef<HTMLInputElement>(null);
 
   const {
     themeVars, savedThemes, activeBoardId,
@@ -51,11 +52,24 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
   const overlayColor = board?.backgroundOverlayColor ?? "#000000";
   const overlayOpacity = board?.backgroundOverlayOpacity ?? 0;
 
+  const themeBgColor = board?.themeBgColor ?? "#0f1014";
+  const themeBgOpacity = board?.themeBgOpacity ?? 1;
+  const themeBgSize = board?.themeBgSize ?? "cover";
+
   const handleBgFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => upd({ backgroundImage: ev.target?.result as string });
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleThemeBgFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => upd({ themeBgImage: ev.target?.result as string });
     reader.readAsDataURL(file);
     e.target.value = "";
   };
@@ -184,94 +198,171 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
         {/* ── BACKGROUND TAB ────────────────────────────────────────── */}
         {tab === "background" && board && (
           <>
-            {/* Solid color */}
-            <div>
-              <SectionLabel>Background Color</SectionLabel>
-              <div className="flex items-center gap-2.5">
-                <label className="relative h-8 w-12 cursor-pointer overflow-hidden rounded border border-[var(--border)]" style={{ backgroundColor: bgColor }}>
-                  <input type="color" value={bgColor} onChange={(e) => upd({ backgroundColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-                </label>
-                <span className="font-mono text-xs text-[var(--text-muted)]">{bgColor}</span>
-              </div>
-            </div>
+            {/* ── THEME BACKGROUND (outer — behind canvas) ── */}
+            <div className="rounded-lg border border-[var(--border)] p-3 flex flex-col gap-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
+                Theme Background <span className="normal-case text-[var(--text-muted)] font-normal tracking-normal">· behind canvas</span>
+              </p>
 
-            {/* Image */}
-            <div>
-              <SectionLabel>Wallpaper Image</SectionLabel>
-              <input
-                className="mb-1.5 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
-                placeholder="https://… paste image URL"
-                value={board.backgroundImage?.startsWith("data:") ? "" : (board.backgroundImage ?? "")}
-                onChange={(e) => upd({ backgroundImage: e.target.value || undefined })}
-              />
-              <div className="flex gap-1.5">
-                <button
-                  onClick={() => bgFileRef.current?.click()}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded border border-dashed border-[var(--border)] py-1.5 text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
-                >
-                  <Upload size={12} /> Upload file
-                </button>
-                {board.backgroundImage && (
-                  <button onClick={() => upd({ backgroundImage: undefined })} className="rounded border border-[var(--border)] px-2.5 text-xs text-[var(--text-muted)] hover:border-red-400 hover:text-red-400 transition-colors">
-                    Clear
-                  </button>
-                )}
-              </div>
-              <input ref={bgFileRef} type="file" accept="image/*" className="hidden" onChange={handleBgFileUpload} />
-            </div>
-
-            {board.backgroundImage && (
-              <>
-                <WallpaperEditor
-                  url={board.backgroundImage}
-                  size={bgSize}
-                  position={bgPosition}
-                  opacity={bgOpacity}
-                  backgroundColor={bgColor}
-                  onSizeChange={(v) => upd({ backgroundSize: v })}
-                  onPositionChange={(v) => upd({ backgroundPosition: v })}
-                  onOpacityChange={(v) => upd({ backgroundOpacity: v })}
-                />
-
-                <div>
-                  <SectionLabel>Filter</SectionLabel>
-                  <div className="flex flex-wrap gap-1.5">
-                    {BG_FILTERS.map((f) => (
-                      <button
-                        key={f.id}
-                        onClick={() => upd({ backgroundFilter: f.value })}
-                        className={cn(
-                          "rounded border px-2.5 py-1 text-xs transition-colors",
-                          bgFilter === f.value
-                            ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
-                            : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                        )}
-                      >
-                        {f.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <SectionLabel>Color Tint</SectionLabel>
-                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 hover:border-[var(--text-muted)] transition-colors">
-                    <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: overlayColor }}>
-                      <input type="color" value={overlayColor} onChange={(e) => upd({ backgroundOverlayColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-                    </span>
-                    <span className="flex-1 text-xs text-[var(--text-secondary)]">Tint color</span>
-                    <span className="font-mono text-[10px] text-[var(--text-muted)]">{overlayColor}</span>
+              <div>
+                <SectionLabel>Color</SectionLabel>
+                <div className="flex items-center gap-2.5">
+                  <label className="relative h-8 w-12 cursor-pointer overflow-hidden rounded border border-[var(--border)]" style={{ backgroundColor: themeBgColor }}>
+                    <input type="color" value={themeBgColor} onChange={(e) => upd({ themeBgColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
                   </label>
-                  <div className="mt-1.5">
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-[10px] text-[var(--text-muted)]">Intensity</span>
-                      <span className="text-xs text-[var(--text-muted)]">{Math.round(overlayOpacity * 100)}%</span>
-                    </div>
-                    <input type="range" min={0} max={1} step={0.01} value={overlayOpacity} onChange={(e) => upd({ backgroundOverlayOpacity: parseFloat(e.target.value) })} className="w-full accent-[var(--accent)]" />
-                  </div>
+                  <span className="font-mono text-xs text-[var(--text-muted)]">{themeBgColor}</span>
                 </div>
-              </>
-            )}
+              </div>
+
+              <div>
+                <SectionLabel>Image</SectionLabel>
+                <input
+                  className="mb-1.5 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  placeholder="https://… paste image URL"
+                  value={board.themeBgImage?.startsWith("data:") ? "" : (board.themeBgImage ?? "")}
+                  onChange={(e) => upd({ themeBgImage: e.target.value || undefined })}
+                />
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => themeBgFileRef.current?.click()}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded border border-dashed border-[var(--border)] py-1.5 text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+                  >
+                    <Upload size={12} /> Upload file
+                  </button>
+                  {board.themeBgImage && (
+                    <button onClick={() => upd({ themeBgImage: undefined })} className="rounded border border-[var(--border)] px-2.5 text-xs text-[var(--text-muted)] hover:border-red-400 hover:text-red-400 transition-colors">
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <input ref={themeBgFileRef} type="file" accept="image/*" className="hidden" onChange={handleThemeBgFileUpload} />
+              </div>
+
+              {board.themeBgImage && (
+                <>
+                  <div>
+                    <SectionLabel>Size</SectionLabel>
+                    <div className="flex gap-1.5">
+                      {(["cover", "contain", "auto"] as const).map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => upd({ themeBgSize: s })}
+                          className={cn(
+                            "flex-1 rounded border py-1 text-xs capitalize transition-colors",
+                            themeBgSize === s
+                              ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                              : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]"
+                          )}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between">
+                      <SectionLabel className="mb-0">Opacity</SectionLabel>
+                      <span className="text-xs text-[var(--text-muted)]">{Math.round(themeBgOpacity * 100)}%</span>
+                    </div>
+                    <input type="range" min={0} max={1} step={0.01} value={themeBgOpacity} onChange={(e) => upd({ themeBgOpacity: parseFloat(e.target.value) })} className="w-full accent-[var(--accent)]" />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* ── BOARD BACKGROUND (inner — part of canvas) ── */}
+            <div className="rounded-lg border border-[var(--border)] p-3 flex flex-col gap-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
+                Board Background <span className="normal-case text-[var(--text-muted)] font-normal tracking-normal">· moves with canvas</span>
+              </p>
+
+              <div>
+                <SectionLabel>Color</SectionLabel>
+                <div className="flex items-center gap-2.5">
+                  <label className="relative h-8 w-12 cursor-pointer overflow-hidden rounded border border-[var(--border)]" style={{ backgroundColor: bgColor }}>
+                    <input type="color" value={bgColor} onChange={(e) => upd({ backgroundColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                  </label>
+                  <span className="font-mono text-xs text-[var(--text-muted)]">{bgColor}</span>
+                </div>
+              </div>
+
+              <div>
+                <SectionLabel>Wallpaper Image</SectionLabel>
+                <input
+                  className="mb-1.5 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  placeholder="https://… paste image URL"
+                  value={board.backgroundImage?.startsWith("data:") ? "" : (board.backgroundImage ?? "")}
+                  onChange={(e) => upd({ backgroundImage: e.target.value || undefined })}
+                />
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => bgFileRef.current?.click()}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded border border-dashed border-[var(--border)] py-1.5 text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+                  >
+                    <Upload size={12} /> Upload file
+                  </button>
+                  {board.backgroundImage && (
+                    <button onClick={() => upd({ backgroundImage: undefined })} className="rounded border border-[var(--border)] px-2.5 text-xs text-[var(--text-muted)] hover:border-red-400 hover:text-red-400 transition-colors">
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <input ref={bgFileRef} type="file" accept="image/*" className="hidden" onChange={handleBgFileUpload} />
+              </div>
+
+              {board.backgroundImage && (
+                <>
+                  <WallpaperEditor
+                    url={board.backgroundImage}
+                    size={bgSize}
+                    position={bgPosition}
+                    opacity={bgOpacity}
+                    backgroundColor={bgColor}
+                    onSizeChange={(v) => upd({ backgroundSize: v })}
+                    onPositionChange={(v) => upd({ backgroundPosition: v })}
+                    onOpacityChange={(v) => upd({ backgroundOpacity: v })}
+                  />
+
+                  <div>
+                    <SectionLabel>Filter</SectionLabel>
+                    <div className="flex flex-wrap gap-1.5">
+                      {BG_FILTERS.map((f) => (
+                        <button
+                          key={f.id}
+                          onClick={() => upd({ backgroundFilter: f.value })}
+                          className={cn(
+                            "rounded border px-2.5 py-1 text-xs transition-colors",
+                            bgFilter === f.value
+                              ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                              : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                          )}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <SectionLabel>Color Tint</SectionLabel>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 hover:border-[var(--text-muted)] transition-colors">
+                      <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: overlayColor }}>
+                        <input type="color" value={overlayColor} onChange={(e) => upd({ backgroundOverlayColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                      </span>
+                      <span className="flex-1 text-xs text-[var(--text-secondary)]">Tint color</span>
+                      <span className="font-mono text-[10px] text-[var(--text-muted)]">{overlayColor}</span>
+                    </label>
+                    <div className="mt-1.5">
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-[10px] text-[var(--text-muted)]">Intensity</span>
+                        <span className="text-xs text-[var(--text-muted)]">{Math.round(overlayOpacity * 100)}%</span>
+                      </div>
+                      <input type="range" min={0} max={1} step={0.01} value={overlayOpacity} onChange={(e) => upd({ backgroundOverlayOpacity: parseFloat(e.target.value) })} className="w-full accent-[var(--accent)]" />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </>
         )}
       </div>

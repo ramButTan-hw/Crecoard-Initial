@@ -7,9 +7,10 @@ const RULER_SIZE = 24;
 
 interface RulerProps {
   zoom: number;
+  panOffset?: { x: number; y: number };
 }
 
-export function Ruler({ zoom }: RulerProps) {
+export function Ruler({ zoom, panOffset = { x: 0, y: 0 } }: RulerProps) {
   const totalMarks = Math.ceil(Math.max(CANVAS_WIDTH, CANVAS_HEIGHT) / MARK_INTERVAL) + 1;
 
   return (
@@ -27,7 +28,7 @@ export function Ruler({ zoom }: RulerProps) {
           style={{
             display: "flex",
             transformOrigin: "top left",
-            transform: `scaleX(${zoom})`,
+            transform: `translateX(${panOffset.x}px) scaleX(${zoom})`,
           }}
         >
           {Array.from({ length: totalMarks }, (_, i) => (
@@ -85,7 +86,7 @@ export function Ruler({ zoom }: RulerProps) {
             display: "flex",
             flexDirection: "column",
             transformOrigin: "top left",
-            transform: `scaleY(${zoom})`,
+            transform: `translateY(${panOffset.y}px) scaleY(${zoom})`,
           }}
         >
           {Array.from({ length: totalMarks }, (_, i) => (

@@ -9,9 +9,46 @@ import {
 // ─── Item types ───────────────────────────────────────────────────────────────
 
 export type ItemType =
-  | "text" | "list" | "variable" | "embed" | "timer"
+  | "text" | "list" | "embed" | "timer"
   | "image" | "graph" | "api" | "calendar" | "table" | "divider" | "widget"
-  | "playlist";
+  | "playlist" | "kanban"
+  | "chat" | "filebank";
+
+// ─── Chat item ────────────────────────────────────────────────────────────────
+export interface ChatMessage {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar: string;
+  content: string;
+  timestamp: string; // ISO string
+}
+
+// ─── File bank item ───────────────────────────────────────────────────────────
+export interface FileBankEntry {
+  id: string;
+  name: string;
+  sizeBytes: number;
+  mimeType: string;
+  uploadedBy: string;
+  uploadedAt: string;
+}
+
+export interface KanbanCard {
+  id: string;
+  columnId: string;
+  text: string;
+  description?: string;
+  color?: string;
+  order: number;
+}
+
+export interface KanbanColumn {
+  id: string;
+  title: string;
+  color?: string;
+  limit?: number;
+}
 
 export type FilterOp =
   | "contains" | "not_contains"
@@ -32,6 +69,7 @@ export interface TableColumn {
   type: "text" | "number" | "checkbox" | "select" | "date" | "url";
   width?: number;
   options?: string[];
+  summaryFn?: "none" | "sum" | "avg" | "count" | "min" | "max" | "count_checked" | "percent_checked" | "count_empty" | "count_filled";
 }
 
 export interface TableRow {
@@ -79,10 +117,6 @@ export interface ListEntry {
   id: string;
   text: string;
   checked: boolean;
-  isVariable?: boolean;
-  variableName?: string;
-  variableValue?: number;   // legacy plain number
-  variableRawValue?: string; // formula string like "{x} + 5" or "10"
 }
 export interface GraphPoint { label: string; [key: string]: string | number }
 
@@ -102,6 +136,12 @@ export interface BlockItem {
   collapsedY?: number;
   collapsedW?: number;
   collapsedH?: number;
+  // Independent typography for the collapsed (pinned) card view
+  collapsedFontFamily?: string;
+  collapsedFontSize?: number;
+  collapsedBold?: boolean;
+  collapsedItalic?: boolean;
+  collapsedFontColor?: string;
 
   // text
   text?: string;
@@ -154,23 +194,23 @@ export interface BlockItem {
   listCheckUncheckedIcon?: string;
   listCheckCheckedIcon?: string;
   listCheckIconSize?: number;
-  listVarValueFontFamily?: string;
-  listVarValueFontSize?: number;
-  listVarValueFontColor?: string;
-  listVarValueBold?: boolean;
   listShowProgress?: boolean;
+  listProgressColor?: string;
+  listProgressHeight?: number;
+  listProgressStyle?: "rounded" | "square";
+  listProgressShowLabel?: boolean;
+  listProgressPosition?: "top" | "bottom";
 
-  // variable
-  varName?: string;
-  varFormula?: string;
+  // Settings lock — prevents style panel changes until unlocked
+  settingsLocked?: boolean;
+  // Focus mode — when true, all other items in the same view are dimmed
+  isFocused?: boolean;
 
   // text paragraph style (Google Docs-style preset)
   textParaStyle?: string;
 
-  // text modes: undefined = normal text, "number" = big number input (variable source), "formula" = shows computed result
+  // text modes: undefined = normal text, "number" = big number input, "formula" = shows computed result
   textMode?: "number" | "formula";
-  textVarName?: string;     // variable name exposed for both number-mode and formula-mode items
-  textCalcFormula?: string; // formula expression when textMode === "formula"
 
   // embed
   embedUrl?: string;
@@ -220,9 +260,12 @@ export interface BlockItem {
   timerProgressStyle?: "none" | "bar" | "thick-bar" | "ring" | "bg-fill" | "bg-dim" | "bg-sweep";
   timerProgressDir?: "ltr" | "rtl" | "ttb" | "btt"; // direction for bg-fill / bg-sweep
   timerProgressColor?: string; // override accent for progress elements
-  timerVarName?: string;       // export elapsed/remaining as a named variable
-  timerElapsedSecs?: number;   // last-synced elapsed seconds (stopwatch / pomodoro)
-  timerRemainingSecs?: number; // last-synced remaining seconds (countdown mode)
+  timerElapsedSecs?: number;   // base elapsed at last start/pause
+  timerRemainingSecs?: number; // base remaining at last start/pause
+  timerRunning?: boolean;
+  timerStartEpoch?: number;    // Date.now() when timer was last started
+  timerPhase?: "work" | "break" | "long-break";
+  timerDisplayCycles?: number;
 
   // playlist
   playlistTracks?: PlaylistTrack[];
@@ -272,7 +315,10 @@ export interface BlockItem {
   graphFontColor?: string;
   graphBarRadius?: number;
   graphStrokeWidth?: number;
-  graphListSourceItemId?: string;  // derives data from a list item's variable entries
+  graphBorderRadius?: number;
+  graphShowDataLabels?: boolean;
+  graphXAxisTitle?: string;
+  graphYAxisTitle?: string;
 
   // embedded chart in table item
   tableChartEnabled?: boolean;
@@ -313,7 +359,6 @@ export interface BlockItem {
   apiDisplayMode?: "value" | "json" | "table";
   apiRefreshInterval?: number;
   apiLabel?: string;
-  apiVarName?: string;    // export the resolved value as this variable name
   apiCachedValue?: number; // numeric value at apiResponsePath, updated on each successful fetch
 
   // calendar
@@ -377,9 +422,39 @@ export interface BlockItem {
   tableBgImageOpacity?: number;
   tableRowHeight?: number;
   tableCollabEnabled?: boolean;
+  tableShowSummary?: boolean;
 
   // widget (custom HTML/CSS/JS)
   widgetCode?: string;
+
+  // kanban
+  kanbanColumns?: KanbanColumn[];
+  kanbanCards?: KanbanCard[];
+
+  // chat (server board chat block)
+  chatChannelName?: string;
+  chatMessages?: ChatMessage[];
+
+  // filebank (server board file storage block)
+  fileBankTitle?: string;
+  fileBankFiles?: FileBankEntry[];
+
+  // table — per-member private rows (keyed by userId, only that member sees them)
+  tableMemberRows?: Record<string, TableRow[]>;
+  kanbanFontFamily?: string;
+  kanbanFontSize?: number;
+  kanbanBorderRadius?: number;
+  kanbanCardBgColor?: string;
+  kanbanColumnBgColor?: string;
+  kanbanHeaderBgColor?: string;
+  kanbanAccentColor?: string;
+  kanbanShowCardCount?: boolean;
+  kanbanCardGap?: number;
+  kanbanBgColor?: string;
+  kanbanBgOpacity?: number;
+  kanbanBgImage?: string;
+  kanbanBgImageSize?: string;
+  kanbanBgImageOpacity?: number;
 }
 
 // ─── Block (box on the board) ─────────────────────────────────────────────────
@@ -432,6 +507,7 @@ export interface Box {
   isExpanded: boolean;
   items: BlockItem[];
   style: BoxStyle;
+  collapsedStyle?: Partial<BoxStyle>; // overrides style fields when block is on the canvas (not expanded)
   // Deck (slideshow) container
   isDeck?: boolean;
   deckSlideIds?: string[];   // ordered IDs of slide boxes
@@ -451,6 +527,17 @@ export interface Box {
   deckOwnerId?: string;
 }
 
+// ─── Board-level items (items placed directly on the canvas, not inside a block) ─
+
+export interface BoardLevelItem extends BlockItem {
+  boardX: number;
+  boardY: number;
+  boardW: number;
+  boardH: number;
+  zIndex: number;
+  locked?: boolean;
+}
+
 // ─── Board ────────────────────────────────────────────────────────────────────
 
 export interface Board {
@@ -458,7 +545,7 @@ export interface Board {
   name: string;
   isPublic: boolean;
   isFinished: boolean;
-  // Board background
+  // Board (canvas) background — moves and scales with the canvas
   backgroundColor: string;
   backgroundImage?: string;
   backgroundOpacity?: number;
@@ -467,99 +554,19 @@ export interface Board {
   backgroundFilter?: string;
   backgroundOverlayColor?: string;
   backgroundOverlayOpacity?: number;
+  // Theme (outer) background — fills the viewport behind the canvas; doesn't move
+  themeBgColor?: string;
+  themeBgImage?: string;
+  themeBgOpacity?: number;
+  themeBgSize?: "cover" | "contain" | "auto";
   // Board-scoped theme (applied only inside the board area, never to the document root)
   boardThemeVars?: ThemeVarMap;
   collabEnabled?: boolean;
+  serverId?: string;     // set when this board belongs to a server
   boxes: Box[];
+  boardItems?: BoardLevelItem[];
   createdAt: number;
   updatedAt: number;
-}
-
-// ─── Variable evaluator ───────────────────────────────────────────────────────
-
-export function resolveVars(items: BlockItem[]): Record<string, number> {
-  const vars: Record<string, number> = {};
-
-  // Pass 1: direct (non-formula) sources — plain list entry values + text number-mode items
-  for (const item of items) {
-    if (item.type === "list") {
-      for (const entry of item.listItems ?? []) {
-        if (entry.isVariable && entry.variableName?.trim() && !entry.variableRawValue?.trim()) {
-          vars[entry.variableName.trim()] = entry.variableValue ?? 0;
-        }
-      }
-    }
-    if (item.type === "text" && item.textMode === "number" && item.textVarName?.trim()) {
-      vars[item.textVarName.trim()] = Number(item.text ?? "0") || 0;
-    }
-    if (item.type === "timer" && item.timerVarName?.trim() && item.timerElapsedSecs !== undefined) {
-      vars[item.timerVarName.trim()] = item.timerElapsedSecs;
-      const remainKey = `${item.timerVarName.trim()}_remaining`;
-      if (item.timerRemainingSecs !== undefined) vars[remainKey] = item.timerRemainingSecs;
-    }
-    if (item.type === "api" && item.apiVarName?.trim() && item.apiCachedValue !== undefined) {
-      vars[item.apiVarName.trim()] = item.apiCachedValue;
-    }
-  }
-
-  // Pass 2+: single dependency-aware loop for everything formula-based
-  const pending: Array<{ name: string; formula: string }> = [];
-  for (const item of items) {
-    if (item.type === "list") {
-      for (const entry of item.listItems ?? []) {
-        if (entry.isVariable && entry.variableName?.trim() && entry.variableRawValue?.trim()) {
-          pending.push({ name: entry.variableName.trim(), formula: entry.variableRawValue.trim() });
-        }
-      }
-    }
-    if (item.type === "text" && item.textMode === "formula" && item.textVarName?.trim() && item.textCalcFormula) {
-      pending.push({ name: item.textVarName.trim(), formula: item.textCalcFormula });
-    }
-    if (item.type === "variable" && item.varName) {
-      pending.push({ name: item.varName, formula: item.varFormula ?? "0" });
-    }
-  }
-
-  const unresolved = new Set(pending.map((p) => p.name));
-  for (let pass = 0; pass < pending.length + 1; pass++) {
-    let progress = false;
-    for (const { name, formula } of pending) {
-      if (!unresolved.has(name)) continue;
-      const result = evalVarFormula(formula, vars);
-      if (result !== "pending") {
-        vars[name] = typeof result === "number" ? result : NaN;
-        unresolved.delete(name);
-        progress = true;
-      }
-    }
-    if (unresolved.size === 0) break;
-    if (!progress) {
-      for (const name of unresolved) vars[name] = NaN;
-      break;
-    }
-  }
-  return vars;
-}
-
-function evalVarFormula(
-  formula: string,
-  known: Record<string, number>
-): number | "pending" | "error" {
-  let expr = formula.trim();
-  const refs = [...expr.matchAll(/\{([^}]+)\}/g)];
-  for (const [full, name] of refs) {
-    const trimmed = name.trim();
-    if (!(trimmed in known)) return "pending";
-    expr = expr.replace(full, String(known[trimmed]));
-  }
-  if (!/^[\d\s+\-*/%.(),]+$/.test(expr)) return "error";
-  try {
-    // eslint-disable-next-line no-new-func
-    const v = Function(`"use strict"; return (${expr})`)();
-    return typeof v === "number" && isFinite(v) ? v : "error";
-  } catch {
-    return "error";
-  }
 }
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
@@ -598,7 +605,7 @@ function getSavedAppBg(): AppBgConfig {
 
 function makeDefaultBoard(name = "My Board"): Board {
   return {
-    id: nanoid(),
+    id: crypto.randomUUID(),
     name,
     isPublic: false,
     isFinished: false,
@@ -609,21 +616,31 @@ function makeDefaultBoard(name = "My Board"): Board {
   };
 }
 
-function findBox(boards: Board[], boardId: string, boxId: string) {
-  return boards.find((b) => b.id === boardId)?.boxes.find((b) => b.id === boxId);
+type AnyBoardState = { boards: Board[]; serverBoards: Record<string, Board> };
+
+function findBoardAny(s: AnyBoardState, boardId: string): Board | undefined {
+  return s.boards.find((b) => b.id === boardId) ?? s.serverBoards[boardId];
+}
+
+function findBox(s: AnyBoardState, boardId: string, boxId: string) {
+  return findBoardAny(s, boardId)?.boxes.find((b) => b.id === boxId);
 }
 
 // ─── Store interface ──────────────────────────────────────────────────────────
 
 interface BoardState {
   boards: Board[];
+  serverBoards: Record<string, Board>;
   activeBoardId: string;
   selectedBoxId: string | null;
   expandedBoxId: string | null;
   draggingBlockId: string | null;
+  dragPos: { x: number; y: number } | null;
+  resizeState: { id: string; x: number; y: number; width: number; height: number } | null;
   showGrid: boolean;
-  showRuler: boolean;
   zoom: number;
+  minZoom: number;
+  panOffset: { x: number; y: number };
 
   // App appearance
   themeVars: ThemeVarMap;
@@ -647,6 +664,7 @@ interface BoardState {
   moveBox: (boardId: string, boxId: string, x: number, y: number) => void;
   resizeBox: (boardId: string, boxId: string, width: number, height: number) => void;
   updateBoxStyle: (boardId: string, boxId: string, style: Partial<BoxStyle>) => void;
+  updateBoxCollapsedStyle: (boardId: string, boxId: string, style: Partial<BoxStyle>) => void;
   bringToFront: (boardId: string, boxId: string) => void;
   sendToBack: (boardId: string, boxId: string) => void;
   duplicateBox: (boardId: string, boxId: string) => void;
@@ -659,6 +677,12 @@ interface BoardState {
   setDeckFocus: (boardId: string, deckId: string, index: number) => void;
   ejectSlide: (boardId: string, deckId: string, slideIndex: number) => void;
   disbandDeck: (boardId: string, deckId: string) => void;
+
+  // Server board actions
+  addChatMessage: (boardId: string, boxId: string, itemId: string, msg: Omit<ChatMessage, "id">) => void;
+  addFileBankEntry: (boardId: string, boxId: string, itemId: string, entry: Omit<FileBankEntry, "id">) => void;
+  addMemberTableRow: (boardId: string, boxId: string, itemId: string, userId: string, row: Omit<TableRow, "id">) => void;
+  injectServerBoards: (boards: Board[]) => void;
 
   // Items inside blocks
   addItem: (boardId: string, boxId: string, item: Omit<BlockItem, "id">) => void;
@@ -674,15 +698,33 @@ interface BoardState {
   moveCollapsedItem: (boardId: string, boxId: string, itemId: string, x: number, y: number) => void;
   resizeCollapsedItem: (boardId: string, boxId: string, itemId: string, w: number, h: number) => void;
 
+  // Board-level items (placed directly on canvas)
+  addBoardItem: (boardId: string, item: Omit<BoardLevelItem, "id" | "zIndex"> & { zIndex?: number }) => void;
+  removeBoardItem: (boardId: string, itemId: string) => void;
+  updateBoardItem: (boardId: string, itemId: string, patch: Partial<BoardLevelItem>) => void;
+  moveBoardItem: (boardId: string, itemId: string, x: number, y: number) => void;
+  resizeBoardItem: (boardId: string, itemId: string, w: number, h: number) => void;
+  bringBoardItemToFront: (boardId: string, itemId: string) => void;
+  sendBoardItemToBack: (boardId: string, itemId: string) => void;
+  duplicateBoardItem: (boardId: string, itemId: string) => void;
+  focusItem: (boardId: string, boxId: string, itemId: string | null) => void;
+  focusBoardItem: (boardId: string, itemId: string | null) => void;
+
   // Selection & expand
   selectBox: (id: string | null) => void;
   setExpandedBox: (id: string | null) => void;
   setDraggingBlock: (id: string | null) => void;
+  setDragPos: (pos: { x: number; y: number } | null) => void;
+  setResizeState: (v: { id: string; x: number; y: number; width: number; height: number } | null) => void;
+  selectedBoardItemId: string | null;
+  selectBoardItem: (id: string | null) => void;
 
   // View
   toggleGrid: () => void;
-  toggleRuler: () => void;
   setZoom: (z: number) => void;
+  setMinZoom: (v: number) => void;
+  setPanOffset: (v: { x: number; y: number }) => void;
+  zoomAtCanvasCenter: (newZoom: number) => void;
 
   // Appearance actions
   setThemeVars: (vars: ThemeVarMap) => void;        // app-level (Settings)
@@ -715,14 +757,19 @@ const initialBoard = makeDefaultBoard("My First Board");
 export const useBoardStore = create<BoardState>()(
   immer((set, get) => ({
     boards: [initialBoard],
+    serverBoards: {} as Record<string, Board>,
     activeBoardId: initialBoard.id,
     selectedBoxId: null,
     expandedBoxId: null,
     draggingBlockId: null,
+    dragPos: null,
+    resizeState: null,
     copiedBox: null,
+    selectedBoardItemId: null,
     showGrid: true,
-    showRuler: true,
     zoom: 1,
+    minZoom: 0.05,
+    panOffset: { x: 0, y: 0 },
     themeVars: getSavedThemeVars(),
     savedThemes: getSavedThemes(),
     appFont: getSavedFont(),
@@ -738,13 +785,13 @@ export const useBoardStore = create<BoardState>()(
 
     createBoardFromTemplate: (template) =>
       set((s) => {
-        const boardId = nanoid();
+        const boardId = crypto.randomUUID();
         const board: Board = {
           ...makeDefaultBoard(template.name),
           id: boardId,
           backgroundColor: template.boardData.backgroundColor ?? "#1a1b1e",
           boxes: template.boardData.boxes.map((tBox, i) => ({
-            id: nanoid(),
+            id: crypto.randomUUID(),
             boardId,
             x: tBox.x,
             y: tBox.y,
@@ -769,44 +816,90 @@ export const useBoardStore = create<BoardState>()(
     removeBoard: (id) =>
       set((s) => {
         s.boards = s.boards.filter((b) => b.id !== id);
-        if (s.activeBoardId === id && s.boards.length > 0)
-          s.activeBoardId = s.boards[0].id;
+        if (s.activeBoardId === id) {
+          s.activeBoardId = s.boards.length > 0 ? s.boards[0].id : "";
+          s.selectedBoxId = null;
+          s.expandedBoxId = null;
+        }
       }),
 
     setActiveBoard: (id) => set((s) => { s.activeBoardId = id; }),
 
+    // ── Server board actions ───────────────────────────────────────────────
+    injectServerBoards: (boards) =>
+      set((s) => {
+        for (const b of boards) {
+          if (!s.serverBoards[b.id]) {
+            s.serverBoards[b.id] = b;
+          } else {
+            // Always refresh theme/metadata from authoritative mock source
+            s.serverBoards[b.id].boardThemeVars = b.boardThemeVars;
+            s.serverBoards[b.id].name = b.name;
+          }
+        }
+      }),
+
+    addChatMessage: (boardId, boxId, itemId, msg) =>
+      set((s) => {
+        const item = findBoardAny(s, boardId)
+          ?.boxes.find((bx) => bx.id === boxId)
+          ?.items.find((it) => it.id === itemId);
+        if (!item) return;
+        if (!item.chatMessages) item.chatMessages = [];
+        item.chatMessages.push({ ...msg, id: crypto.randomUUID() });
+      }),
+
+    addFileBankEntry: (boardId, boxId, itemId, entry) =>
+      set((s) => {
+        const item = findBoardAny(s, boardId)
+          ?.boxes.find((bx) => bx.id === boxId)
+          ?.items.find((it) => it.id === itemId);
+        if (!item) return;
+        if (!item.fileBankFiles) item.fileBankFiles = [];
+        item.fileBankFiles.push({ ...entry, id: crypto.randomUUID() });
+      }),
+
+    addMemberTableRow: (boardId, boxId, itemId, userId, row) =>
+      set((s) => {
+        const item = findBoardAny(s, boardId)
+          ?.boxes.find((bx) => bx.id === boxId)
+          ?.items.find((it) => it.id === itemId);
+        if (!item) return;
+        if (!item.tableMemberRows) item.tableMemberRows = {};
+        if (!item.tableMemberRows[userId]) item.tableMemberRows[userId] = [];
+        item.tableMemberRows[userId].push({ ...row, id: crypto.randomUUID() });
+      }),
+
     updateBoard: (id, patch) =>
       set((s) => {
-        const b = s.boards.find((b) => b.id === id);
+        const b = findBoardAny(s, id);
         if (b) Object.assign(b, patch, { updatedAt: Date.now() });
       }),
 
     finishBoard: (id) =>
       set((s) => {
-        const b = s.boards.find((b) => b.id === id);
+        const b = findBoardAny(s, id);
         if (!b) return;
         b.isFinished = true;
         b.boxes.forEach((bx) => { bx.locked = true; bx.isExpanded = false; });
         s.showGrid = false;
-        s.showRuler = false;
         s.selectedBoxId = null;
         s.expandedBoxId = null;
       }),
 
     editBoard: (id) =>
       set((s) => {
-        const b = s.boards.find((b) => b.id === id);
+        const b = findBoardAny(s, id);
         if (!b) return;
         b.isFinished = false;
         b.boxes.forEach((bx) => { bx.locked = false; });
         s.showGrid = true;
-        s.showRuler = true;
       }),
 
     addBox: (boardId, box) => {
-      const newId = nanoid();
+      const newId = crypto.randomUUID();
       set((s) => {
-        const board = s.boards.find((b) => b.id === boardId);
+        const board = findBoardAny(s, boardId);
         if (!board) return;
         const maxZ = board.boxes.reduce((m, b) => Math.max(m, b.zIndex), 0);
         board.boxes.push({ ...box, id: newId, boardId, zIndex: maxZ + 1 });
@@ -816,39 +909,75 @@ export const useBoardStore = create<BoardState>()(
 
     removeBox: (boardId, boxId) =>
       set((s) => {
-        const board = s.boards.find((b) => b.id === boardId);
-        if (board) board.boxes = board.boxes.filter((b) => b.id !== boxId);
+        const board = findBoardAny(s, boardId);
+        if (!board) return;
+        const box = board.boxes.find((b) => b.id === boxId);
+        if (box) {
+          if (box.deckOwnerId) {
+            const deck = board.boxes.find((b) => b.id === box.deckOwnerId);
+            if (deck?.isDeck && deck.deckSlideIds) {
+              deck.deckSlideIds = deck.deckSlideIds.filter((id) => id !== boxId);
+              deck.deckFocusIndex = Math.min(deck.deckFocusIndex ?? 0, Math.max(0, deck.deckSlideIds.length - 1));
+              if (deck.deckSlideIds.length <= 1) {
+                if (deck.deckSlideIds.length === 1) {
+                  const lastSlide = board.boxes.find((b) => b.id === deck.deckSlideIds![0]);
+                  if (lastSlide) { lastSlide.deckOwnerId = undefined; lastSlide.x = deck.x; lastSlide.y = deck.y; }
+                }
+                board.boxes = board.boxes.filter((b) => b.id !== deck.id);
+              }
+            }
+          }
+          if (box.isDeck && box.deckSlideIds) {
+            box.deckSlideIds.forEach((sid) => {
+              const slide = board.boxes.find((b) => b.id === sid);
+              if (slide) slide.deckOwnerId = undefined;
+            });
+          }
+        }
+        board.boxes = board.boxes.filter((b) => b.id !== boxId);
         if (s.selectedBoxId === boxId) s.selectedBoxId = null;
         if (s.expandedBoxId === boxId) s.expandedBoxId = null;
       }),
 
     updateBox: (boardId, boxId, patch) =>
       set((s) => {
-        const box = findBox(s.boards, boardId, boxId);
+        const box = findBox(s, boardId, boxId);
         if (box) Object.assign(box, patch);
       }),
 
     moveBox: (boardId, boxId, x, y) =>
       set((s) => {
-        const box = findBox(s.boards, boardId, boxId);
+        const box = findBox(s, boardId, boxId);
         if (box) { box.x = x; box.y = y; }
       }),
 
     resizeBox: (boardId, boxId, width, height) =>
       set((s) => {
-        const box = findBox(s.boards, boardId, boxId);
+        const box = findBox(s, boardId, boxId);
         if (box) { box.width = width; box.height = height; }
       }),
 
     updateBoxStyle: (boardId, boxId, style) =>
       set((s) => {
-        const box = findBox(s.boards, boardId, boxId);
+        const box = findBox(s, boardId, boxId);
         if (box) Object.assign(box.style, style);
+      }),
+
+    updateBoxCollapsedStyle: (boardId, boxId, style) =>
+      set((s) => {
+        const box = findBox(s, boardId, boxId);
+        if (!box) return;
+        box.collapsedStyle = { ...(box.collapsedStyle ?? {}), ...style };
+        // Remove keys explicitly set to undefined so they fall back to the main style
+        Object.keys(box.collapsedStyle).forEach((k) => {
+          if ((box.collapsedStyle as Record<string, unknown>)[k] === undefined)
+            delete (box.collapsedStyle as Record<string, unknown>)[k];
+        });
       }),
 
     bringToFront: (boardId, boxId) =>
       set((s) => {
-        const board = s.boards.find((b) => b.id === boardId);
+        const board = findBoardAny(s, boardId);
         if (!board) return;
         const maxZ = board.boxes.reduce((m, b) => Math.max(m, b.zIndex), 0);
         const box = board.boxes.find((b) => b.id === boxId);
@@ -857,7 +986,7 @@ export const useBoardStore = create<BoardState>()(
 
     sendToBack: (boardId, boxId) =>
       set((s) => {
-        const board = s.boards.find((b) => b.id === boardId);
+        const board = findBoardAny(s, boardId);
         if (!board) return;
         const minZ = board.boxes.reduce((m, b) => Math.min(m, b.zIndex), Infinity);
         const box = board.boxes.find((b) => b.id === boxId);
@@ -866,13 +995,13 @@ export const useBoardStore = create<BoardState>()(
 
     duplicateBox: (boardId, boxId) =>
       set((s) => {
-        const board = s.boards.find((b) => b.id === boardId);
+        const board = findBoardAny(s, boardId);
         if (!board) return;
         const box = board.boxes.find((b) => b.id === boxId);
         if (!box) return;
         const maxZ = board.boxes.reduce((m, b) => Math.max(m, b.zIndex), 0);
         const clone: Box = JSON.parse(JSON.stringify(box));
-        clone.id = nanoid();
+        clone.id = crypto.randomUUID();
         clone.x = box.x + 24;
         clone.y = box.y + 24;
         clone.zIndex = maxZ + 1;
@@ -884,35 +1013,40 @@ export const useBoardStore = create<BoardState>()(
 
     copyBox: (boardId, boxId) =>
       set((s) => {
-        const box = findBox(s.boards, boardId, boxId);
+        const box = findBox(s, boardId, boxId);
         if (box) s.copiedBox = JSON.parse(JSON.stringify(box));
       }),
 
     pasteBox: (boardId, x, y) =>
       set((s) => {
         if (!s.copiedBox) return;
-        const board = s.boards.find((b) => b.id === boardId);
+        const board = findBoardAny(s, boardId);
         if (!board) return;
         const maxZ = board.boxes.reduce((m, b) => Math.max(m, b.zIndex), 0);
         const clone: Box = JSON.parse(JSON.stringify(s.copiedBox));
-        clone.id = nanoid();
+        clone.id = crypto.randomUUID();
         clone.x = x;
         clone.y = y;
         clone.zIndex = maxZ + 1;
         clone.title = clone.title ? clone.title + " (copy)" : "";
         clone.items = clone.items.map((item) => ({ ...item, id: nanoid() }));
+        clone.boardId = boardId;
+        // Drop deck membership — a pasted box belongs to the target board only
+        clone.deckOwnerId = undefined;
+        clone.isDeck = undefined;
+        clone.deckSlideIds = undefined;
         board.boxes.push(clone);
         s.selectedBoxId = clone.id;
       }),
 
     createDeck: (boardId, draggedBoxId, targetBoxId) =>
       set((s) => {
-        const board = s.boards.find((b) => b.id === boardId);
+        const board = findBoardAny(s, boardId);
         if (!board) return;
         const dragged = board.boxes.find((b) => b.id === draggedBoxId);
         const target = board.boxes.find((b) => b.id === targetBoxId);
         if (!dragged || !target) return;
-        const deckId = nanoid();
+        const deckId = crypto.randomUUID();
         const maxZ = board.boxes.reduce((m, b) => Math.max(m, b.zIndex), 0);
         const w = Math.max(dragged.width, target.width, 320);
         const h = Math.max(dragged.height, target.height, 220);
@@ -938,7 +1072,7 @@ export const useBoardStore = create<BoardState>()(
 
     addToDeck: (boardId, deckId, boxId) =>
       set((s) => {
-        const board = s.boards.find((b) => b.id === boardId);
+        const board = findBoardAny(s, boardId);
         if (!board) return;
         const deck = board.boxes.find((b) => b.id === deckId);
         const box = board.boxes.find((b) => b.id === boxId);
@@ -950,13 +1084,13 @@ export const useBoardStore = create<BoardState>()(
 
     setDeckFocus: (boardId, deckId, index) =>
       set((s) => {
-        const deck = findBox(s.boards, boardId, deckId);
+        const deck = findBox(s, boardId, deckId);
         if (deck?.isDeck) deck.deckFocusIndex = index;
       }),
 
     ejectSlide: (boardId, deckId, slideIndex) =>
       set((s) => {
-        const board = s.boards.find((b) => b.id === boardId);
+        const board = findBoardAny(s, boardId);
         if (!board) return;
         const deck = board.boxes.find((b) => b.id === deckId);
         if (!deck?.isDeck || !deck.deckSlideIds) return;
@@ -983,7 +1117,7 @@ export const useBoardStore = create<BoardState>()(
 
     disbandDeck: (boardId, deckId) =>
       set((s) => {
-        const board = s.boards.find((b) => b.id === boardId);
+        const board = findBoardAny(s, boardId);
         if (!board) return;
         const deck = board.boxes.find((b) => b.id === deckId);
         if (!deck?.isDeck) return;
@@ -998,27 +1132,27 @@ export const useBoardStore = create<BoardState>()(
 
     addItem: (boardId, boxId, item) =>
       set((s) => {
-        const box = findBox(s.boards, boardId, boxId);
+        const box = findBox(s, boardId, boxId);
         if (!box) return;
         box.items.push({ ...item, id: nanoid() });
       }),
 
     removeItem: (boardId, boxId, itemId) =>
       set((s) => {
-        const box = findBox(s.boards, boardId, boxId);
+        const box = findBox(s, boardId, boxId);
         if (box) box.items = box.items.filter((i) => i.id !== itemId);
       }),
 
     updateItem: (boardId, boxId, itemId, patch) =>
       set((s) => {
-        const box = findBox(s.boards, boardId, boxId);
+        const box = findBox(s, boardId, boxId);
         const item = box?.items.find((i) => i.id === itemId);
         if (item) Object.assign(item, patch);
       }),
 
     moveItemUp: (boardId, boxId, itemId) =>
       set((s) => {
-        const items = findBox(s.boards, boardId, boxId)?.items;
+        const items = findBox(s, boardId, boxId)?.items;
         if (!items) return;
         const i = items.findIndex((x) => x.id === itemId);
         if (i > 0) [items[i - 1], items[i]] = [items[i], items[i - 1]];
@@ -1026,7 +1160,7 @@ export const useBoardStore = create<BoardState>()(
 
     moveItemDown: (boardId, boxId, itemId) =>
       set((s) => {
-        const items = findBox(s.boards, boardId, boxId)?.items;
+        const items = findBox(s, boardId, boxId)?.items;
         if (!items) return;
         const i = items.findIndex((x) => x.id === itemId);
         if (i < items.length - 1) [items[i], items[i + 1]] = [items[i + 1], items[i]];
@@ -1034,25 +1168,25 @@ export const useBoardStore = create<BoardState>()(
 
     toggleItemInCollapsed: (boardId, boxId, itemId) =>
       set((s) => {
-        const item = findBox(s.boards, boardId, boxId)?.items.find((i) => i.id === itemId);
+        const item = findBox(s, boardId, boxId)?.items.find((i) => i.id === itemId);
         if (item) item.showInCollapsed = !item.showInCollapsed;
       }),
 
     moveExpandedItem: (boardId, boxId, itemId, x, y) =>
       set((s) => {
-        const item = findBox(s.boards, boardId, boxId)?.items.find((i) => i.id === itemId);
+        const item = findBox(s, boardId, boxId)?.items.find((i) => i.id === itemId);
         if (item) { item.expandedX = x; item.expandedY = y; }
       }),
 
     resizeExpandedItem: (boardId, boxId, itemId, w, h) =>
       set((s) => {
-        const item = findBox(s.boards, boardId, boxId)?.items.find((i) => i.id === itemId);
+        const item = findBox(s, boardId, boxId)?.items.find((i) => i.id === itemId);
         if (item) { item.expandedW = w; item.expandedH = h; }
       }),
 
     duplicateItem: (boardId, boxId, itemId) =>
       set((s) => {
-        const box = findBox(s.boards, boardId, boxId);
+        const box = findBox(s, boardId, boxId);
         if (!box) return;
         const idx = box.items.findIndex((i) => i.id === itemId);
         if (idx < 0) return;
@@ -1065,29 +1199,137 @@ export const useBoardStore = create<BoardState>()(
 
     resetItemLayout: (boardId, boxId, itemId) =>
       set((s) => {
-        const item = findBox(s.boards, boardId, boxId)?.items.find((i) => i.id === itemId);
+        const item = findBox(s, boardId, boxId)?.items.find((i) => i.id === itemId);
         if (item) { item.expandedX = undefined; item.expandedY = undefined; item.expandedW = undefined; item.expandedH = undefined; }
       }),
 
     moveCollapsedItem: (boardId, boxId, itemId, x, y) =>
       set((s) => {
-        const item = findBox(s.boards, boardId, boxId)?.items.find((i) => i.id === itemId);
+        const item = findBox(s, boardId, boxId)?.items.find((i) => i.id === itemId);
         if (item) { item.collapsedX = x; item.collapsedY = y; }
       }),
 
     resizeCollapsedItem: (boardId, boxId, itemId, w, h) =>
       set((s) => {
-        const item = findBox(s.boards, boardId, boxId)?.items.find((i) => i.id === itemId);
+        const item = findBox(s, boardId, boxId)?.items.find((i) => i.id === itemId);
         if (item) { item.collapsedW = w; item.collapsedH = h; }
+      }),
+
+    // ─── Board-level item actions ───────────────────────────────────────────────
+
+    addBoardItem: (boardId, item) =>
+      set((s) => {
+        const board = findBoardAny(s, boardId);
+        if (!board) return;
+        if (!board.boardItems) board.boardItems = [];
+        const maxZ = Math.max(0, ...board.boxes.map(b => b.zIndex), ...board.boardItems.map(i => i.zIndex));
+        board.boardItems.push({ ...item, id: nanoid(), zIndex: item.zIndex ?? maxZ + 1 });
+      }),
+
+    removeBoardItem: (boardId, itemId) =>
+      set((s) => {
+        const board = findBoardAny(s, boardId);
+        if (!board) return;
+        board.boardItems = (board.boardItems ?? []).filter((i) => i.id !== itemId);
+        if (s.selectedBoardItemId === itemId) s.selectedBoardItemId = null;
+      }),
+
+    updateBoardItem: (boardId, itemId, patch) =>
+      set((s) => {
+        const item = findBoardAny(s, boardId)?.boardItems?.find((i) => i.id === itemId);
+        if (item) Object.assign(item, patch);
+      }),
+
+    moveBoardItem: (boardId, itemId, x, y) =>
+      set((s) => {
+        const item = findBoardAny(s, boardId)?.boardItems?.find((i) => i.id === itemId);
+        if (item) { item.boardX = x; item.boardY = y; }
+      }),
+
+    resizeBoardItem: (boardId, itemId, w, h) =>
+      set((s) => {
+        const item = findBoardAny(s, boardId)?.boardItems?.find((i) => i.id === itemId);
+        if (item) { item.boardW = w; item.boardH = h; }
+      }),
+
+    bringBoardItemToFront: (boardId, itemId) =>
+      set((s) => {
+        const board = findBoardAny(s, boardId);
+        if (!board) return;
+        const maxZ = Math.max(0, ...board.boxes.map(b => b.zIndex), ...(board.boardItems ?? []).map(i => i.zIndex));
+        const item = board.boardItems?.find((i) => i.id === itemId);
+        if (item) item.zIndex = maxZ + 1;
+      }),
+
+    sendBoardItemToBack: (boardId, itemId) =>
+      set((s) => {
+        const board = findBoardAny(s, boardId);
+        if (!board) return;
+        const minZ = Math.min(Infinity, ...board.boxes.map(b => b.zIndex), ...(board.boardItems ?? []).map(i => i.zIndex));
+        const item = board.boardItems?.find((i) => i.id === itemId);
+        if (item) item.zIndex = isFinite(minZ) && minZ > 0 ? minZ - 1 : 0;
+      }),
+
+    duplicateBoardItem: (boardId, itemId) =>
+      set((s) => {
+        const board = findBoardAny(s, boardId);
+        if (!board?.boardItems) return;
+        const item = board.boardItems.find((i) => i.id === itemId);
+        if (!item) return;
+        const maxZ = Math.max(0, ...board.boxes.map(b => b.zIndex), ...board.boardItems.map(i => i.zIndex));
+        const clone: BoardLevelItem = JSON.parse(JSON.stringify(item));
+        clone.id = nanoid();
+        clone.boardX = item.boardX + 24;
+        clone.boardY = item.boardY + 24;
+        clone.zIndex = maxZ + 1;
+        board.boardItems.push(clone);
+        s.selectedBoardItemId = clone.id;
+      }),
+
+    focusItem: (boardId, boxId, itemId) =>
+      set((s) => {
+        const box = findBox(s, boardId, boxId);
+        if (!box) return;
+        box.items.forEach((i) => { i.isFocused = i.id === itemId ? true : undefined; });
+      }),
+
+    focusBoardItem: (boardId, itemId) =>
+      set((s) => {
+        const board = findBoardAny(s, boardId);
+        if (!board?.boardItems) return;
+        board.boardItems.forEach((i) => { i.isFocused = i.id === itemId ? true : undefined; });
       }),
 
     selectBox: (id) => set((s) => { s.selectedBoxId = id; }),
     setExpandedBox: (id) => set((s) => { s.expandedBoxId = id; }),
     setDraggingBlock: (id) => set((s) => { s.draggingBlockId = id; }),
+    setDragPos: (pos) => set((s) => { s.dragPos = pos; }),
+    setResizeState: (v) => set((s) => { s.resizeState = v; }),
+
+    selectBoardItem: (id) =>
+      set((s) => {
+        s.selectedBoardItemId = id;
+        if (id !== null) {
+          // Deselect block and close expanded view when selecting a board item
+          s.selectedBoxId = null;
+          s.expandedBoxId = null;
+        }
+      }),
 
     toggleGrid: () => set((s) => { s.showGrid = !s.showGrid; }),
-    toggleRuler: () => set((s) => { s.showRuler = !s.showRuler; }),
-    setZoom: (z) => set((s) => { s.zoom = z; }),
+    setZoom: (z) => set((s) => { s.zoom = Math.max(s.minZoom, Math.min(3,z)); }),
+    setMinZoom: (v) => set((s) => { s.minZoom = v; if (s.zoom < v) s.zoom = v; }),
+    setPanOffset: (v) => set((s) => { s.panOffset = v; }),
+    zoomAtCanvasCenter: (newZoom) => set((s) => {
+      const clamped = Math.max(s.minZoom, Math.min(3,newZoom));
+      const cx = 1200; // CANVAS_WIDTH / 2
+      const cy = 700;  // CANVAS_HEIGHT / 2
+      s.panOffset = {
+        x: s.panOffset.x + cx * (s.zoom - clamped),
+        y: s.panOffset.y + cy * (s.zoom - clamped),
+      };
+      s.zoom = clamped;
+    }),
 
     setThemeVars: (vars) => {
       // App-level theme only — applies to document root (sidebar, panels, etc.)
@@ -1100,13 +1342,13 @@ export const useBoardStore = create<BoardState>()(
 
     setBoardTheme: (boardId, vars) =>
       set((s) => {
-        const b = s.boards.find((b) => b.id === boardId);
+        const b = findBoardAny(s, boardId);
         if (b) b.boardThemeVars = vars;
       }),
 
     clearBoardTheme: (boardId) =>
       set((s) => {
-        const b = s.boards.find((b) => b.id === boardId);
+        const b = findBoardAny(s, boardId);
         if (b) delete b.boardThemeVars;
       }),
 
@@ -1144,19 +1386,39 @@ export const useBoardStore = create<BoardState>()(
 
     persistBoards: () => {
       try {
-        const { boards, activeBoardId } = get();
+        const { boards, activeBoardId, serverBoards } = get();
         localStorage.setItem("plancraft-boards-v1", JSON.stringify({ boards, activeBoardId }));
-      } catch { /* quota exceeded — ignore */ }
+        localStorage.setItem("plancraft-server-boards-v1", JSON.stringify(serverBoards));
+      } catch {
+        if (typeof window !== "undefined")
+          window.dispatchEvent(new CustomEvent("plancraft:storage-error"));
+      }
     },
 
     hydrateBoards: () => {
       try {
         const raw = localStorage.getItem("plancraft-boards-v1");
-        if (!raw) return;
-        const { boards, activeBoardId } = JSON.parse(raw) as { boards: Board[]; activeBoardId: string };
-        if (!Array.isArray(boards) || boards.length === 0) return;
-        set((s) => { s.boards = boards; s.activeBoardId = activeBoardId; });
-      } catch { /* corrupt data — ignore */ }
+        if (raw) {
+          const { boards, activeBoardId } = JSON.parse(raw) as { boards: Board[]; activeBoardId: string };
+          const personalBoards = (Array.isArray(boards) ? boards : []).filter((b) => !b.serverId);
+          if (personalBoards.length > 0) {
+            // Sanitize: activeBoardId must always point to a personal board
+            const safeId = personalBoards.find((b) => b.id === activeBoardId)?.id ?? personalBoards[0].id;
+            set((s) => { s.boards = personalBoards; s.activeBoardId = safeId; });
+          }
+        }
+        const serverRaw = localStorage.getItem("plancraft-server-boards-v1");
+        if (serverRaw) {
+          const serverBoards = JSON.parse(serverRaw) as Record<string, Board>;
+          if (serverBoards && typeof serverBoards === "object") {
+            set((s) => { s.serverBoards = serverBoards; });
+          }
+        }
+      } catch (err) {
+        console.error("[PlanCraft] Failed to load saved boards — data may be corrupt. Starting fresh.", err);
+        localStorage.removeItem("plancraft-boards-v1");
+        localStorage.removeItem("plancraft-server-boards-v1");
+      }
     },
   }))
 );
@@ -1169,5 +1431,6 @@ if (typeof window !== "undefined") {
   applyAppFont(state.appFont);
 }
 
+/** Returns the active personal board. Never returns a server board. */
 export const useActiveBoard = () =>
-  useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId)!);
+  useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId));
