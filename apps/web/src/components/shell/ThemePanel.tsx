@@ -6,6 +6,8 @@ import { WallpaperEditor } from "@/components/ui/WallpaperEditor";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
 import { PRESET_THEMES, BG_FILTERS, ThemeVarMap } from "@/lib/appThemes";
 import { cn } from "@/lib/utils";
+import { useUser } from "@/contexts/UserContext";
+import { uploadFile } from "@/lib/storage";
 
 interface ThemePanelProps {
   onClose: () => void;
@@ -37,6 +39,7 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
     themeVars, savedThemes, activeBoardId,
     setBoardTheme, saveCurrentTheme, deleteSavedTheme, clearBoardTheme, updateBoard,
   } = useBoardStore();
+  const { identity } = useUser();
   const board = useActiveBoard();
 
   const currentVars: ThemeVarMap = board?.boardThemeVars ?? themeVars;
@@ -59,19 +62,31 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
   const handleBgFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => upd({ backgroundImage: ev.target?.result as string });
-    reader.readAsDataURL(file);
     e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      upd({ backgroundImage: dataUrl });
+      void uploadFile(file, identity.userId, "themes", file.name).then((url) => {
+        if (url) upd({ backgroundImage: url });
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleThemeBgFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => upd({ themeBgImage: ev.target?.result as string });
-    reader.readAsDataURL(file);
     e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      upd({ themeBgImage: dataUrl });
+      void uploadFile(file, identity.userId, "themes", file.name).then((url) => {
+        if (url) upd({ themeBgImage: url });
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
   return (

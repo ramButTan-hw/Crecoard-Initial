@@ -7,6 +7,7 @@ import {
   Minus, Square, X,
 } from "lucide-react";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
+import { useHasAppBg } from "@/lib/useHasAppBg";
 import { useCollab } from "@/lib/useCollabSession";
 import { ThemePanel } from "./ThemePanel";
 import { ShareModal } from "./ShareModal";
@@ -34,11 +35,11 @@ function Avatar({ name, color, size = 24, title }: { name: string; color: string
 export function TopBar() {
   const {
     showGrid, zoom,
-    toggleGrid, setZoom, zoomAtCanvasCenter,
+    toggleGrid, zoomAtCanvasCenter,
     updateBoard, finishBoard, editBoard,
     activeBoardId,
   } = useBoardStore();
-  const hasAppBg = useBoardStore((s) => !!s.appBg.image);
+  const hasAppBg = useHasAppBg();
   const board = useActiveBoard();
   const { members, self, isConnected } = useCollab();
 
@@ -48,6 +49,7 @@ export function TopBar() {
   const [showShare, setShowShare] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [windowMaximized, setWindowMaximized] = useState(false);
+  const [confirmFinish, setConfirmFinish] = useState(false);
 
   useEffect(() => {
     const electron = window.electron;
@@ -214,9 +216,25 @@ export function TopBar() {
           >
             <Edit3 size={14} /> Edit
           </button>
+        ) : confirmFinish ? (
+          <div className="flex items-center gap-1" style={isDesktop ? { WebkitAppRegion: "no-drag" } as React.CSSProperties : undefined}>
+            <button
+              onClick={() => { finishBoard(activeBoardId); setConfirmFinish(false); }}
+              className="flex items-center gap-2 rounded-lg bg-red-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-600 transition-colors shadow-sm"
+            >
+              <CheckCircle2 size={14} /> Confirm Finish?
+            </button>
+            <button
+              onClick={() => setConfirmFinish(false)}
+              className="flex items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--border)] transition-colors"
+              title="Cancel"
+            >
+              <X size={14} />
+            </button>
+          </div>
         ) : (
           <button
-            onClick={() => finishBoard(activeBoardId)}
+            onClick={() => setConfirmFinish(true)}
             className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors shadow-sm"
             style={isDesktop ? { WebkitAppRegion: "no-drag" } as React.CSSProperties : undefined}
           >

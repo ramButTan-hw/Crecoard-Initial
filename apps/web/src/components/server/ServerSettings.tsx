@@ -1,10 +1,22 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { X, Plus, Trash2, Edit2, Check, Upload } from "lucide-react";
+import { X, Plus, Trash2, Edit2, Camera, Upload, Check } from "lucide-react";
+import { ImageCropModal } from "@/components/shell/ImageCropModal";
+
+function loadServerStorage(serverId: string) {
+  if (typeof window === "undefined") return null;
+  try { return JSON.parse(localStorage.getItem(`plancraft-server-${serverId}`) ?? "null") as { iconUrl?: string; name?: string; description?: string } | null; } catch { return null; }
+}
+function saveServerStorage(serverId: string, data: { iconUrl?: string; name: string; description: string }) {
+  localStorage.setItem(`plancraft-server-${serverId}`, JSON.stringify(data));
+}
 import { cn } from "@/lib/utils";
 import { useBoardStore } from "@/store/boardStore";
+import { useUser } from "@/contexts/UserContext";
+import { uploadFile, uploadDataUrl } from "@/lib/storage";
 import { useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
+import { useServers } from "@/contexts/ServersContext";
 import { WallpaperEditor } from "@/components/ui/WallpaperEditor";
 import { MOCK_SERVERS, MOCK_SERVER_MEMBERS } from "@/lib/mockServerData";
 import { PRESET_THEMES, BG_FILTERS, type ThemeVarMap } from "@/lib/appThemes";
@@ -44,23 +56,88 @@ const ROLE_COLORS: Record<MemberRole, string> = {
   member: "text-[var(--text-muted)]",
 };
 
+const MEMBER_AVATAR_COLORS: Record<string, string> = {
+  "u-alex":   "#d59ee8",
+  "u-sarah":  "#eb459e",
+  "u-jordan": "#57f287",
+  "u-riley":  "#fee75c",
+  "u-mia":    "#ed4245",
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const bgFileRef = useRef<HTMLInputElement>(null);
   const themeBgFileRef = useRef<HTMLInputElement>(null);
 
   const { updateBoard, setBoardTheme, clearBoardTheme, themeVars } = useBoardStore();
+  const { identity } = useUser();
+  const { servers, serverMembers, loadMembers, updateServer } = useServers();
   const { boardId } = useServerBoard();
   const currentBoard = useServerBoardData();
 
-  const server = MOCK_SERVERS.find((s) => s.id === serverId);
-  const members = MOCK_SERVER_MEMBERS[serverId] ?? [];
+  const isReal = UUID_RE.test(serverId);
+  const mockServer = MOCK_SERVERS.find((s) => s.id === serverId);
+  const realServer = isReal ? servers.find((s) => s.id === serverId) : undefined;
+  // Unified display source — real server wins over mock
+  const server = mockServer ?? realServer;
+
+  // Real server members (loaded via context); mock servers use static data
+  const mockMembers = MOCK_SERVER_MEMBERS[serverId] ?? [];
+  const members = isReal ? (serverMembers[serverId] ?? []) : mockMembers;
+
+  // Load real server members on mount
+  useEffect(() => {
+    if (isReal) void loadMembers(serverId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverId, isReal]);
+
+  // For real servers the icon field may be an emoji ("🎮") or a Storage URL.
+  // We track them separately so removing an uploaded image reverts to the emoji.
+  const iconEmoji = (() => {
+    const ic = realServer?.icon ?? mockServer?.icon ?? "🌐";
+    return ic.startsWith("http") ? "🌐" : ic;
+  })();
 
   // Overview local state
-  const [editingName, setEditingName] = useState(false);
-  const [nameValue, setNameValue] = useState(server?.name ?? "");
-  const [editingDesc, setEditingDesc] = useState(false);
-  const [descValue, setDescValue] = useState(server?.description ?? "");
+  const [nameValue, setNameValue] = useState(() =>
+    isReal ? (realServer?.name ?? "") : (loadServerStorage(serverId)?.name ?? server?.name ?? "")
+  );
+  const [descValue, setDescValue] = useState(() =>
+    isReal ? (realServer?.description ?? "") : (loadServerStorage(serverId)?.description ?? server?.description ?? "")
+  );
+  const [iconUrl, setIconUrl] = useState<string | undefined>(() => {
+    if (isReal) {
+      const ic = realServer?.icon;
+      return ic?.startsWith("http") ? ic : undefined;
+    }
+    return loadServerStorage(serverId)?.iconUrl;
+  });
+  const [iconCropSrc, setIconCropSrc] = useState<string | null>(null);
+  const [savedOverview, setSavedOverview] = useState(false);
+  const iconFileRef = useRef<HTMLInputElement>(null);
+
+  const handleSaveOverview = async () => {
+    let finalIconUrl = iconUrl;
+    if (iconUrl?.startsWith("data:")) {
+      const url = await uploadDataUrl(iconUrl, identity.userId, "server-icons", "icon.png");
+      if (url) finalIconUrl = url;
+    }
+    if (isReal) {
+      await updateServer(serverId, {
+        name: nameValue,
+        description: descValue,
+        icon: finalIconUrl ?? iconEmoji,
+      });
+      if (finalIconUrl !== iconUrl) setIconUrl(finalIconUrl);
+    } else {
+      saveServerStorage(serverId, { iconUrl: finalIconUrl, name: nameValue, description: descValue });
+      window.dispatchEvent(new CustomEvent("plancraft-server-updated", { detail: { serverId } }));
+    }
+    setSavedOverview(true);
+    setTimeout(() => setSavedOverview(false), 2000);
+  };
 
   // Roles local state
   const [roles, setRoles] = useState<ServerRole[]>(() => server?.roles ?? []);
@@ -81,7 +158,8 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  if (!server) return null;
+  if (!server && !realServer) return null;
+  const displayServer = server ?? realServer!;
 
   // Appearance helpers
   const boardVars: ThemeVarMap = currentBoard?.boardThemeVars ?? themeVars;
@@ -104,19 +182,31 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
   const handleBgFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => upd({ backgroundImage: ev.target?.result as string });
-    reader.readAsDataURL(file);
     e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      upd({ backgroundImage: dataUrl });
+      void uploadFile(file, identity.userId, "themes", file.name).then((url) => {
+        if (url) upd({ backgroundImage: url });
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleThemeBgFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => upd({ themeBgImage: ev.target?.result as string });
-    reader.readAsDataURL(file);
     e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      upd({ themeBgImage: dataUrl });
+      void uploadFile(file, identity.userId, "themes", file.name).then((url) => {
+        if (url) upd({ themeBgImage: url });
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
   // Roles helpers
@@ -205,87 +295,91 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
             <div className="max-w-lg">
               <h2 className="mb-6 text-xl font-bold text-[var(--text-primary)]">Overview</h2>
 
+              {/* Server icon */}
               <div className="mb-6">
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                   Server Icon
                 </label>
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-raised)] text-3xl border border-[var(--border)]">
-                  {server.icon}
+                <div className="flex items-center gap-4">
+                  <div
+                    className="relative cursor-pointer group rounded-2xl overflow-hidden flex-shrink-0"
+                    style={{ width: 80, height: 80, background: "var(--surface-raised)", border: "1px solid var(--border)" }}
+                    onClick={() => iconFileRef.current?.click()}
+                  >
+                    {iconUrl
+                      ? <img src={iconUrl} alt="" className="h-full w-full object-cover" />
+                      : <span className="flex h-full w-full items-center justify-center text-3xl font-bold text-[var(--text-primary)] select-none">{iconEmoji}</span>
+                    }
+                    <div className="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
+                      <Camera size={16} className="text-white" />
+                      <span className="text-white text-[10px] font-medium">Change</span>
+                    </div>
+                    <input
+                      ref={iconFileRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]; if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => setIconCropSrc(ev.target?.result as string);
+                        reader.readAsDataURL(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-sm text-[var(--text-secondary)]">{nameValue || displayServer.name}</p>
+                    <p className="text-xs text-[var(--text-muted)]">{displayServer.memberCount} members</p>
+                    {iconUrl && (
+                      <button
+                        onClick={() => setIconUrl(undefined)}
+                        className="self-start text-xs text-red-400 hover:text-red-300 transition-colors"
+                      >
+                        Remove image
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="mb-5">
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                  Server Name
-                </label>
-                {editingName ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      autoFocus
-                      value={nameValue}
-                      onChange={(e) => setNameValue(e.target.value)}
-                      className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-                    />
-                    <button
-                      onClick={() => setEditingName(false)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors"
-                    >
-                      <Check size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--text-primary)]">
-                      {nameValue}
-                    </span>
-                    <button
-                      onClick={() => setEditingName(true)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors border border-[var(--border)]"
-                    >
-                      <Edit2 size={13} />
-                    </button>
-                  </div>
-                )}
+              {/* Fields */}
+              <div className="flex flex-col gap-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    Server Name
+                  </label>
+                  <input
+                    value={nameValue}
+                    onChange={(e) => setNameValue(e.target.value)}
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    Description
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={descValue}
+                    onChange={(e) => setDescValue(e.target.value)}
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] resize-none transition-colors"
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => void handleSaveOverview()}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors",
+                      savedOverview
+                        ? "bg-green-500/20 text-green-400"
+                        : "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                    )}
+                  >
+                    {savedOverview ? <><Check size={14} /> Saved!</> : "Save Changes"}
+                  </button>
+                </div>
               </div>
-
-              <div className="mb-6">
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                  Description
-                </label>
-                {editingDesc ? (
-                  <div className="flex flex-col gap-2">
-                    <textarea
-                      autoFocus
-                      rows={3}
-                      value={descValue}
-                      onChange={(e) => setDescValue(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] resize-none"
-                    />
-                    <button
-                      onClick={() => setEditingDesc(false)}
-                      className="self-start flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors"
-                    >
-                      <Check size={12} /> Save
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-start gap-2">
-                    <span className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--text-secondary)] min-h-[60px]">
-                      {descValue}
-                    </span>
-                    <button
-                      onClick={() => setEditingDesc(true)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors border border-[var(--border)]"
-                    >
-                      <Edit2 size={13} />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <p className="text-xs text-[var(--text-muted)] rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2">
-                Changes sync to all members in real-time.
-              </p>
             </div>
           )}
 
@@ -610,7 +704,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
 
               <div className="flex flex-col gap-1">
                 {members.map((member) => {
-                  const isYou = member.userId === "local-user";
+                  const isYou = member.userId === identity.userId;
                   const currentRole = memberRoles[member.userId] ?? member.role;
                   return (
                     <div
@@ -619,7 +713,10 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
                       style={{ background: "var(--surface-raised)" }}
                     >
                       <div className="relative flex-shrink-0">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
+                        <span
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white"
+                          style={{ background: MEMBER_AVATAR_COLORS[member.userId] ?? "var(--accent)" }}
+                        >
                           {member.avatar}
                         </span>
                         <span
@@ -667,6 +764,19 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
           )}
         </div>
       </div>
+
+      {iconCropSrc && (
+        <ImageCropModal
+          src={iconCropSrc}
+          shape="rect"
+          previewW={280}
+          previewH={280}
+          outputW={256}
+          outputH={256}
+          onApply={(url) => { setIconUrl(url); setIconCropSrc(null); }}
+          onClose={() => setIconCropSrc(null)}
+        />
+      )}
     </>
   );
 }

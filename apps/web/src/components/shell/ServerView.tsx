@@ -3,6 +3,14 @@
 import { useState, useRef, useEffect } from "react";
 import { Hash, Send, Smile, Paperclip, Phone, Video, Search, Users, AtSign } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { ViewableUser } from "./UserProfileModal";
+
+const MEMBER_COLORS = ["#5865F2","#57F287","#FEE75C","#EB459E","#ED4245","#3BA55C","#FAA61A","#9B59B6"];
+function memberColor(username: string) {
+  let h = 0;
+  for (let i = 0; i < username.length; i++) h = (h * 31 + username.charCodeAt(i)) >>> 0;
+  return MEMBER_COLORS[h % MEMBER_COLORS.length];
+}
 
 interface Message {
   id: string;
@@ -23,6 +31,7 @@ interface ServerViewProps {
   channelName?: string;
   showChannels?: boolean;
   showMembers?: boolean;
+  onViewProfile?: (u: ViewableUser) => void;
 }
 
 const DEMO_CHANNELS: Record<string, { name: string; messages: Message[] }> = {
@@ -75,7 +84,7 @@ const DEMO_MEMBERS = [
   { id: "m5", username: "mia.dev", avatar: "M", online: false, role: "Member" },
 ];
 
-export function ServerView({ mode, serverId, dmId, serverName, dmUsername, dmOnline, channelName = "general", showChannels = true, showMembers = false }: ServerViewProps) {
+export function ServerView({ mode, serverId, dmId, serverName, dmUsername, dmOnline, channelName = "general", showChannels = true, showMembers = false, onViewProfile }: ServerViewProps) {
   const [activeChannel, setActiveChannel] = useState(channelName);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -224,13 +233,13 @@ export function ServerView({ mode, serverId, dmId, serverName, dmUsername, dmOnl
           </div>
           <div className="p-2 flex flex-col gap-0.5">
             {DEMO_MEMBERS.filter((m) => m.online).map((m) => (
-              <MemberRow key={m.id} member={m} />
+              <MemberRow key={m.id} member={m} onViewProfile={onViewProfile} />
             ))}
             <p className="px-2 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Offline — {DEMO_MEMBERS.filter((m) => !m.online).length}
             </p>
             {DEMO_MEMBERS.filter((m) => !m.online).map((m) => (
-              <MemberRow key={m.id} member={m} />
+              <MemberRow key={m.id} member={m} onViewProfile={onViewProfile} />
             ))}
           </div>
         </div>
@@ -239,9 +248,12 @@ export function ServerView({ mode, serverId, dmId, serverName, dmUsername, dmOnl
   );
 }
 
-function MemberRow({ member }: { member: typeof DEMO_MEMBERS[number] }) {
+function MemberRow({ member, onViewProfile }: { member: typeof DEMO_MEMBERS[number]; onViewProfile?: (u: ViewableUser) => void }) {
   return (
-    <button className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors text-left">
+    <button
+      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors text-left"
+      onClick={() => onViewProfile?.({ displayName: member.username, avatarChar: member.avatar, color: memberColor(member.username), online: member.online })}
+    >
       <span className="relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
         {member.avatar}
         <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--surface-raised)]", member.online ? "bg-green-500" : "bg-[var(--text-muted)]")} />

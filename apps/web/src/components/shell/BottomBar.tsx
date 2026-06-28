@@ -1,32 +1,99 @@
 "use client";
 
-import { useState } from "react";
-import {
-  UserCircle2, Users, Plus, Menu,
-  Layers, X,
-} from "lucide-react";
+import { useState, useEffect } from "react";
+import { Users, Plus, Layers, X, Pencil, Settings, Layout, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MOCK_SERVERS } from "@/lib/mockServerData";
+import { useUser } from "@/contexts/UserContext";
+import { useServers } from "@/contexts/ServersContext";
+import { CreateServerModal } from "@/components/server/CreateServerModal";
+import type { Server } from "@/types/server";
+import { useBoardStore } from "@/store/boardStore";
 
 interface BottomBarProps {
-  activeView: "board" | "server" | "dm" | "friends";
+  activeView: "board" | "server";
   activeServerId: string | null;
-  onViewChange: (v: "board" | "server" | "dm" | "friends") => void;
+  showFriends: boolean;
+  onViewChange: (v: "board" | "server") => void;
+  onFriendsToggle: () => void;
   onServerSelect: (id: string) => void;
   onSettingsOpen: () => void;
   onTemplatesOpen: () => void;
-  showMembers: boolean;
-  onToggleMembers: () => void;
+  onProfileOpen: () => void;
 }
 
 export function BottomBar({
-  activeView, activeServerId,
-  onViewChange, onServerSelect,
-  onSettingsOpen, onTemplatesOpen,
-  showMembers, onToggleMembers,
+  activeView, activeServerId, showFriends,
+  onViewChange, onFriendsToggle, onServerSelect,
+  onSettingsOpen, onTemplatesOpen, onProfileOpen,
 }: BottomBarProps) {
   const [showProfile, setShowProfile] = useState(false);
   const [showServerGrid, setShowServerGrid] = useState(false);
+  const [showCreateServer, setShowCreateServer] = useState(false);
+  const { identity, signOut } = useUser();
+  const { servers: realServers } = useServers();
+  const [serverIcons, setServerIcons] = useState<Record<string, string>>({});
+  const [serverOrder, setServerOrder] = useState<string[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("plancraft-server-order") ?? "null");
+      if (Array.isArray(saved) && saved.length > 0) return saved;
+    } catch {}
+    return MOCK_SERVERS.map((s) => s.id);
+  });
+  const [dragSrcId, setDragSrcId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const boards = useBoardStore((s) => s.boards);
+
+  useEffect(() => {
+    const loadIcons = () => {
+      const icons: Record<string, string> = {};
+      MOCK_SERVERS.forEach((srv) => {
+        try {
+          const stored = JSON.parse(localStorage.getItem(`plancraft-server-${srv.id}`) ?? "null");
+          if (stored?.iconUrl) icons[srv.id] = stored.iconUrl;
+        } catch {}
+      });
+      setServerIcons(icons);
+    };
+    loadIcons();
+    window.addEventListener("plancraft-server-updated", loadIcons);
+    return () => window.removeEventListener("plancraft-server-updated", loadIcons);
+  }, []);
+
+  const orderedServers = serverOrder
+    .map((id) => MOCK_SERVERS.find((s) => s.id === id))
+    .filter((s): s is (typeof MOCK_SERVERS)[0] => !!s);
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData("server-id", id);
+    e.dataTransfer.effectAllowed = "move";
+    setDragSrcId(id);
+  };
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (id !== dragSrcId) setDragOverId(id);
+  };
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    const srcId = e.dataTransfer.getData("server-id");
+    if (!srcId || srcId === targetId) { setDragSrcId(null); setDragOverId(null); return; }
+    const next = [...serverOrder];
+    const si = next.indexOf(srcId);
+    const ti = next.indexOf(targetId);
+    if (si === -1 || ti === -1) return;
+    next.splice(si, 1);
+    next.splice(ti, 0, srcId);
+    setServerOrder(next);
+    localStorage.setItem("plancraft-server-order", JSON.stringify(next));
+    setDragSrcId(null);
+    setDragOverId(null);
+  };
+  const handleDragEnd = () => { setDragSrcId(null); setDragOverId(null); };
+
+  const favoriteBoard = identity.favoriteBoardId
+    ? boards.find((b) => b.id === identity.favoriteBoardId)
+    : undefined;
 
   return (
     <>
@@ -35,105 +102,300 @@ export function BottomBar({
         <div className="fixed inset-0 z-[998]" onClick={() => setShowProfile(false)} />
       )}
 
-      {/* Profile popup — floats above the bar */}
+      {/* Profile popup */}
       {showProfile && (
         <div
-          className="fixed z-[999] flex flex-col gap-0.5 rounded-2xl border border-[var(--border)] p-2 shadow-2xl"
-          style={{ bottom: 60, left: 12, background: "var(--surface-raised)", minWidth: 168 }}
+          className="fixed z-[999] rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden flex flex-col"
+          style={{ bottom: 60, left: 12, width: 400, background: "var(--surface-raised)" }}
         >
-          <PopupBtn label="Edit profile" onClick={() => setShowProfile(false)} />
-          <PopupBtn label="Settings" onClick={() => { setShowProfile(false); onSettingsOpen(); }} />
-          <PopupBtn label="Status" onClick={() => setShowProfile(false)} />
-          <div className="my-1 h-px bg-[var(--border)]" />
-          <PopupBtn label="Templates" onClick={() => { setShowProfile(false); onTemplatesOpen(); }} />
+          {/* Banner */}
+          <div
+            className="relative flex-shrink-0"
+            style={{
+              height: 110,
+              background: identity.bannerUrl ? undefined : `linear-gradient(135deg, ${identity.color}66 0%, ${identity.color}22 100%)`,
+              backgroundImage: identity.bannerUrl ? `url(${identity.bannerUrl})` : undefined,
+              backgroundSize: identity.bannerUrl ? "cover" : undefined,
+              backgroundPosition: "center",
+            }}
+          >
+            <div
+              className="absolute flex items-center justify-center rounded-full overflow-hidden border-4 text-white font-bold text-2xl select-none"
+              style={{ width: 80, height: 80, bottom: -36, left: 16, background: identity.color, borderColor: "var(--surface-raised)" }}
+            >
+              {identity.avatarUrl
+                ? <img src={identity.avatarUrl} alt="" className="h-full w-full object-cover" />
+                : (identity.displayName[0] ?? "?").toUpperCase()
+              }
+            </div>
+          </div>
+
+          {/* Name row */}
+          <div className="flex items-center gap-2 px-4 pt-2 pb-3" style={{ paddingLeft: 112 }}>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-base font-bold text-[var(--text-primary)] truncate">{identity.displayName}</span>
+                <button
+                  onClick={() => { setShowProfile(false); onProfileOpen(); }}
+                  className="flex-shrink-0 rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
+                  title="Edit profile"
+                >
+                  <Pencil size={12} />
+                </button>
+              </div>
+              {identity.pronouns && (
+                <p className="text-[11px] text-[var(--text-muted)] leading-none mt-0.5">{identity.pronouns}</p>
+              )}
+              {(identity.statusEmoji || identity.status) && (
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5 truncate">{identity.statusEmoji} {identity.status}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="h-px mx-4" style={{ background: "var(--border)" }} />
+
+          {/* Favorite board preview */}
+          {favoriteBoard ? (
+            <div className="flex flex-col flex-1 min-h-0">
+              <p className="px-4 pt-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                {favoriteBoard.name || "Untitled Board"}
+              </p>
+              <div
+                className="relative mx-4 mb-4 rounded-lg overflow-hidden border border-[var(--border)] flex-1"
+                style={{ height: 180, background: "var(--surface)" }}
+              >
+                <div
+                  className="absolute inset-0"
+                  style={{ backgroundImage: "radial-gradient(circle, var(--border) 1px, transparent 1px)", backgroundSize: "20px 20px", opacity: 0.5 }}
+                />
+                {favoriteBoard.boxes.map((box) => {
+                  const scale = 368 / 2400;
+                  return (
+                    <div
+                      key={box.id}
+                      className="absolute overflow-hidden"
+                      style={{
+                        left: box.x * scale, top: box.y * scale,
+                        width: Math.max(box.width * scale, 28), height: Math.max(box.height * scale, 16),
+                        background: (box.style.backgroundColor ?? "var(--surface-raised)") + "cc",
+                        border: `1px solid ${box.style.borderColor}88`,
+                        borderRadius: Math.min((box.style.borderRadius ?? 8) * scale, 6),
+                      }}
+                    >
+                      {box.title && (
+                        <p className="truncate font-medium leading-none" style={{ fontSize: 6, padding: "2px 3px", color: box.style.fontColor ?? "var(--text-primary)" }}>
+                          {box.title}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+                {favoriteBoard.boxes.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-xs text-[var(--text-muted)]">Empty board</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="px-4 py-3 flex items-center gap-2 text-xs text-[var(--text-muted)]">
+              <Layout size={13} />
+              <span>Set a favorite board in Edit Profile</span>
+            </div>
+          )}
+
+          {/* Footer actions */}
+          <div className="flex gap-1 px-3 pb-3 pt-1 border-t border-[var(--border)]">
+            <ActionBtn label="Edit Profile" onClick={() => { setShowProfile(false); onProfileOpen(); }} icon={<Pencil size={12} />} />
+            <ActionBtn label="Settings" onClick={() => { setShowProfile(false); onSettingsOpen(); }} icon={<Settings size={12} />} />
+            <ActionBtn label="Templates" onClick={() => { setShowProfile(false); onTemplatesOpen(); }} icon={<Layout size={12} />} />
+            <ActionBtn label="Log Out" onClick={() => void signOut()} icon={<LogOut size={12} />} danger />
+          </div>
         </div>
       )}
 
       {/* Server grid modal */}
       {showServerGrid && (
         <ServerGridModal
-          servers={MOCK_SERVERS.map((s) => ({ id: s.id, name: s.name, icon: s.icon, online: s.onlineCount }))}
+          realServers={realServers.map((s) => ({ id: s.id, name: s.name, icon: s.icon, online: s.onlineCount }))}
+          mockServers={MOCK_SERVERS.map((s) => ({ id: s.id, name: s.name, icon: s.icon, online: s.onlineCount }))}
           onServerSelect={(id) => { setShowServerGrid(false); onServerSelect(id); }}
+          onCreateServer={() => { setShowServerGrid(false); setShowCreateServer(true); }}
           onClose={() => setShowServerGrid(false)}
+        />
+      )}
+
+      {/* Create server modal */}
+      {showCreateServer && (
+        <CreateServerModal
+          onClose={() => setShowCreateServer(false)}
+          onCreated={(server) => { setShowCreateServer(false); onServerSelect(server.id); }}
         />
       )}
 
       {/* Bottom bar */}
       <div
-        className="flex h-[52px] flex-shrink-0 items-center gap-1 border-t border-[var(--border)] px-3"
+        className="flex h-[52px] flex-shrink-0 items-center border-t border-[var(--border)] overflow-visible"
         style={{ background: "var(--surface-raised)", position: "relative", zIndex: 1 }}
       >
-        {/* Profile avatar */}
-        <button
-          onClick={() => setShowProfile((v) => !v)}
-          title="Profile"
-          className={cn(
-            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-all duration-150",
-            showProfile
-              ? "ring-2 ring-[var(--accent)] text-[var(--accent)]"
-              : "bg-[var(--surface-overlay)] text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-white"
-          )}
-        >
-          <UserCircle2 size={20} />
-        </button>
-
-        <Divider />
-
-        {/* Boards */}
-        <BarBtn
-          label="Personal Boards"
-          active={activeView === "board"}
-          onClick={() => onViewChange("board")}
-          icon={<Layers size={18} />}
-        />
-
-        {/* Friends */}
-        <BarBtn
-          label="Friends"
-          active={activeView === "friends"}
-          onClick={() => onViewChange("friends")}
-          icon={<Users size={18} />}
-        />
-
-        <Divider />
-
-        {/* Pinned servers */}
-        {MOCK_SERVERS.map((srv) => (
-          <BarBtn
-            key={srv.id}
-            label={`${srv.name} · ${srv.onlineCount} online`}
-            active={activeView === "server" && activeServerId === srv.id}
-            onClick={() => onServerSelect(srv.id)}
+        {/* Profile avatar — overflows above the bar */}
+        <div className="flex flex-shrink-0 items-center justify-center px-3" style={{ position: "relative", zIndex: 2 }}>
+          <button
+            onClick={() => setShowProfile((v) => !v)}
+            title={identity.displayName || "Profile"}
+            className={cn(
+              "relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full overflow-hidden transition-all duration-200",
+              showProfile
+                ? "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--surface-raised)] scale-105"
+                : "hover:scale-110 hover:ring-2 hover:ring-[var(--accent)] hover:ring-offset-2 hover:ring-offset-[var(--surface-raised)]"
+            )}
+            style={{
+              background: identity.color ?? "var(--surface-overlay)",
+              transform: "translateY(-10px)",
+            }}
           >
-            <span className="text-xs font-bold leading-none">{srv.icon}</span>
-          </BarBtn>
-        ))}
+            {identity.avatarUrl ? (
+              <img src={identity.avatarUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="text-sm font-bold text-white select-none">
+                {(identity.displayName[0] ?? "?").toUpperCase()}
+              </span>
+            )}
+            {/* Online dot */}
+            <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-[var(--surface-raised)]" />
+          </button>
+        </div>
 
-        {/* Browse servers */}
-        <BarBtn
-          label="Browse servers"
-          onClick={() => setShowServerGrid(true)}
-          icon={<Plus size={17} className="text-[var(--text-muted)]" />}
-        />
+        <Divider />
+
+        {/* Nav buttons */}
+        <div className="flex items-center gap-1 px-1">
+          <BarBtn label="Personal Boards" active={activeView === "board"} onClick={() => onViewChange("board")} icon={<Layers size={18} />} />
+          <BarBtn label="Friends" active={showFriends} onClick={onFriendsToggle} icon={<Users size={18} />} />
+        </div>
+
+        <Divider />
+
+        {/* Servers — real servers first (no drag), then mock servers (draggable) */}
+        <div className="flex items-center gap-1 px-1" onDragLeave={() => setDragOverId(null)}>
+          {/* Real Supabase servers */}
+          {realServers.map((srv) => (
+            <ServerBtn
+              key={srv.id}
+              srv={{ id: srv.id, name: srv.name, icon: srv.icon, onlineCount: srv.onlineCount }}
+              active={activeView === "server" && activeServerId === srv.id}
+              isDragging={false}
+              isDragOver={false}
+              onClick={() => onServerSelect(srv.id)}
+              onDragStart={() => {}}
+              onDragOver={() => {}}
+              onDrop={() => {}}
+              onDragEnd={() => {}}
+            />
+          ))}
+
+          {/* Thin divider between real and mock if both exist */}
+          {realServers.length > 0 && orderedServers.length > 0 && (
+            <div className="h-5 w-px flex-shrink-0 bg-[var(--border)] mx-0.5" />
+          )}
+
+          {/* Mock servers — drag-reorderable */}
+          {orderedServers.map((srv) => (
+            <ServerBtn
+              key={srv.id}
+              srv={srv}
+              iconUrl={serverIcons[srv.id]}
+              active={activeView === "server" && activeServerId === srv.id}
+              isDragging={dragSrcId === srv.id}
+              isDragOver={dragOverId === srv.id}
+              onClick={() => onServerSelect(srv.id)}
+              onDragStart={(e) => handleDragStart(e, srv.id)}
+              onDragOver={(e) => handleDragOver(e, srv.id)}
+              onDrop={(e) => handleDrop(e, srv.id)}
+              onDragEnd={handleDragEnd}
+            />
+          ))}
+
+          {/* Browse / add server */}
+          <div className="group relative flex-shrink-0">
+            <button
+              onClick={() => setShowServerGrid(true)}
+              title="Servers"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-all duration-150"
+            >
+              <Plus size={17} />
+            </button>
+            <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-2 py-1 text-xs text-[var(--text-primary)] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 z-50">
+              Add or create server
+            </div>
+          </div>
+        </div>
 
         <div className="flex-1" />
-
-        {/* Channel list + members toggles (only in server view) */}
-        {activeView === "server" && (
-          <BarBtn
-            label={showMembers ? "Hide members" : "Show members"}
-            active={showMembers}
-            onClick={onToggleMembers}
-            icon={<Menu size={17} />}
-          />
-        )}
       </div>
     </>
   );
 }
 
+function ServerBtn({
+  srv, iconUrl, active, isDragging, isDragOver,
+  onClick, onDragStart, onDragOver, onDrop, onDragEnd,
+}: {
+  srv: { id: string; name: string; icon: string; onlineCount: number };
+  iconUrl?: string;
+  active: boolean;
+  isDragging: boolean;
+  isDragOver: boolean;
+  onClick: () => void;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+}) {
+  return (
+    <div
+      className="group relative flex-shrink-0"
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      style={{ opacity: isDragging ? 0.35 : 1, transition: "opacity 0.15s" }}
+    >
+      {/* Drop target indicator */}
+      <div
+        className="absolute -left-1 top-1/2 -translate-y-1/2 w-0.5 rounded-full bg-[var(--accent)] transition-all duration-100"
+        style={{ height: isDragOver ? 28 : 0 }}
+      />
+
+      <button
+        onClick={onClick}
+        title={`${srv.name} · ${srv.onlineCount} online`}
+        className={cn(
+          "relative flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden cursor-grab active:cursor-grabbing",
+          "transition-all duration-150",
+          !isDragging && "group-hover:-translate-y-2 group-hover:scale-110 group-hover:shadow-[0_8px_20px_rgba(0,0,0,0.55)]",
+          active
+            ? "bg-[var(--accent)] text-white ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--surface-raised)]"
+            : "text-[var(--text-secondary)] bg-[var(--surface-overlay)]"
+        )}
+      >
+        {iconUrl
+          ? <img src={iconUrl} alt="" className="h-full w-full object-cover" />
+          : <span className="text-xs font-bold leading-none select-none">{srv.icon}</span>
+        }
+      </button>
+
+      {/* Tooltip */}
+      <div className="pointer-events-none absolute bottom-full left-1/2 mb-3 -translate-x-1/2 whitespace-nowrap rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-2 py-1 text-xs text-[var(--text-primary)] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 z-50">
+        {srv.name}
+      </div>
+    </div>
+  );
+}
+
 function Divider() {
-  return <div className="h-5 w-px flex-shrink-0 bg-[var(--border)] mx-0.5" />;
+  return <div className="h-6 w-px flex-shrink-0 bg-[var(--border)] mx-1" />;
 }
 
 function BarBtn({
@@ -152,7 +414,7 @@ function BarBtn({
         onClick={onClick}
         title={label}
         className={cn(
-          "relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150",
+          "relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 overflow-hidden",
           active
             ? "bg-[var(--accent)] text-white"
             : "text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
@@ -165,7 +427,6 @@ function BarBtn({
           </span>
         )}
       </button>
-      {/* Tooltip */}
       <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-2 py-1 text-xs text-[var(--text-primary)] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 z-50">
         {label}
       </div>
@@ -173,26 +434,56 @@ function BarBtn({
   );
 }
 
-function PopupBtn({ label, onClick }: { icon?: React.ReactNode; label: string; onClick: () => void }) {
+function ActionBtn({ label, icon, onClick, danger }: { label: string; icon?: React.ReactNode; onClick: () => void; danger?: boolean }) {
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center rounded-xl px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] text-left"
+      className={cn(
+        "flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-medium transition-colors",
+        danger
+          ? "text-red-400 hover:bg-red-500/10 hover:text-red-300"
+          : "text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
+      )}
     >
-      {label}
+      {icon}{label}
+    </button>
+  );
+}
+
+type SrvEntry = { id: string; name: string; icon: string; online?: number };
+
+function ServerCard({ srv, onSelect }: { srv: SrvEntry; onSelect: () => void }) {
+  return (
+    <button
+      onClick={onSelect}
+      className="flex flex-col overflow-hidden rounded-xl border border-[var(--border)] text-left transition-all hover:border-[var(--accent)] hover:scale-[1.02] active:scale-[0.99]"
+      style={{ background: "var(--surface)" }}
+    >
+      <div className="relative flex h-[90px] items-center justify-center" style={{ background: "var(--surface-overlay)" }}>
+        <span className="text-3xl select-none">{srv.icon}</span>
+        {srv.online !== undefined && (
+          <span className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-black/50 px-1.5 py-0.5 text-[10px] text-white">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400" />
+            {srv.online} online
+          </span>
+        )}
+      </div>
+      <div className="px-2.5 py-2">
+        <p className="truncate text-xs font-semibold text-[var(--text-primary)]">{srv.name}</p>
+      </div>
     </button>
   );
 }
 
 function ServerGridModal({
-  servers, onServerSelect, onClose,
+  realServers, mockServers, onServerSelect, onCreateServer, onClose,
 }: {
-  servers: { id: string; name: string; icon: string; online?: number }[];
+  realServers: SrvEntry[];
+  mockServers: SrvEntry[];
   onServerSelect: (id: string) => void;
+  onCreateServer: () => void;
   onClose: () => void;
 }) {
-  const placeholders = Math.max(0, 6 - servers.length);
-
   return (
     <div className="fixed inset-0 z-[998] flex items-end justify-center pb-[60px]" onClick={onClose}>
       <div
@@ -201,7 +492,7 @@ function ServerGridModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Discover Servers</h2>
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Servers</h2>
           <button
             onClick={onClose}
             className="rounded-lg p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
@@ -210,45 +501,35 @@ function ServerGridModal({
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          {servers.map((srv) => (
-            <button
-              key={srv.id}
-              onClick={() => onServerSelect(srv.id)}
-              className="flex flex-col overflow-hidden rounded-xl border border-[var(--border)] text-left transition-all hover:border-[var(--accent)] hover:scale-[1.02] active:scale-[0.99]"
-              style={{ background: "var(--surface)" }}
-            >
-              {/* Banner */}
-              <div
-                className="relative flex h-[90px] items-center justify-center"
-                style={{ background: "var(--surface-overlay)" }}
-              >
-                <span className="text-3xl select-none">{srv.icon}</span>
-                {srv.online !== undefined && (
-                  <span className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-black/50 px-1.5 py-0.5 text-[10px] text-white">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400" />
-                    {srv.online} online
-                  </span>
-                )}
-              </div>
-              {/* Name */}
-              <div className="px-2.5 py-2">
-                <p className="truncate text-xs font-semibold text-[var(--text-primary)]">{srv.name}</p>
-              </div>
-            </button>
-          ))}
-
-          {/* Empty slot cards */}
-          {Array.from({ length: placeholders }).map((_, i) => (
-            <div
-              key={`ph-${i}`}
-              className="flex h-[122px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-[var(--border)]"
-            >
-              <Plus size={16} className="text-[var(--text-muted)]" />
-              <p className="text-[10px] text-[var(--text-muted)]">Join a server</p>
+        {/* My servers (real) */}
+        {realServers.length > 0 && (
+          <>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">My Servers</p>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {realServers.map((srv) => (
+                <ServerCard key={srv.id} srv={srv} onSelect={() => onServerSelect(srv.id)} />
+              ))}
             </div>
+          </>
+        )}
+
+        {/* Demo / community servers */}
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          {realServers.length > 0 ? "Demo Servers" : "Discover Servers"}
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          {mockServers.map((srv) => (
+            <ServerCard key={srv.id} srv={srv} onSelect={() => onServerSelect(srv.id)} />
           ))}
         </div>
+
+        {/* Create server CTA */}
+        <button
+          onClick={onCreateServer}
+          className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--accent)] py-2.5 text-sm font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+        >
+          <Plus size={15} /> Create a Server
+        </button>
       </div>
     </div>
   );

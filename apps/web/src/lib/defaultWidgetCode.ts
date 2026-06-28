@@ -16,7 +16,7 @@ export const DEFAULT_WIDGET_CODE = `<!DOCTYPE html>
     gap: 10px;
   }
   h2 { font-size: 18px; font-weight: 700; }
-  .value { font-size: 40px; font-weight: 800; color: #5865f2; }
+  .value { font-size: 40px; font-weight: 800; color: #d59ee8; }
   .hint { font-size: 12px; opacity: 0.5; line-height: 1.5; }
 </style>
 </head>

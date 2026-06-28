@@ -5,6 +5,7 @@ import {
   LayoutGrid, Palette, Share2, Clipboard,
   ScanSearch, SquarePlus, Layers, Package,
 } from "lucide-react";
+import { nanoid } from "nanoid";
 import { useBoardStore, useActiveBoard, DEFAULT_BOX_STYLE } from "@/store/boardStore";
 import { ITEM_DEFINITIONS } from "./ItemPalette";
 import { BoardItemWidget } from "./BoardItemWidget";
@@ -124,18 +125,27 @@ export function BoardCanvas() {
     showGrid, zoom, panOffset, selectBox, activeBoardId,
     addBox, pasteBox, copiedBox, toggleGrid, setZoom,
     setPanOffset, addBoardItem, selectBoardItem,
+    removeBox, duplicateBox, setExpandedBox,
   } = useBoardStore();
   // Mutations target the correct board ID regardless of which namespace it lives in
   const boardId = serverBoardId ?? activeBoardId;
   const selectedBoardItemId = useBoardStore((s) => s.selectedBoardItemId);
   const draggingBlockId = useBoardStore((s) => s.draggingBlockId);
+  const selectedBoxId = useBoardStore((s) => s.selectedBoxId);
+  const expandedBoxId = useBoardStore((s) => s.expandedBoxId);
   const canEditBoard = useCanEditBoard();
   const isFinished = board?.isFinished ?? false;
   // Members in a server board see no grid and can't open context menu
   const effectiveShowGrid = showGrid && canEditBoard;
   const canvasRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const { cursors, onCursorMove } = useCollab();
+  const { cursors, onCursorMove, broadcastOp } = useCollab();
+
+  // ── Stale-closure guards for keyboard handlers (M5) ──────────────────────
+  const boxesRef = useRef(board?.boxes ?? []);
+  useEffect(() => { boxesRef.current = board?.boxes ?? []; }, [board?.boxes]);
+  const expandedRef = useRef(expandedBoxId);
+  useEffect(() => { expandedRef.current = expandedBoxId; }, [expandedBoxId]);
 
   // ── Pan-on-drag state ─────────────────────────────────────────────────────
   const [panning, setPanning] = useState(false);
@@ -260,12 +270,18 @@ export function BoardCanvas() {
     });
   }, [board, setZoom, setPanOffset]);
 
-  // Auto-fit content on first mount / board switch
+  // Auto-fit content on first mount / board switch, and on explicit plancraft:fit-board event
   useEffect(() => {
     const id = requestAnimationFrame(() => handleFitContent());
     return () => cancelAnimationFrame(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId]);
+
+  useEffect(() => {
+    const handler = () => requestAnimationFrame(() => handleFitContent());
+    window.addEventListener("plancraft:fit-board", handler);
+    return () => window.removeEventListener("plancraft:fit-board", handler);
+  }, [handleFitContent]);
 
   // Ctrl/Cmd + wheel → zoom toward cursor
   useEffect(() => {
@@ -292,6 +308,118 @@ export function BoardCanvas() {
     return () => el.removeEventListener("wheel", onWheel);
   }, [setZoom, setPanOffset]);
 
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName ?? "").toUpperCase();
+      const isEditable =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        (document.activeElement as HTMLElement | null)?.isContentEditable;
+
+      const ctrl = e.ctrlKey || e.metaKey;
+
+      // Escape → close expanded block
+      if (e.key === "Escape") {
+        setExpandedBox(null);
+        return;
+      }
+
+      // Arrow navigation when a block is expanded (M5: read from refs to avoid stale closures)
+      if (expandedRef.current && boxesRef.current.length > 0) {
+        const visibleBoxes = boxesRef.current.filter((b) => !b.deckOwnerId);
+        const sorted = [...visibleBoxes].sort((a, b) => a.zIndex - b.zIndex);
+        const idx = sorted.findIndex((b) => b.id === expandedRef.current);
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+          e.preventDefault();
+          const next = sorted[idx + 1] ?? sorted[0];
+          if (next) setExpandedBox(next.id);
+          return;
+        }
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+          e.preventDefault();
+          const prev = sorted[idx - 1] ?? sorted[sorted.length - 1];
+          if (prev) setExpandedBox(prev.id);
+          return;
+        }
+      }
+
+      // Ctrl/Cmd +/- → zoom (M4: use real viewport center, not hardcoded 1200/700)
+      if (ctrl && (e.key === "=" || e.key === "+")) {
+        e.preventDefault();
+        const state = useBoardStore.getState();
+        const rect = viewportRef.current?.getBoundingClientRect();
+        const cx = rect ? rect.width / 2 : 600;
+        const cy = rect ? rect.height / 2 : 400;
+        const newZoom = parseFloat(Math.max(state.minZoom, Math.min(3, state.zoom + 0.1)).toFixed(2));
+        const ratio = newZoom / state.zoom;
+        setZoom(newZoom);
+        setPanOffset({
+          x: cx - (cx - state.panOffset.x) * ratio,
+          y: cy - (cy - state.panOffset.y) * ratio,
+        });
+        return;
+      }
+      if (ctrl && e.key === "-") {
+        e.preventDefault();
+        const state = useBoardStore.getState();
+        const rect = viewportRef.current?.getBoundingClientRect();
+        const cx = rect ? rect.width / 2 : 600;
+        const cy = rect ? rect.height / 2 : 400;
+        const newZoom = parseFloat(Math.max(state.minZoom, Math.min(3, state.zoom - 0.1)).toFixed(2));
+        const ratio = newZoom / state.zoom;
+        setZoom(newZoom);
+        setPanOffset({
+          x: cx - (cx - state.panOffset.x) * ratio,
+          y: cy - (cy - state.panOffset.y) * ratio,
+        });
+        return;
+      }
+      // Ctrl/Cmd+0 → reset zoom to 1 centered on viewport (M4)
+      if (ctrl && e.key === "0") {
+        e.preventDefault();
+        const state = useBoardStore.getState();
+        const rect = viewportRef.current?.getBoundingClientRect();
+        const cx = rect ? rect.width / 2 : 600;
+        const cy = rect ? rect.height / 2 : 400;
+        const newZoom = 1;
+        const ratio = newZoom / state.zoom;
+        setZoom(newZoom);
+        setPanOffset({
+          x: cx - (cx - state.panOffset.x) * ratio,
+          y: cy - (cy - state.panOffset.y) * ratio,
+        });
+        return;
+      }
+
+      // Delete / Backspace — only when not in an input and not dragging (H7)
+      if (!isEditable && (e.key === "Delete" || e.key === "Backspace")) {
+        const state = useBoardStore.getState();
+        if (state.draggingBlockId) return; // don't delete while dragging
+        if (state.selectedBoxId) {
+          const boxId = state.selectedBoxId;
+          removeBox(boardId, boxId);
+          broadcastOp({ op: "removeBox", boardId, boxId });
+        }
+        return;
+      }
+
+      // Ctrl/Cmd+D → duplicate selected box (M6: guard by edit permission)
+      if (ctrl && e.key === "d") {
+        e.preventDefault();
+        if (!canEditBoard) return; // read-only members cannot duplicate
+        const state = useBoardStore.getState();
+        if (state.selectedBoxId) {
+          duplicateBox(boardId, state.selectedBoxId);
+        }
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [boardId, removeBox, duplicateBox, setExpandedBox, setZoom, setPanOffset, canEditBoard, broadcastOp]);
+
   if (!board) return null;
 
   const bgSize = board.backgroundSize ?? "cover";
@@ -311,14 +439,16 @@ export function BoardCanvas() {
       shortcut: "A",
       onClick: () => {
         if (!boardCtx) return;
-        addBox(boardId, {
+        const boxData = {
           x: Math.max(0, Math.round(boardCtx.canvasX / 20) * 20 - 140),
           y: Math.max(0, Math.round(boardCtx.canvasY / 20) * 20 - 110),
           width: 280, height: 220,
           locked: false, title: "New block",
           isExpanded: false, items: [],
           style: { ...DEFAULT_BOX_STYLE },
-        });
+        };
+        const newBoxId = addBox(boardId, boxData);
+        broadcastOp({ op: "addBox", boardId, boxId: newBoxId, box: boxData });
       },
     },
     {
@@ -331,14 +461,18 @@ export function BoardCanvas() {
           if (!boardCtx) return;
           const [itemW, itemH] = defaultItemSizes[def.type] ?? [280, 200];
           const snapV = (v: number) => Math.round(v / 20) * 20;
-          addBoardItem(boardId, {
+          const boardItemId = nanoid();
+          const boardItem = {
             ...def.defaultItem(),
-            showInCollapsed: false,
+            id: boardItemId,
+            showInCollapsed: false as const,
             boardX: Math.max(0, snapV(boardCtx.canvasX - itemW / 2)),
             boardY: Math.max(0, snapV(boardCtx.canvasY - itemH / 2)),
             boardW: itemW,
             boardH: itemH,
-          });
+          };
+          addBoardItem(boardId, boardItem);
+          broadcastOp({ op: "addBoardItem", boardId, item: boardItem });
         },
       })),
     },
@@ -467,6 +601,13 @@ export function BoardCanvas() {
               isDragging={draggingBlockId === box.id}
             />
           ))}
+
+          {/* Empty canvas hint */}
+          {board.boxes.length === 0 && (board.boardItems ?? []).length === 0 && (
+            <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", pointerEvents: "none", textAlign: "center" }}>
+              <p style={{ color: "var(--text-muted)", fontSize: 13, opacity: 0.5 }}>Right-click to add a block · Drag items from the left panel</p>
+            </div>
+          )}
 
           {(board.boardItems ?? []).map((item) => (
             <BoardItemWidget

@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Users, Shield, Crown, Eye, Edit3, ChevronDown, UserCircle2, X, CheckCircle2, Settings, ZoomIn, ZoomOut, Grid3X3 } from "lucide-react";
+import { Users, Shield, Crown, Eye, Edit3, ChevronDown, X, CheckCircle2, Settings, ZoomIn, ZoomOut, Grid3X3, UserPlus, Copy, Check, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBoardStore } from "@/store/boardStore";
-import { useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
+import { useServerBoard, useServerBoardData, useCanInviteMembers, useCanManageMembers } from "@/contexts/ServerBoardContext";
 import type { MemberRole, ServerMember } from "@/types/server";
 import { ServerSettings } from "./ServerSettings";
+import { getSelfIdentity } from "@/lib/collaboration";
+import type { ViewableUser } from "@/components/shell/UserProfileModal";
 
 interface ServerBoardHeaderProps {
   serverId: string;
@@ -22,6 +24,7 @@ interface ServerBoardHeaderProps {
   onToggleMembers: () => void;
   /** Demo-only: lets you switch role to preview member vs admin view */
   onRoleToggle: (role: MemberRole) => void;
+  onViewProfile?: (u: ViewableUser) => void;
 }
 
 const ROLE_COLORS: Record<MemberRole, string> = {
@@ -39,23 +42,24 @@ const ROLE_ICONS: Record<MemberRole, React.ReactNode> = {
 export function ServerBoardHeader({
   serverId, serverName, serverIcon, description,
   memberCount, onlineCount, viewerRole,
-  members, showMembers, onToggleMembers, onRoleToggle,
+  members, showMembers, onToggleMembers, onRoleToggle, onViewProfile,
 }: ServerBoardHeaderProps) {
   const [showRoleMenu, setShowRoleMenu] = useState(false);
-  const [showMemberPanel, setShowMemberPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
   const roleButtonRef = useRef<HTMLButtonElement>(null);
   const [roleMenuPos, setRoleMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => { setIsDesktop(!!window.electron); }, []);
 
   const canEdit = viewerRole === "owner" || viewerRole === "admin";
+  const canInviteMembers = useCanInviteMembers();
+  const canManageMembers = useCanManageMembers();
 
   const { finishBoard, editBoard, activeBoardId, showGrid, zoom, toggleGrid, setZoom, zoomAtCanvasCenter } = useBoardStore();
   const serverBoard = useServerBoardData();
   const isFinished = serverBoard?.isFinished ?? false;
-  // Use the server's boardId for finish/edit mutations, not the personal activeBoardId
-  const { boardId: serverBoardId } = useServerBoard();
+  const { boardId: serverBoardId, viewerId } = useServerBoard();
 
   return (
     <>
@@ -79,7 +83,7 @@ export function ServerBoardHeader({
         )}
 
         <div className="ml-auto flex items-center gap-2" style={isDesktop ? { WebkitAppRegion: "no-drag" } as React.CSSProperties : undefined}>
-          {/* View controls: zoom, grid, ruler */}
+          {/* View controls: zoom, grid */}
           <div className="flex items-center gap-0.5">
             <button
               onClick={() => zoomAtCanvasCenter(zoom - 0.25)}
@@ -117,10 +121,11 @@ export function ServerBoardHeader({
           </button>
           <div className="h-4 w-px bg-[var(--border)]" />
 
-          {/* Online indicator */}
+          {/* Finding #10 — Consolidated member toggle: only the "N online" button.
+              The UserCircle2 icon button has been removed. */}
           <button
             className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors"
-            onClick={() => setShowMemberPanel((v) => !v)}
+            onClick={onToggleMembers}
             title="Members"
           >
             <span className="h-1.5 w-1.5 rounded-full bg-green-500 inline-block" />
@@ -128,58 +133,64 @@ export function ServerBoardHeader({
             <Users size={12} />
           </button>
 
-          {/* Role badge + demo toggle */}
-          <div className="relative">
-            <button
-              ref={roleButtonRef}
-              onClick={() => {
-                if (!showRoleMenu) {
-                  const rect = roleButtonRef.current?.getBoundingClientRect();
-                  setRoleMenuPos(rect ? { top: rect.bottom + 4, right: window.innerWidth - rect.right } : { top: 48, right: 8 });
-                }
-                setShowRoleMenu((v) => !v);
-              }}
-              className={cn(
-                "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium transition-colors hover:bg-[var(--surface-overlay)]",
-                ROLE_COLORS[viewerRole],
-                canEdit ? "border-[var(--accent)]/40" : "border-[var(--border)]"
-              )}
-              title="Your role (click to preview as different role)"
-            >
-              {ROLE_ICONS[viewerRole]}
-              {viewerRole}
-              <ChevronDown size={10} className="opacity-60" />
-            </button>
+          {/* Finding #12 — Role switcher gated to non-production with DEV badge.
+              Also shown in staging builds where NEXT_PUBLIC_APP_ENV=staging so that
+              production builds (NODE_ENV=production, NEXT_PUBLIC_APP_ENV unset/"production")
+              always hide it while staging builds can still use it. */}
+          {(process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_APP_ENV === "staging") && (
+            <div className="relative flex items-center gap-1">
+              <span className="text-[9px] font-bold text-yellow-500 bg-yellow-500/10 rounded px-1">DEV</span>
+              <button
+                ref={roleButtonRef}
+                onClick={() => {
+                  if (!showRoleMenu) {
+                    const rect = roleButtonRef.current?.getBoundingClientRect();
+                    setRoleMenuPos(rect ? { top: rect.bottom + 4, right: window.innerWidth - rect.right } : { top: 48, right: 8 });
+                  }
+                  setShowRoleMenu((v) => !v);
+                }}
+                className={cn(
+                  "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium transition-colors hover:bg-[var(--surface-overlay)]",
+                  ROLE_COLORS[viewerRole],
+                  canEdit ? "border-[var(--accent)]/40" : "border-[var(--border)]"
+                )}
+                title="[Dev only] Preview as role"
+              >
+                {ROLE_ICONS[viewerRole]}
+                {viewerRole}
+                <ChevronDown size={10} className="opacity-60" />
+              </button>
 
-            {showRoleMenu && typeof document !== "undefined" && createPortal(
-              <>
-                <div className="fixed inset-0 z-[9990]" onClick={() => setShowRoleMenu(false)} />
-                <div
-                  className="fixed z-[9991] rounded-xl border border-[var(--border)] p-1 shadow-xl"
-                  style={{ background: "var(--surface-raised)", minWidth: 160, top: roleMenuPos?.top ?? 48, right: roleMenuPos?.right ?? 8 }}
-                >
-                  <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                    Preview as role
-                  </p>
-                  {(["owner", "admin", "member"] as MemberRole[]).map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => { onRoleToggle(r); setShowRoleMenu(false); }}
-                      className={cn(
-                        "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-[var(--surface-overlay)]",
-                        r === viewerRole ? "text-[var(--accent)]" : "text-[var(--text-secondary)]"
-                      )}
-                    >
-                      <span className={ROLE_COLORS[r]}>{ROLE_ICONS[r]}</span>
-                      <span className="capitalize">{r}</span>
-                      {r === viewerRole && <span className="ml-auto text-[10px] text-[var(--accent)]">current</span>}
-                    </button>
-                  ))}
-                </div>
-              </>,
-              document.body
-            )}
-          </div>
+              {showRoleMenu && typeof document !== "undefined" && createPortal(
+                <>
+                  <div className="fixed inset-0 z-[9990]" onClick={() => setShowRoleMenu(false)} />
+                  <div
+                    className="fixed z-[9991] rounded-xl border border-[var(--border)] p-1 shadow-xl"
+                    style={{ background: "var(--surface-raised)", minWidth: 160, top: roleMenuPos?.top ?? 48, right: roleMenuPos?.right ?? 8 }}
+                  >
+                    <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                      Preview as role
+                    </p>
+                    {(["owner", "admin", "member"] as MemberRole[]).map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => { onRoleToggle(r); setShowRoleMenu(false); }}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-[var(--surface-overlay)]",
+                          r === viewerRole ? "text-[var(--accent)]" : "text-[var(--text-secondary)]"
+                        )}
+                      >
+                        <span className={ROLE_COLORS[r]}>{ROLE_ICONS[r]}</span>
+                        <span className="capitalize">{r}</span>
+                        {r === viewerRole && <span className="ml-auto text-[10px] text-[var(--accent)]">current</span>}
+                      </button>
+                    ))}
+                  </div>
+                </>,
+                document.body
+              )}
+            </div>
+          )}
 
           {/* Edit Mode / Finish — admins only */}
           {canEdit && (
@@ -203,20 +214,6 @@ export function ServerBoardHeader({
             </>
           )}
 
-          {/* Members panel toggle */}
-          <button
-            onClick={onToggleMembers}
-            title={showMembers ? "Hide members" : "Show members"}
-            className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
-              showMembers
-                ? "bg-[var(--accent)] text-white"
-                : "text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
-            )}
-          >
-            <UserCircle2 size={15} />
-          </button>
-
           {/* Settings — admins/owners only */}
           {canEdit && (
             <button
@@ -230,23 +227,31 @@ export function ServerBoardHeader({
         </div>
       </div>
 
-      {/* Members flyout panel */}
-      {showMemberPanel && (
+      {/* Members flyout panel — triggered only via onToggleMembers (the "N online" button) */}
+      {showMembers && (
         <>
-          <div className="fixed inset-0 z-[48]" onClick={() => setShowMemberPanel(false)} />
+          <div className="fixed inset-0 z-[48]" onClick={onToggleMembers} />
           <div
             className="absolute right-4 top-11 z-[49] w-[220px] rounded-xl border border-[var(--border)] shadow-2xl"
             style={{ background: "var(--surface-raised)" }}
           >
             <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2">
               <span className="text-xs font-semibold text-[var(--text-primary)]">Members · {memberCount}</span>
-              <button onClick={() => setShowMemberPanel(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+              <button onClick={onToggleMembers} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
                 <X size={13} />
               </button>
             </div>
             <div className="max-h-[320px] overflow-y-auto p-2">
-              <MemberSection label="Online" members={members.filter((m) => m.online)} />
-              <MemberSection label="Offline" members={members.filter((m) => !m.online)} />
+              {canInviteMembers && (
+                <button
+                  onClick={() => { setShowInvite(true); onToggleMembers(); }}
+                  className="mb-2 flex w-full items-center gap-2 rounded-lg border border-dashed border-[var(--border)] px-3 py-2 text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+                >
+                  <UserPlus size={12} /> Invite People
+                </button>
+              )}
+              <MemberSection label="Online" members={members.filter((m) => m.online)} viewerId={viewerId} canManageMembers={canManageMembers} onViewProfile={onViewProfile} />
+              <MemberSection label="Offline" members={members.filter((m) => !m.online)} viewerId={viewerId} canManageMembers={canManageMembers} onViewProfile={onViewProfile} />
             </div>
           </div>
         </>
@@ -256,20 +261,152 @@ export function ServerBoardHeader({
       {showSettings && (
         <ServerSettings serverId={serverId} onClose={() => setShowSettings(false)} />
       )}
+
+      {/* Invite modal */}
+      {showInvite && (
+        <InviteModal serverName={serverName} onClose={() => setShowInvite(false)} />
+      )}
     </>
   );
 }
 
-function MemberSection({ label, members }: { label: string; members: ServerMember[] }) {
+function InviteModal({ serverName, onClose }: { serverName: string; onClose: () => void }) {
+  const [email, setEmail] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [sent, setSent] = useState(false);
+  const inviteLink = `https://plancraft.app/invite/${Math.random().toString(36).slice(2, 10)}`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(inviteLink).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSend = () => {
+    if (!email.trim()) return;
+    setSent(true);
+    setTimeout(() => { setSent(false); setEmail(""); }, 2000);
+  };
+
+  return typeof document !== "undefined" ? createPortal(
+    <>
+      <div className="fixed inset-0 z-[1010] bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="fixed z-[1011] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[440px] max-w-[95vw] rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden"
+        style={{ background: "var(--surface-raised)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+          <div>
+            <p className="font-semibold text-[var(--text-primary)]">Invite to {serverName}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">Share a link or send an email invite</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">
+            <X size={15} />
+          </button>
+        </div>
+
+        <div className="p-5 flex flex-col gap-5">
+          {/* Invite link */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Invite Link</p>
+            <div className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5">
+              <Link2 size={13} className="flex-shrink-0 text-[var(--text-muted)]" />
+              <span className="flex-1 truncate font-mono text-xs text-[var(--text-secondary)]">{inviteLink}</span>
+              <button
+                onClick={handleCopy}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors flex-shrink-0",
+                  copied
+                    ? "bg-green-500/20 text-green-400"
+                    : "bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
+                )}
+              >
+                {copied ? <><Check size={11} /> Copied!</> : <><Copy size={11} /> Copy</>}
+              </button>
+            </div>
+            <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">Link expires in 7 days · Max 10 uses</p>
+          </div>
+
+          {/* Email invite */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Send Email Invite</p>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                placeholder="friend@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] outline-none transition-colors"
+              />
+              <button
+                onClick={handleSend}
+                className={cn(
+                  "rounded-xl px-4 py-2 text-sm font-semibold transition-colors flex-shrink-0",
+                  sent
+                    ? "bg-green-500/20 text-green-400"
+                    : "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                )}
+              >
+                {sent ? "Sent!" : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>,
+    document.body
+  ) : null;
+}
+
+function MemberSection({ label, members, viewerId, canManageMembers, onViewProfile }: {
+  label: string; members: ServerMember[]; viewerId: string; canManageMembers: boolean;
+  onViewProfile?: (u: ViewableUser) => void;
+}) {
   if (members.length === 0) return null;
+
+  const buildViewableUser = (m: ServerMember): ViewableUser => {
+    if (m.userId === viewerId) {
+      const self = getSelfIdentity();
+      return {
+        displayName: self.displayName,
+        avatarChar: self.displayName[0]?.toUpperCase() ?? "Y",
+        avatarUrl: self.avatarUrl,
+        bannerUrl: self.bannerUrl,
+        color: self.color,
+        online: true,
+        status: self.status,
+        statusEmoji: self.statusEmoji,
+        pronouns: self.pronouns,
+        profileBlocks: self.profileBoard?.blocks,
+        profileBoardBg: self.profileBoard?.bg,
+        profileBoardBgImage: self.profileBoard?.bgImage,
+      };
+    }
+    return {
+      displayName: m.username,
+      avatarChar: m.avatar,
+      color: MEMBER_COLORS[m.userId] ?? "#d59ee8",
+      online: m.online,
+      status: m.status,
+      userId: m.userId,
+    };
+  };
+
   return (
     <>
       <p className="mt-2 mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
         {label} — {members.length}
       </p>
       {members.map((m) => (
-        <div key={m.userId} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--surface-overlay)] transition-colors">
-          <div className="relative">
+        <button
+          key={m.userId}
+          className="group w-full flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--surface-overlay)] transition-colors text-left"
+          onClick={() => onViewProfile?.(buildViewableUser(m))}
+        >
+          <div className="relative flex-shrink-0">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
               {m.avatar}
             </span>
@@ -282,9 +419,21 @@ function MemberSection({ label, members }: { label: string; members: ServerMembe
             <p className="truncate text-xs font-medium text-[var(--text-primary)]">{m.username}</p>
             {m.status && <p className="truncate text-[10px] text-[var(--text-muted)]">{m.status}</p>}
           </div>
-          <span className={cn("text-[10px] capitalize", ROLE_COLORS[m.role])}>{m.role === "owner" ? "👑" : m.role === "admin" ? "🛡" : ""}</span>
-        </div>
+          {m.userId === viewerId ? (
+            <span className="ml-auto text-[9px] font-semibold text-[var(--accent)] bg-[var(--accent)]/10 rounded px-1.5 py-0.5">You</span>
+          ) : (
+            <span className={cn("text-[10px]", ROLE_COLORS[m.role])}>{m.role === "owner" ? "👑" : m.role === "admin" ? "🛡" : ""}</span>
+          )}
+        </button>
       ))}
     </>
   );
 }
+
+const MEMBER_COLORS: Record<string, string> = {
+  "u-alex":   "#d59ee8",
+  "u-sarah":  "#eb459e",
+  "u-jordan": "#57f287",
+  "u-riley":  "#fee75c",
+  "u-mia":    "#ed4245",
+};

@@ -62,6 +62,26 @@ function getDefaultLayout(item: BlockItem, idx: number) {
   };
 }
 
+// ─── Resize handle ───────────────────────────────────────────────────────────
+
+function ResizeHandle({ onMouseDown, isText }: { onMouseDown: (e: React.MouseEvent) => void; isText: boolean }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      onMouseDown={onMouseDown}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: "absolute", right: 0, bottom: 0, width: 18, height: 18,
+        cursor: "se-resize", zIndex: 20, opacity: hovered ? 0.9 : 0.35,
+        background: "linear-gradient(135deg, transparent 50%, var(--accent) 50%)",
+        borderRadius: isText ? 0 : "0 0 10px 0",
+        transition: "opacity 0.15s",
+      }}
+    />
+  );
+}
+
 // ─── Draggable item card ──────────────────────────────────────────────────────
 
 function ItemCard({
@@ -151,6 +171,11 @@ function ItemCard({
   const isTimer = item.type === "timer";
   const isTable = item.type === "table";
   const isCalendar = item.type === "calendar";
+  const isChat = item.type === "chat";
+  const isWidget = item.type === "widget";
+
+  // Types that manage their own internal background — let canvas backgroundColor show through
+  const isTransparent = isText || isList || isEmbed || isTimer || isTable || isCalendar || isChat || isWidget;
 
   const dimmed = anyFocused && !isFocused;
 
@@ -158,15 +183,15 @@ function ItemCard({
     <div
       ref={setDragRef}
       data-item-card
-      className={cn("absolute group flex flex-col", isDragging && "opacity-40 z-50")}
+      className={cn("absolute group flex flex-col cursor-grab active:cursor-grabbing", isDragging && "opacity-40 z-50")}
       style={{
         left: layout.x, top: layout.y,
         width: displayW, height: displayH,
         transform: scaledTransformStyle ?? transformStyle,
         zIndex: isDragging ? 50 : isFocused ? 10 : 1,
-        background: isText || isList || isEmbed || isTimer || isTable || isCalendar ? "transparent" : "var(--surface-raised)",
+        background: isTransparent ? "transparent" : "var(--surface-raised)",
         borderRadius: isText ? 0 : isList ? (item.listBorderRadius ?? 0) : isTimer ? (item.timerBorderRadius ?? 0) : isTable ? (item.tableBorderRadius ?? 0) : isCalendar ? (item.calendarBorderRadius ?? 0) : 12,
-        border: isText || isList || isEmbed || isTimer || isTable || isCalendar
+        border: isTransparent
           ? isSelected ? "1.5px solid var(--accent)" : isFocused ? "1.5px solid var(--accent)" : "1.5px solid transparent"
           : isSelected ? "1.5px solid var(--accent)" : isFocused ? "1.5px solid var(--accent)" : "1px solid var(--border)",
         overflow: isText ? "visible" : "hidden",
@@ -202,8 +227,8 @@ function ItemCard({
       {!isFinished && (
         <div className="absolute top-1 right-1 z-20 pointer-events-none flex items-center gap-1">
           {item.showInCollapsed && (
-            <span className="flex items-center gap-0.5 rounded-full bg-[var(--accent)]/20 px-1.5 py-0.5 text-[9px] font-semibold text-[var(--accent)] leading-none">
-              <Pin size={8} /> S
+            <span title="Pinned to collapsed view" className="flex items-center gap-0.5 rounded-full bg-[var(--accent)]/20 px-1.5 py-0.5 text-[9px] font-semibold text-[var(--accent)] leading-none">
+              <Pin size={8} />
             </span>
           )}
           {item.settingsLocked && (
@@ -228,15 +253,7 @@ function ItemCard({
 
       {/* Resize handle */}
       {!isFinished && (
-        <div
-          onMouseDown={onResizeMouseDown}
-          style={{
-            position: "absolute", right: 0, bottom: 0, width: 14, height: 14,
-            cursor: "se-resize", zIndex: 20, opacity: 0.4,
-            background: "linear-gradient(135deg, transparent 50%, var(--accent) 50%)",
-            borderRadius: isText ? 0 : "0 0 10px 0",
-          }}
-        />
+        <ResizeHandle onMouseDown={onResizeMouseDown} isText={isText} />
       )}
 
       {ctxMenu && (
@@ -359,7 +376,9 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
 
   if (!box) return null;
 
-  const isFinished = (board?.isFinished ?? false) || !canEditBoard;
+  const isLocked = board?.isFinished ?? false;
+  const canEdit = canEditBoard;
+  const isFinished = isLocked || !canEdit;
   const summaryItems = box.items.filter((i) => i.showInCollapsed);
   const anyFocused = box.items.some((i) => i.isFocused);
 
@@ -513,7 +532,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
             style={{ cursor: panning ? "grabbing" : undefined }}
           >
             <div style={{ width: CANVAS_WIDTH * canvasZoom, height: CANVAS_HEIGHT * canvasZoom }}>
-              <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+              <DndContext id="dnd-expanded-block" sensors={sensors} onDragEnd={handleDragEnd}>
                 <div
                   ref={canvasRef}
                   className={cn("relative", showGrid && "board-grid")}
@@ -542,16 +561,20 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                     setCanvasCtxMenu({ x: e.clientX, y: e.clientY });
                   }}
                 >
-                {box.style.wallpaperUrl && (
-                  <div aria-hidden style={{
-                    position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none",
-                    backgroundImage: `url(${box.style.wallpaperUrl})`,
-                    backgroundSize: box.style.wallpaperSize ?? "cover",
-                    backgroundPosition: box.style.wallpaperPosition ?? "center",
-                    backgroundRepeat: "no-repeat",
-                    opacity: box.style.wallpaperOpacity ?? 1,
-                  }} />
-                )}
+                {(box.style.wallpaperUrl || box.collapsedStyle?.wallpaperUrl) && (() => {
+                  const wpSrc = box.style.wallpaperUrl ? box.style : (box.collapsedStyle ?? {});
+                  const wpUrl = box.style.wallpaperUrl || box.collapsedStyle?.wallpaperUrl;
+                  return (
+                    <div aria-hidden style={{
+                      position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none",
+                      backgroundImage: `url(${wpUrl})`,
+                      backgroundSize: wpSrc.wallpaperSize ?? "cover",
+                      backgroundPosition: wpSrc.wallpaperPosition ?? "center",
+                      backgroundRepeat: "no-repeat",
+                      opacity: wpSrc.wallpaperOpacity ?? 1,
+                    }} />
+                  );
+                })()}
 
                 {box.items.map((item, idx) => {
                   const layout = getDefaultLayout(item, idx);
@@ -567,7 +590,13 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                       zoom={canvasZoom}
                       isFocused={item.isFocused ?? false}
                       anyFocused={anyFocused}
-                      onDelete={() => removeItem(boardId, boxId, item.id)}
+                      onDelete={() => {
+                        removeItem(boardId, boxId, item.id);
+                        if (selectedItemId === item.id) {
+                          const remaining = box.items.filter((i) => i.id !== item.id);
+                          setSelectedItemId(remaining[0]?.id ?? null);
+                        }
+                      }}
                       onTogglePin={() => toggleItemInCollapsed(boardId, boxId, item.id)}
                       isSelected={selectedItemId === item.id}
                       onSelect={() => handleItemSelect(item.id)}
@@ -614,15 +643,15 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
           </div>
         </div>
 
-        {/* ── Right panel ──────────────────────────────────────────── */}
-        {!isFinished && <div className="flex w-[280px] flex-shrink-0 flex-col border-l border-[var(--border)]" style={{ background: "var(--surface-raised)" }}>
+        {/* ── Right panel — editors only ───────────────────────────── */}
+        {canEdit && <div className="flex w-[280px] flex-shrink-0 flex-col border-l border-[var(--border)]" style={{ background: "var(--surface-raised)" }}>
           {/* Tabs */}
           <div className="flex shrink-0 gap-0.5 border-b border-[var(--border)] px-3 pt-3 pb-2">
             <div className="flex gap-0.5 rounded-lg bg-[var(--surface-overlay)] p-0.5 w-full">
               {([
                 { id: "items", label: "Items" },
                 { id: "collapsed", label: "Collapsed" },
-                ...(selectedItem ? [{ id: "item", label: selectedItem.type === "list" ? "List" : selectedItem.type === "text" ? "Text" : selectedItem.type === "graph" ? "Chart" : selectedItem.type === "timer" ? "Timer" : selectedItem.type === "api" ? "API" : selectedItem.type === "calendar" ? "Calendar" : selectedItem.type === "table" ? "Table" : "Item" }] : []),
+                ...(selectedItem && !["divider","chat","filebank"].includes(selectedItem.type) ? [{ id: "item", label: (() => { switch (selectedItem.type) { case "list": return "List"; case "text": return "Text"; case "graph": return "Chart"; case "timer": return "Timer"; case "api": return "API"; case "calendar": return "Calendar"; case "table": return "Table"; case "image": return "Image"; case "embed": return "Embed"; case "widget": return "Widget"; case "kanban": return "Kanban"; case "playlist": return "Playlist"; default: return "Item"; } })() }] : []),
                 { id: "style", label: "Style" },
               ] as { id: string; label: string }[]).map((t) => (
                 <button
@@ -677,7 +706,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                             const iH = item.collapsedH ?? 40;
                             return (
                               <div key={item.id} style={{ position: "absolute", left: item.collapsedX ?? pad, top: item.collapsedY ?? (pad + idx * 46), width: iW, height: iH, overflow: "hidden" }}>
-                                <ItemRenderer item={item} boardId={boardId} boxId={boxId} vars={vars} collapsed isFinished containerW={iW} containerH={iH} />
+                                <ItemRenderer item={item} boardId={boardId} boxId={boxId} vars={vars} collapsed isFinished={isFinished} containerW={iW} containerH={iH} />
                               </div>
                             );
                           })}
@@ -689,7 +718,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                 <p className="mt-2 text-[10px] text-[var(--text-muted)]">{summaryItems.length} pinned · {box.items.length - summaryItems.length} expanded-only</p>
               </div>
 
-              {!isFinished && (
+              {!isFinished && canEdit && (
                 <div className="flex-1 overflow-y-auto p-4">
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Add item</p>
                   <div className="flex flex-col gap-0.5">
@@ -697,13 +726,11 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                       <button
                         key={def.type}
                         onClick={() => addItem(boardId, boxId, { ...def.defaultItem(), showInCollapsed: false })}
+                        title={def.description}
                         className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors"
                       >
                         <span className="flex-shrink-0 text-[var(--text-muted)]">{def.icon}</span>
-                        <div className="flex flex-col">
-                          <span className="text-sm leading-tight">{def.label}</span>
-                          <span className="text-[10px] text-[var(--text-muted)] leading-tight">{def.description}</span>
-                        </div>
+                        <span className="text-sm leading-tight">{def.label}</span>
                       </button>
                     ))}
                   </div>
@@ -788,7 +815,26 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                   upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
                 />
               )}
-              {!["list","text","graph","embed","timer","api","calendar","table","playlist","kanban"].includes(selectedItem.type) && (
+              {selectedItem.type === "image" && (
+                <div className="flex flex-col gap-3 p-3">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Fit</label>
+                  <div className="flex gap-1">
+                    {(["cover","contain","fill"] as const).map(fit => (
+                      <button key={fit} onClick={() => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, { imageObjectFit: fit })}
+                        className={cn("flex-1 rounded-lg border px-2 py-1.5 text-xs capitalize transition-colors",
+                          selectedItem.imageObjectFit === fit ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]")}>
+                        {fit}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Alt text</label>
+                  <input className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                    placeholder="Describe this image…"
+                    value={selectedItem.imageAlt ?? ""}
+                    onChange={e => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, { imageAlt: e.target.value })} />
+                </div>
+              )}
+              {!["list","text","graph","embed","timer","api","calendar","table","playlist","kanban","image"].includes(selectedItem.type) && (
                 <div className="p-4 text-xs text-[var(--text-muted)]">No style options for this item type.</div>
               )}
               {selectedItem.settingsLocked && (
@@ -1069,8 +1115,7 @@ export function TextStylePanel({ item, upd, hideCollapsed }: { item: BlockItem; 
           {([
             { id: undefined,   label: "Text" },
             { id: "number",    label: "Number" },
-            { id: "formula",   label: "Formula" },
-          ] as { id: "number" | "formula" | undefined; label: string }[]).map((m) => (
+          ] as { id: "number" | undefined; label: string }[]).map((m) => (
             <button key={m.label}
               onClick={() => upd({ textMode: m.id })}
               className={cn("flex-1 rounded py-1.5 text-[11px] font-medium transition-colors",

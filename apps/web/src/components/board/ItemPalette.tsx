@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import {
   FileText, List, Video, Timer,
-  BarChart2, Plug, CalendarDays, Table2, ChevronDown, ChevronRight,
-  Trash2, Code2, Music, Kanban, MessageSquare, FolderOpen,
+  BarChart2, Plug, CalendarDays, Table2,
+  Code2, Music, Kanban, MessageSquare, FolderOpen,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 import { BlockItem, ItemType, DEFAULT_BOX_STYLE, useBoardStore, useActiveBoard } from "@/store/boardStore";
+import { useHasAppBg } from "@/lib/useHasAppBg";
 import { useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
 import { DEFAULT_WIDGET_CODE } from "@/lib/defaultWidgetCode";
 import { nanoid } from "nanoid";
@@ -116,7 +116,7 @@ export const ITEM_DEFINITIONS: {
     defaultItem: () => ({
       type: "kanban",
       kanbanColumns: [
-        { id: "col-todo",       title: "To Do",       color: "#5865f2" },
+        { id: "col-todo",       title: "To Do",       color: "#d59ee8" },
         { id: "col-inprogress", title: "In Progress",  color: "#f2994a" },
         { id: "col-done",       title: "Done",         color: "#48cfa6" },
       ],
@@ -178,55 +178,31 @@ function DraggableItem({ def, selectedBoxId }: { def: (typeof ITEM_DEFINITIONS)[
 // ─── Main palette ─────────────────────────────────────────────────────────────
 
 export function ItemPalette() {
-  const { activeBoardId, removeBox } = useBoardStore();
   const personalBoard = useActiveBoard();
   const serverBoard = useServerBoardData();
   const board = serverBoard ?? personalBoard;
   const selectedBoxId = useBoardStore((s) => s.selectedBoxId);
-  const hasAppBg = useBoardStore((s) => !!s.appBg.image);
-  const [open, setOpen] = useState<Record<string, boolean>>({ items: true });
+  const hasAppBg = useHasAppBg();
   const { serverId } = useServerBoard();
   const visibleDefs = ITEM_DEFINITIONS.filter(d => !d.serverOnly || serverId !== null);
 
   if (board?.isFinished) return null;
-
-  const toggle = (k: string) => setOpen((v) => ({ ...v, [k]: !v[k] }));
 
   return (
     <div
       className="flex w-[196px] flex-shrink-0 flex-col overflow-y-auto border-r border-[var(--border)]"
       style={{ background: hasAppBg ? "transparent" : "var(--surface-raised)" }}
     >
-      {/* Delete selected */}
-      {selectedBoxId && (
-        <div className="border-b border-[var(--border)] p-2">
-          <button
-            onClick={() => removeBox(activeBoardId, selectedBoxId)}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-500/20 hover:border-red-500/70 transition-all"
-          >
-            <Trash2 size={14} /> Delete block
-          </button>
-        </div>
-      )}
-
-      {/* Items section */}
+      {/* Items section — always open, no toggle */}
       <div className="border-b border-[var(--border)]">
-        <button
-          onClick={() => toggle("items")}
-          className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-        >
-          Items {open.items ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </button>
-        {open.items && (
-          <div className="pb-2">
-            <p className="px-3 pb-1 text-[10px] text-[var(--text-muted)]">
-              {selectedBoxId ? "Drag onto a block or to empty canvas" : "Drag to canvas · right-click canvas to add"}
-            </p>
-            {visibleDefs.map((def) => (
-              <DraggableItem key={def.type} def={def} selectedBoxId={selectedBoxId} />
-            ))}
-          </div>
-        )}
+        <div className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          Items
+        </div>
+        <div className="pb-2">
+          {visibleDefs.map((def) => (
+            <DraggableItem key={def.type} def={def} selectedBoxId={selectedBoxId} />
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import {
+  type BoardOp,
   type CollabPresence,
   type CursorState,
   type SelfIdentity,
@@ -13,7 +14,10 @@ import {
   subscribeToPresence,
   broadcastCursor,
   subscribeToCursors,
+  broadcastBoardOp,
+  subscribeToBoardOps,
 } from "./collaboration";
+import { applyBoardOp } from "./boardOps";
 
 // ─── Context type ─────────────────────────────────────────────────────────────
 
@@ -24,15 +28,17 @@ export interface CollabSession {
   isConnected: boolean;
   onCursorMove: (x: number, y: number) => void;
   updateDisplayName: (name: string) => void;
+  broadcastOp: (op: Omit<BoardOp, "senderId">) => void;
 }
 
 const FALLBACK: CollabSession = {
   members: [],
   cursors: [],
-  self: { userId: "local", displayName: "You", color: "#5865f2" },
+  self: { userId: "local", displayName: "You", color: "#d59ee8" },
   isConnected: false,
   onCursorMove: () => {},
   updateDisplayName: () => {},
+  broadcastOp: () => {},
 };
 
 export const CollabContext = createContext<CollabSession>(FALLBACK);
@@ -67,6 +73,7 @@ export function useCollabSessionSetup(boardId: string, enabled: boolean): Collab
     let mounted = true;
     let unsubPresence: (() => void) | null = null;
     let unsubCursors: (() => void) | null = null;
+    let unsubBoardOps: (() => void) | null = null;
 
     joinRoom(boardId).then(({ channel }) => {
       if (!mounted) { void leaveRoom(channel); return; }
@@ -74,6 +81,10 @@ export function useCollabSessionSetup(boardId: string, enabled: boolean): Collab
       setIsConnected(true);
       unsubPresence = subscribeToPresence(channel, setMembers);
       unsubCursors = subscribeToCursors(channel, setCursors);
+      unsubBoardOps = subscribeToBoardOps(channel, (op) => {
+        if (op.senderId === getSelfIdentity().userId) return;
+        applyBoardOp(op);
+      });
     }).catch(() => {
       // Supabase not configured or connection failed — collab stays disabled
     });
@@ -82,6 +93,7 @@ export function useCollabSessionSetup(boardId: string, enabled: boolean): Collab
       mounted = false;
       unsubPresence?.();
       unsubCursors?.();
+      unsubBoardOps?.();
       if (channelRef.current) void leaveRoom(channelRef.current);
       channelRef.current = null;
       setIsConnected(false);
@@ -104,5 +116,10 @@ export function useCollabSessionSetup(boardId: string, enabled: boolean): Collab
     setSelf(s => ({ ...s, displayName: name }));
   }, []);
 
-  return { members, cursors, self, isConnected, onCursorMove, updateDisplayName };
+  const broadcastOp = useCallback((op: Omit<BoardOp, "senderId">) => {
+    if (!channelRef.current || !enabled) return;
+    void broadcastBoardOp(channelRef.current, { ...op, senderId: getSelfIdentity().userId } as BoardOp);
+  }, [enabled]);
+
+  return { members, cursors, self, isConnected, onCursorMove, updateDisplayName, broadcastOp };
 }

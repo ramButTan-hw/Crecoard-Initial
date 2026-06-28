@@ -4,13 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  ChevronDown,
   Edit3, Copy, Trash2, Lock, Unlock,
   CopyPlus, Clipboard, ArrowUpToLine, ArrowDownToLine,
-  SquareDashedMousePointer, Maximize2, CheckSquare,
+  SquareDashedMousePointer, Maximize2, CheckSquare, CheckCircle2,
+  LayoutGrid, Plus,
 } from "lucide-react";
 import { Box, BlockItem, useBoardStore } from "@/store/boardStore";
 import { useCanEditBoard } from "@/contexts/ServerBoardContext";
+import { useCollab } from "@/lib/useCollabSession";
 import { ItemRenderer } from "@/components/items/ItemRenderer";
 import { DeckBox } from "./DeckBox";
 import { ContextMenu } from "@/components/ui/ContextMenu";
@@ -54,6 +55,8 @@ function CollapsedItemCard({
     if (isFinished || !canEdit) return;
     e.stopPropagation();
     e.preventDefault();
+    // Clean up any previous listener set before registering new ones
+    colItemCleanupRef.current?.();
     const startX = e.clientX;
     const startY = e.clientY;
     const onMove = (ev: PointerEvent) => {
@@ -82,6 +85,8 @@ function CollapsedItemCard({
     if (isFinished || !canEdit) return;
     e.stopPropagation();
     e.preventDefault();
+    // Clean up any previous listener set before registering new ones
+    colItemCleanupRef.current?.();
     const startX = e.clientX;
     const startY = e.clientY;
     const onMove = (ev: PointerEvent) => {
@@ -119,6 +124,15 @@ function CollapsedItemCard({
       onPointerDown={!isFinished && canEdit ? handleDragStart : undefined}
     >
       <ItemRenderer item={item} boardId={boardId} boxId={boxId} vars={{}} collapsed isFinished={isFinished || !canEdit} containerW={displayW} containerH={displayH} />
+
+      {/* Type badge — appears on hover so user knows what each mini-card is */}
+      <div className="absolute top-0.5 left-0.5 z-20 pointer-events-none opacity-0 group-hover/ci:opacity-90 transition-opacity duration-150">
+        <span className="rounded-sm px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-white"
+          style={{ background: "rgba(0,0,0,0.55)" }}>
+          {item.type}
+        </span>
+      </div>
+
       {!isFinished && canEdit && (
         <div
           className="absolute bottom-0 right-0 w-3 h-3 opacity-0 group-hover/ci:opacity-60 transition-opacity"
@@ -150,10 +164,12 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
     (s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId])?.isFinished ?? false
   );
   const canEdit = useCanEditBoard();
+  const { broadcastOp } = useCollab();
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameInput, setRenameInput] = useState(box.title);
+  const [isHovered, setIsHovered] = useState(false);
 
   // ─── Drag ───────────────────────────────────────────────────────────────────
   const { attributes, listeners, setNodeRef: setDragRef, transform } = useDraggable({
@@ -215,6 +231,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           const { x, y, w, h } = compute(ev);
           moveBox(boardId, box.id, x, y);
           resizeBox(boardId, box.id, w, h);
+          broadcastOp({ op: "resizeMoveBox", boardId, boxId: box.id, x, y, width: w, height: h });
           setLiveBox(null);
           setResizeState(null);
           cleanup();
@@ -223,25 +240,35 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
       },
-    [boardId, box.id, box.x, box.y, box.width, box.height, box.locked, isFinished, zoom, moveBox, resizeBox, setResizeState]
+    [boardId, box.id, box.x, box.y, box.width, box.height, box.locked, isFinished, zoom, moveBox, resizeBox, setResizeState, broadcastOp]
   );
 
   // ─── Context menu handler ────────────────────────────────────────────────────
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    if (isFinished || !canEdit) return;
+    if (isFinished) return;
     e.preventDefault();
     e.stopPropagation();
+    if (!canEdit) {
+      // Members get a minimal "Open block" menu only
+      setCtxMenu({ x: e.clientX, y: e.clientY });
+      return;
+    }
     selectBox(box.id);
     bringToFront(boardId, box.id);
+    broadcastOp({ op: "bringToFront", boardId, boxId: box.id });
     setCtxMenu({ x: e.clientX, y: e.clientY });
-  }, [isFinished, selectBox, bringToFront, boardId, box.id]);
+  }, [isFinished, canEdit, selectBox, bringToFront, boardId, box.id, broadcastOp]);
 
   const handleCtxMenuClose = useCallback(() => setCtxMenu(null), []);
 
   const commitRename = useCallback(() => {
-    if (renameInput.trim()) updateBox(boardId, box.id, { title: renameInput.trim() });
+    const title = renameInput.trim();
+    if (title) {
+      updateBox(boardId, box.id, { title });
+      broadcastOp({ op: "updateBox", boardId, boxId: box.id, patch: { title } });
+    }
     setIsRenaming(false);
-  }, [boardId, box.id, renameInput, updateBox]);
+  }, [boardId, box.id, renameInput, updateBox, broadcastOp]);
 
   // ─── Derived styles ──────────────────────────────────────────────────────────
   // Merge collapsedStyle overrides on top of the base style when rendering on the canvas
@@ -273,7 +300,8 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
   const glowCSS = !box.isDeck && isGlow
     ? `0 0 ${s.borderWidth * 6}px ${s.borderColor}, 0 0 ${s.borderWidth * 14}px ${s.borderColor}66`
     : null;
-  const boxShadowCSS = [glowCSS, box.isDeck ? null : shadowMap[s.shadow]].filter(Boolean).join(", ") || "none";
+  const hoverShadow = isHovered && !isDragging ? "0 6px 20px rgba(0,0,0,0.45)" : null;
+  const boxShadowCSS = [glowCSS, box.isDeck ? null : shadowMap[s.shadow], hoverShadow].filter(Boolean).join(", ") || "none";
 
   const summaryItems = box.items.filter((i) => i.showInCollapsed);
   const draggingBlockId = useBoardStore(s => s.draggingBlockId);
@@ -283,6 +311,15 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
   const rollupChecked = allListEntries.filter(e => e.checked).length;
   const rollupPct = rollupTotal > 0 ? (rollupChecked / rollupTotal) * 100 : 0;
   const isDeckMergeTarget = isOver && !!draggingBlockId && draggingBlockId !== box.id && !box.isDeck;
+
+  // ─── Read-only context menu (members) ───────────────────────────────────────
+  const readOnlyMenuItems = [
+    {
+      label: "Open block",
+      icon: <Maximize2 size={14} />,
+      onClick: () => setExpandedBox(box.id),
+    },
+  ];
 
   // ─── Block context menu items ────────────────────────────────────────────────
   const blockMenuItems = [
@@ -319,30 +356,46 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
     {
       label: box.locked ? "Unlock block" : "Lock block",
       icon: box.locked ? <Unlock size={14} /> : <Lock size={14} />,
-      onClick: () => updateBox(boardId, box.id, { locked: !box.locked }),
+      onClick: () => {
+        const locked = !box.locked;
+        updateBox(boardId, box.id, { locked });
+        broadcastOp({ op: "updateBox", boardId, boxId: box.id, patch: { locked } });
+      },
     },
     {
       label: "Bring to front",
       icon: <ArrowUpToLine size={14} />,
-      onClick: () => bringToFront(boardId, box.id),
+      onClick: () => {
+        bringToFront(boardId, box.id);
+        broadcastOp({ op: "bringToFront", boardId, boxId: box.id });
+      },
     },
     {
       label: "Send to back",
       icon: <ArrowDownToLine size={14} />,
-      onClick: () => sendToBack(boardId, box.id),
+      onClick: () => {
+        sendToBack(boardId, box.id);
+        broadcastOp({ op: "sendToBack", boardId, boxId: box.id });
+      },
     },
     "separator" as const,
     {
       label: "Reset size",
       icon: <SquareDashedMousePointer size={14} />,
-      onClick: () => resizeBox(boardId, box.id, 280, 220),
+      onClick: () => {
+        resizeBox(boardId, box.id, 280, 220);
+        broadcastOp({ op: "resizeBox", boardId, boxId: box.id, width: 280, height: 220 });
+      },
     },
     "separator" as const,
     {
       label: "Delete block",
       icon: <Trash2 size={14} />,
       danger: true,
-      onClick: () => removeBox(boardId, box.id),
+      onClick: () => {
+        removeBox(boardId, box.id);
+        broadcastOp({ op: "removeBox", boardId, boxId: box.id });
+      },
     },
   ];
 
@@ -353,10 +406,14 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
         {...(!box.locked && !isFinished ? listeners : {})}
         {...(!box.locked && !isFinished ? attributes : {})}
         className={cn(
-          "board-box absolute group",
+          "board-box absolute group transition-[transform,box-shadow] duration-150",
+          isDragging && "scale-[0.98]",
           isDragging && "dragging",
-          isOver && !isDragging && "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-transparent"
+          isOver && !isDragging && "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-transparent",
+          !canEdit && !isFinished && "ring-1 ring-inset ring-[var(--border)]"
         )}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         style={{
           left: displayX, top: displayY,
           width: displayW, height: displayH,
@@ -369,7 +426,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           color: s.fontColor,
           fontWeight: s.fontWeight === "bold" ? 700 : s.fontWeight === "medium" ? 500 : 400,
           overflow: "hidden",
-          cursor: box.locked || isFinished ? "default" : "pointer",
+          cursor: box.locked || isFinished || !canEdit ? "default" : "pointer",
           position: "absolute",
           display: "flex",
           flexDirection: "column",
@@ -401,6 +458,11 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
         {/* Wallpaper layer */}
         {!box.isDeck && <div aria-hidden style={{ position: "absolute", inset: 0, borderRadius: "inherit", pointerEvents: "none", zIndex: 0, ...wallpaperStyle }} />}
 
+        {/* Hover inner ring */}
+        {isHovered && !isDragging && (
+          <div aria-hidden className="absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/10 pointer-events-none z-10" />
+        )}
+
         {/* Drop zone highlights */}
         {isOver && isDeckMergeTarget && (
           <div aria-hidden className="absolute inset-0 z-10 rounded-[inherit] border-2 border-dashed border-purple-400 bg-purple-400/10 flex items-center justify-center pointer-events-none">
@@ -418,7 +480,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           </div>
         )}
 
-        {/* Block title / rename input — bottom-left */}
+        {/* Block title bottom bar — full-width with gradient */}
         {isRenaming ? (
           <input
             autoFocus
@@ -431,13 +493,24 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
             className="absolute bottom-2 left-3 z-20 w-[65%] rounded bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white outline-none ring-1 ring-[var(--accent)]"
             style={{ backdropFilter: "blur(4px)" }}
           />
-        ) : box.title ? (
+        ) : (box.title || rollupTotal > 0) ? (
           <div
             aria-hidden
-            className="absolute bottom-2 left-3 z-10 max-w-[65%] truncate text-[11px] font-semibold pointer-events-none select-none"
-            style={{ color: s.fontColor, opacity: 0.5 }}
+            className="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-between px-3 py-1.5 pointer-events-none select-none opacity-70 group-hover:opacity-100 transition-opacity duration-150"
+            style={{ background: "linear-gradient(to top, var(--surface-overlay), transparent)" }}
           >
-            {box.title}
+            <span className="truncate text-[11px] font-semibold" style={{ color: s.fontColor }}>
+              {box.title}
+            </span>
+            {rollupTotal > 0 && (
+              <span
+                className="flex items-center gap-1 text-[10px] font-semibold flex-shrink-0 ml-2"
+                style={{ color: rollupPct === 100 ? "var(--accent)" : s.fontColor, opacity: rollupPct === 100 ? 0.9 : 0.55 }}
+              >
+                <CheckCircle2 size={10} />
+                {rollupChecked}/{rollupTotal}
+              </span>
+            )}
           </div>
         ) : null}
 
@@ -448,17 +521,20 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           </div>
         )}
 
-        {/* Rollup badge */}
-        {rollupTotal > 0 && (
+        {/* Expand trigger pill — appears on hover, crossfades with rollup badge */}
+        {!isFinished && !box.isDeck && (
           <div
             aria-hidden
-            className="absolute bottom-2 right-3 z-10 flex items-center gap-1 text-[10px] font-semibold pointer-events-none select-none"
-            style={{ color: rollupPct === 100 ? "var(--accent)" : s.fontColor, opacity: rollupPct === 100 ? 0.9 : 0.45 }}
+            className="absolute top-2 right-2 z-20 pointer-events-none opacity-0 group-hover:opacity-80 transition-opacity duration-150"
           >
-            <CheckSquare size={10} />
-            {rollupChecked}/{rollupTotal}
+            <div className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium text-white" style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}>
+              <Maximize2 size={9} />
+              Open
+            </div>
           </div>
         )}
+
+        {/* Rollup badge moved to bottom bar — removed from top-right */}
 
         {/* Content */}
         {box.isDeck ? (
@@ -470,12 +546,17 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
             {summaryItems.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center pointer-events-none" style={{ padding: s.padding }}>
                 {box.items.length === 0 ? (
-                  !isFinished && <p className="text-xs" style={{ color: s.fontColor, opacity: 0.4 }}>Click to open · right-click for options</p>
+                  !isFinished && (
+                    <div className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold opacity-40" style={{ background: "rgba(255,255,255,0.07)", color: s.fontColor }}>
+                      <Plus size={12} />
+                      Add items
+                    </div>
+                  )
                 ) : (
-                  <>
-                    <p className="text-xs" style={{ color: s.fontColor, opacity: 0.5 }}>{box.items.length} item{box.items.length !== 1 ? "s" : ""}</p>
-                    {!isFinished && <p className="text-[10px]" style={{ color: s.fontColor, opacity: 0.3 }}>Click to expand</p>}
-                  </>
+                  <div className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: "rgba(255,255,255,0.07)", color: s.fontColor }}>
+                    <LayoutGrid size={11} className="opacity-60" />
+                    <span className="opacity-70">{box.items.length} item{box.items.length !== 1 ? "s" : ""}</span>
+                  </div>
                 )}
               </div>
             ) : (
@@ -495,9 +576,10 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
                   />
                 ))}
                 {box.items.length > summaryItems.length && (
-                  <div className="absolute bottom-1 left-2 flex items-center gap-1 text-[10px] pointer-events-none" style={{ opacity: 0.4 }}>
-                    <ChevronDown size={11} />
-                    {box.items.length - summaryItems.length} more
+                  <div className="absolute bottom-2 right-2 pointer-events-none">
+                    <span className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold opacity-65" style={{ background: "rgba(255,255,255,0.08)" }}>
+                      +{box.items.length - summaryItems.length} more
+                    </span>
                   </div>
                 )}
               </div>
@@ -537,7 +619,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
         <ContextMenu
           x={ctxMenu.x}
           y={ctxMenu.y}
-          items={blockMenuItems}
+          items={canEdit ? blockMenuItems : readOnlyMenuItems}
           onClose={handleCtxMenuClose}
         />
       )}

@@ -11,6 +11,8 @@ export interface ThemeVarMap {
   textPrimary: string;
   textSecondary: string;
   textMuted: string;
+  gridColor: string;
+  gridAccentColor: string;
 }
 
 export interface SavedTheme {
@@ -48,13 +50,16 @@ export const CSS_VAR_NAMES: Record<keyof ThemeVarMap, string> = {
   textPrimary:    "--text-primary",
   textSecondary:  "--text-secondary",
   textMuted:      "--text-muted",
+  gridColor:      "--grid-color",
+  gridAccentColor:"--grid-accent-color",
 };
 
 export function applyThemeVars(vars: ThemeVarMap) {
   if (typeof window === "undefined") return;
   const el = document.documentElement;
   for (const [key, cssVar] of Object.entries(CSS_VAR_NAMES)) {
-    el.style.setProperty(cssVar, vars[key as keyof ThemeVarMap]);
+    const value = vars[key as keyof ThemeVarMap];
+    if (value !== undefined) el.style.setProperty(cssVar, value);
   }
 }
 
@@ -63,35 +68,35 @@ export function applyThemeVars(vars: ThemeVarMap) {
 export const PRESET_THEMES: SavedTheme[] = [
   {
     id: "dark", name: "Dark",
-    vars: { surface: "#1a1b1e", surfaceRaised: "#25262b", surfaceOverlay: "#2c2d33", sidebar: "#141517", accent: "#5865f2", accentHover: "#4752c4", border: "#373a40", textPrimary: "#f2f2f2", textSecondary: "#a6a7ab", textMuted: "#6d6f75" },
+    vars: { surface: "#1a1b1e", surfaceRaised: "#25262b", surfaceOverlay: "#2c2d33", sidebar: "#141517", accent: "#d59ee8", accentHover: "#c47fd6", border: "#373a40", textPrimary: "#f2f2f2", textSecondary: "#a6a7ab", textMuted: "#6d6f75", gridColor: "rgba(255, 255, 255, 0.08)", gridAccentColor: "rgba(255, 255, 255, 0.18)" },
   },
   {
     id: "light", name: "Light",
-    vars: { surface: "#f8f9fa", surfaceRaised: "#ffffff", surfaceOverlay: "#f1f3f5", sidebar: "#e9ecef", accent: "#5865f2", accentHover: "#4752c4", border: "#dee2e6", textPrimary: "#1a1b1e", textSecondary: "#495057", textMuted: "#868e96" },
+    vars: { surface: "#f8f9fa", surfaceRaised: "#ffffff", surfaceOverlay: "#f1f3f5", sidebar: "#e9ecef", accent: "#d59ee8", accentHover: "#c47fd6", border: "#dee2e6", textPrimary: "#1a1b1e", textSecondary: "#495057", textMuted: "#868e96", gridColor: "rgba(0, 0, 0, 0.08)", gridAccentColor: "rgba(0, 0, 0, 0.18)" },
   },
   {
     id: "oled", name: "OLED",
-    vars: { surface: "#000000", surfaceRaised: "#0a0a0a", surfaceOverlay: "#111111", sidebar: "#000000", accent: "#5865f2", accentHover: "#4752c4", border: "#222222", textPrimary: "#ffffff", textSecondary: "#aaaaaa", textMuted: "#555555" },
+    vars: { surface: "#000000", surfaceRaised: "#0a0a0a", surfaceOverlay: "#111111", sidebar: "#000000", accent: "#d59ee8", accentHover: "#c47fd6", border: "#222222", textPrimary: "#ffffff", textSecondary: "#aaaaaa", textMuted: "#555555", gridColor: "rgba(255, 255, 255, 0.08)", gridAccentColor: "rgba(255, 255, 255, 0.18)" },
   },
   {
     id: "midnight", name: "Midnight",
-    vars: { surface: "#0d1117", surfaceRaised: "#161b22", surfaceOverlay: "#1f2937", sidebar: "#090d13", accent: "#58a6ff", accentHover: "#388bfd", border: "#30363d", textPrimary: "#e6edf3", textSecondary: "#8b949e", textMuted: "#484f58" },
+    vars: { surface: "#0d1117", surfaceRaised: "#161b22", surfaceOverlay: "#1f2937", sidebar: "#090d13", accent: "#58a6ff", accentHover: "#388bfd", border: "#30363d", textPrimary: "#e6edf3", textSecondary: "#8b949e", textMuted: "#484f58", gridColor: "rgba(255, 255, 255, 0.08)", gridAccentColor: "rgba(255, 255, 255, 0.18)" },
   },
   {
     id: "forest", name: "Forest",
-    vars: { surface: "#0d1f0d", surfaceRaised: "#132513", surfaceOverlay: "#1a301a", sidebar: "#091409", accent: "#3fb950", accentHover: "#2ea043", border: "#238636", textPrimary: "#e6f0e6", textSecondary: "#7ee787", textMuted: "#3d6b42" },
+    vars: { surface: "#0d1f0d", surfaceRaised: "#132513", surfaceOverlay: "#1a301a", sidebar: "#091409", accent: "#3fb950", accentHover: "#2ea043", border: "#238636", textPrimary: "#e6f0e6", textSecondary: "#7ee787", textMuted: "#3d6b42", gridColor: "rgba(255, 255, 255, 0.08)", gridAccentColor: "rgba(255, 255, 255, 0.18)" },
   },
   {
     id: "sunset", name: "Sunset",
-    vars: { surface: "#1a1020", surfaceRaised: "#241630", surfaceOverlay: "#2e1d3d", sidebar: "#120b18", accent: "#e86af0", accentHover: "#c44dcc", border: "#3d2550", textPrimary: "#f0e6f0", textSecondary: "#c090c8", textMuted: "#7a4d88" },
+    vars: { surface: "#1a1020", surfaceRaised: "#241630", surfaceOverlay: "#2e1d3d", sidebar: "#120b18", accent: "#e86af0", accentHover: "#c44dcc", border: "#3d2550", textPrimary: "#f0e6f0", textSecondary: "#c090c8", textMuted: "#7a4d88", gridColor: "rgba(255, 255, 255, 0.08)", gridAccentColor: "rgba(255, 255, 255, 0.18)" },
   },
   {
     id: "ocean", name: "Ocean",
-    vars: { surface: "#0a1628", surfaceRaised: "#0f2040", surfaceOverlay: "#142b55", sidebar: "#071020", accent: "#06b6d4", accentHover: "#0891b2", border: "#1e3a5f", textPrimary: "#e0f2fe", textSecondary: "#7dd3fc", textMuted: "#3b82f6" },
+    vars: { surface: "#0a1628", surfaceRaised: "#0f2040", surfaceOverlay: "#142b55", sidebar: "#071020", accent: "#06b6d4", accentHover: "#0891b2", border: "#1e3a5f", textPrimary: "#e0f2fe", textSecondary: "#7dd3fc", textMuted: "#3b82f6", gridColor: "rgba(255, 255, 255, 0.08)", gridAccentColor: "rgba(255, 255, 255, 0.18)" },
   },
   {
     id: "rose", name: "Rose",
-    vars: { surface: "#1c0d12", surfaceRaised: "#2a1018", surfaceOverlay: "#381522", sidebar: "#130809", accent: "#f43f5e", accentHover: "#e11d48", border: "#4c1d30", textPrimary: "#fce7eb", textSecondary: "#fda4af", textMuted: "#9f1239" },
+    vars: { surface: "#1c0d12", surfaceRaised: "#2a1018", surfaceOverlay: "#381522", sidebar: "#130809", accent: "#f43f5e", accentHover: "#e11d48", border: "#4c1d30", textPrimary: "#fce7eb", textSecondary: "#fda4af", textMuted: "#9f1239", gridColor: "rgba(255, 255, 255, 0.08)", gridAccentColor: "rgba(255, 255, 255, 0.18)" },
   },
 ];
 

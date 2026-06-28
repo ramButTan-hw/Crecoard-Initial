@@ -8,6 +8,8 @@ import {
 import { useBoardStore } from "@/store/boardStore";
 import type { BlockItem, FileBankEntry } from "@/store/boardStore";
 import { useCanEditBoard } from "@/contexts/ServerBoardContext";
+import { useUser } from "@/contexts/UserContext";
+import { uploadFile } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 interface FileBankBlockProps {
@@ -37,21 +39,24 @@ function FileTypeIcon({ mimeType, size = 14 }: { mimeType: string; size?: number
 export function FileBankBlock({ item, boardId, boxId, expanded = false }: FileBankBlockProps) {
   const addFileBankEntry = useBoardStore((s) => s.addFileBankEntry);
   const canEdit = useCanEditBoard();
+  const { identity } = useUser();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const files = item.fileBankFiles ?? [];
   const title = item.fileBankTitle ?? "Files";
 
-  const handleFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = "";
+    const url = await uploadFile(file, identity.userId, "filebank", file.name);
     addFileBankEntry(boardId, boxId, item.id, {
       name: file.name,
       sizeBytes: file.size,
       mimeType: file.type || "application/octet-stream",
-      uploadedBy: "You",
+      uploadedBy: identity.displayName,
       uploadedAt: new Date().toISOString(),
+      url: url ?? undefined,
     });
-    e.target.value = "";
   };
 
   return (
@@ -127,13 +132,17 @@ function FileRow({ file, expanded }: { file: FileBankEntry; expanded: boolean })
           {formatBytes(file.sizeBytes)} · {file.uploadedBy} · {timeAgo(file.uploadedAt)}
         </p>
       </div>
-      <button
-        className="hidden flex-shrink-0 rounded-lg p-1 text-[var(--text-muted)] opacity-0 transition-all group-hover:opacity-100 hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)] group-hover:flex"
-        title="Download"
-        onClick={() => {/* backend phase: trigger download */}}
-      >
-        <Download size={12} />
-      </button>
+      {file.url && (
+        <a
+          href={file.url}
+          download={file.name}
+          title="Download"
+          className="hidden flex-shrink-0 rounded-lg p-1 text-[var(--text-muted)] opacity-0 transition-all group-hover:opacity-100 hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)] group-hover:flex"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Download size={12} />
+        </a>
+      )}
     </div>
   );
 }

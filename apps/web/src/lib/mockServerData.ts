@@ -305,7 +305,7 @@ const DEFAULT_SERVER_ROLES: ServerRole[] = [
   {
     id: "role-admin",
     name: "Admin",
-    color: "#5865f2",
+    color: "#d59ee8",
     permissions: { canViewBoard: true, canEditBoard: true, canUploadFiles: true, canManageRoles: true, canManageMembers: true, canInviteMembers: true },
   },
 ];

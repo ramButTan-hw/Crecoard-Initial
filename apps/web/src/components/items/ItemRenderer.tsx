@@ -37,7 +37,7 @@ import DOMPurify from "isomorphic-dompurify";
 import { cn } from "@/lib/utils";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 
-const CHART_COLORS = ["#5865f2", "#48cfa6", "#f2994a", "#eb5757", "#9b51e0", "#2d9cdb"];
+const CHART_COLORS = ["#d59ee8", "#48cfa6", "#f2994a", "#eb5757", "#9b51e0", "#2d9cdb"];
 
 // ─── Paragraph style presets (Google Docs-style) ──────────────────────────────
 export const PARA_STYLES: {
@@ -2737,7 +2737,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
     </div>
   );
 
-  const accent = item.timerAccentColor ?? "#5865f2";
+  const accent = item.timerAccentColor ?? "#d59ee8";
 
   return (
     <div className="flex flex-col gap-5 p-3 text-xs">
@@ -2978,9 +2978,9 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
               <div className="flex items-center gap-2">
                 <span className="text-[var(--text-muted)] shrink-0 text-[11px]">Color</span>
                 <label className="relative h-5 w-5 rounded border border-[var(--border)] overflow-hidden cursor-pointer flex-shrink-0">
-                  <span className="absolute inset-0 rounded" style={{ background: item.timerProgressColor ?? (item.timerAccentColor ?? "#5865f2") }} />
+                  <span className="absolute inset-0 rounded" style={{ background: item.timerProgressColor ?? (item.timerAccentColor ?? "#d59ee8") }} />
                   <input type="color"
-                    value={item.timerProgressColor ?? (item.timerAccentColor ?? "#5865f2")}
+                    value={item.timerProgressColor ?? (item.timerAccentColor ?? "#d59ee8")}
                     onChange={(e) => upd({ timerProgressColor: e.target.value })}
                     className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                   />
@@ -3072,8 +3072,8 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
               </div>
               <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
                 <div className="flex items-center gap-2">
-                  <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.timerBorderColor ?? "#5865f2" }}>
-                    <input type="color" value={item.timerBorderColor ?? "#5865f2"} onChange={(e) => upd({ timerBorderColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                  <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.timerBorderColor ?? "#d59ee8" }}>
+                    <input type="color" value={item.timerBorderColor ?? "#d59ee8"} onChange={(e) => upd({ timerBorderColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
                   </span>
                   <span className="text-xs text-[var(--text-secondary)]">Border color</span>
                 </div>
@@ -3185,6 +3185,9 @@ function ImageItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
   };
 
   if (!item.imageUrl) {
+    if (collapsed) {
+      return <div className="flex h-full items-center justify-center opacity-30"><span className="text-[10px]">No image</span></div>;
+    }
     return (
       <div className="flex flex-col items-center gap-2 rounded border border-dashed border-[var(--border)] p-4 text-[var(--text-muted)]">
         <span className="text-2xl">🖼️</span>
@@ -4163,11 +4166,16 @@ function ApiItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (
 
   if (collapsed) {
     const val = extracted != null ? formatValue(extracted) : null;
+    let hostname = "";
+    if (item.apiUrl) { try { hostname = new URL(item.apiUrl).hostname; } catch {} }
     return (
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: error ? "#ef4444" : item.apiUrl ? "#22c55e" : "var(--text-muted)" }} />
-        <span className="text-xs text-[var(--text-muted)] truncate">{item.apiLabel || item.apiUrl || "API"}</span>
-        {val && <span className="ml-auto text-xs font-mono font-semibold text-[var(--accent)] truncate max-w-[80px]">{val}</span>}
+      <div className="flex flex-col gap-0.5 min-w-0 px-1 py-0.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: error ? "#ef4444" : item.apiUrl ? "#22c55e" : "var(--text-muted)" }} />
+          <span className="text-xs font-semibold text-[var(--text-primary)] truncate">{item.apiLabel || "API"}</span>
+          {val && <span className="ml-auto text-xs font-mono font-semibold text-[var(--accent)] truncate max-w-[80px]">{val}</span>}
+        </div>
+        {hostname && <span className="text-[10px] text-[var(--text-muted)] truncate pl-3.5">{hostname}</span>}
       </div>
     );
   }
@@ -4498,7 +4506,7 @@ function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished
             <div className="flex items-center gap-2 text-xs">
               <span className="w-16 text-[var(--text-muted)] shrink-0">Color</span>
               <div className="flex gap-1.5 flex-wrap">
-                {["#5865f2","#e44c4c","#e8a838","#3bba6c","#3b9bba","#9b59b6","#e67e22","#1abc9c"].map(c => (
+                {["#d59ee8","#e44c4c","#e8a838","#3bba6c","#3b9bba","#9b59b6","#e67e22","#1abc9c"].map(c => (
                   <button key={c} onClick={() => setColor(c)}
                     className={cn("h-5 w-5 rounded-full border-2 transition-transform", color === c ? "border-white scale-110" : "border-transparent")}
                     style={{ background: c }} />
@@ -4555,7 +4563,7 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished }: { it
   const [popup, setPopup] = useState<{ event: CalendarEvent | null; date: string | null } | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const accent = item.calendarAccentColor ?? "#5865f2";
+  const accent = item.calendarAccentColor ?? "#d59ee8";
   const todayColor = item.calendarTodayColor ?? accent;
   const showWeekends = item.calendarShowWeekends !== false;
   const fontFamily = item.calendarFontFamily;
@@ -4982,11 +4990,11 @@ function useCalendarFeedSync(item: BlockItem, upd: (p: Partial<BlockItem>) => vo
 export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId?: string; boxId?: string }) {
   const events: CalendarEvent[] = item.calendarEvents ?? [];
   const feeds: CalendarFeed[] = item.calendarFeeds ?? [];
-  const accent = item.calendarAccentColor ?? "#5865f2";
+  const accent = item.calendarAccentColor ?? "#d59ee8";
   const { syncing, errors, syncFeed } = useCalendarFeedSync(item, upd);
   const [newFeedUrl, setNewFeedUrl] = useState("");
   const [newFeedName, setNewFeedName] = useState("");
-  const [newFeedColor, setNewFeedColor] = useState("#5865f2");
+  const [newFeedColor, setNewFeedColor] = useState("#d59ee8");
   const fileRef = useRef<HTMLInputElement>(null);
   const headerFileRef = useRef<HTMLInputElement>(null);
   const cellBgFileRef = useRef<HTMLInputElement>(null);
@@ -5190,7 +5198,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Colors</p>
         <div className="flex flex-col gap-2">
           {[
-            { label: "Accent / today", key: "calendarAccentColor" as const, default: "#5865f2" },
+            { label: "Accent / today", key: "calendarAccentColor" as const, default: "#d59ee8" },
             { label: "Today highlight", key: "calendarTodayColor" as const, default: accent },
             { label: "Header background", key: "calendarHeaderBgColor" as const, default: "#1e1f24" },
             { label: "Cell background", key: "calendarCellBgColor" as const, default: "#1e1f24" },
@@ -7245,7 +7253,7 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished }: {
         sandbox="allow-scripts"
         srcDoc={srcDoc}
         className="w-full border-none rounded"
-        style={{ height: 80, pointerEvents: "none" }}
+        style={{ height: "100%", pointerEvents: "none" }}
         onLoad={sendVars}
       />
     );
@@ -7379,7 +7387,7 @@ function resolveEmbed(raw: string, autoplay: boolean): EmbedResult {
   // SoundCloud
   if (/soundcloud\.com/.test(url)) return {
     kind: "iframe",
-    url: `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=${autoplay}&hide_related=true&show_comments=false&visual=true&color=%235865f2`,
+    url: `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=${autoplay}&hide_related=true&show_comments=false&visual=true&color=%23d59ee8`,
     platform: "SoundCloud",
     fixedHeight: 166,
   };
@@ -8220,7 +8228,7 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
                 onClick={() => setOpenPicker(openPicker === "accent" ? null : "accent")} />
               {openPicker === "accent" && (
                 <div className="absolute right-0 top-7 z-50 flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
-                  <input type="color" value={item.playlistAccentColor || "#5865f2"} onChange={(e) => upd({ playlistAccentColor: e.target.value })} className="h-8 w-24 cursor-pointer border-0 p-0" />
+                  <input type="color" value={item.playlistAccentColor || "#d59ee8"} onChange={(e) => upd({ playlistAccentColor: e.target.value })} className="h-8 w-24 cursor-pointer border-0 p-0" />
                   <button onClick={() => { upd({ playlistAccentColor: undefined }); setOpenPicker(null); }} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset to default</button>
                 </div>
               )}
@@ -8265,7 +8273,7 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
 // ─── Kanban ───────────────────────────────────────────────────────────────────
 
 const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
-  { id: "col-todo",       title: "To Do",       color: "#5865f2" },
+  { id: "col-todo",       title: "To Do",       color: "#d59ee8" },
   { id: "col-inprogress", title: "In Progress",  color: "#f2994a" },
   { id: "col-done",       title: "Done",         color: "#48cfa6" },
 ];
@@ -8376,7 +8384,7 @@ function KanbanEditModal({
         />
         <div className="flex items-center gap-2">
           <span className="text-xs text-[var(--text-muted)]">Card color</span>
-          <input type="color" value={color || "#5865f2"} onChange={(e) => setColor(e.target.value)}
+          <input type="color" value={color || "#d59ee8"} onChange={(e) => setColor(e.target.value)}
             className="h-6 w-10 cursor-pointer rounded border-0 p-0" />
           {color && (
             <button onClick={() => setColor("")} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
@@ -8536,7 +8544,7 @@ function KanbanItem({
   const isFinished = isFinishedProp ?? false;
   const columns: KanbanColumn[] = item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS;
   const cards: KanbanCard[] = item.kanbanCards ?? [];
-  const accent = item.kanbanAccentColor ?? "#5865f2";
+  const accent = item.kanbanAccentColor ?? "#d59ee8";
   const fontSize = item.kanbanFontSize ?? 13;
   const fontFamily = item.kanbanFontFamily ?? "";
   const borderRadius = item.kanbanBorderRadius ?? 8;
@@ -8718,19 +8726,46 @@ function KanbanItem({
 
   if (collapsed) {
     const total = cards.length;
+    const colCounts = columns.slice(0, 4).map((col) => ({
+      col,
+      count: cards.filter((c) => c.columnId === col.id).length,
+      color: col.color ?? accent,
+    }));
     return (
-      <div className="flex h-full items-center gap-3 overflow-hidden px-3 py-2" style={{ fontSize: fontSize - 1, fontFamily: fontFamily || undefined }}>
-        {columns.slice(0, 4).map((col) => {
-          const count = cards.filter((c) => c.columnId === col.id).length;
-          return (
-            <div key={col.id} className="flex flex-col items-center gap-0.5">
-              <div className="h-1.5 w-1.5 rounded-full" style={{ background: col.color ?? accent }} />
+      <div className="flex h-full flex-col justify-center gap-2 overflow-hidden px-3 py-2" style={{ fontFamily: fontFamily || undefined }}>
+        {/* Column pills */}
+        <div className="flex flex-wrap gap-1.5">
+          {colCounts.map(({ col, count, color }) => (
+            <div
+              key={col.id}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-[3px]"
+              style={{ background: `${color}1a`, border: `1px solid ${color}35` }}
+            >
+              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: color }} />
               <span className="text-[10px] text-[var(--text-muted)]">{col.title}</span>
-              <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{count}</span>
+              <span
+                className="rounded-full px-[5px] text-[9px] font-bold leading-[14px]"
+                style={{ background: `${color}30`, color }}
+              >
+                {count}
+              </span>
             </div>
-          );
-        })}
-        {total > 0 && <span className="ml-auto text-[10px] text-[var(--text-muted)]">{total} card{total !== 1 ? "s" : ""}</span>}
+          ))}
+        </div>
+        {/* Segmented progress bar */}
+        {total > 0 && (
+          <div className="flex h-[3px] overflow-hidden rounded-full gap-px">
+            {colCounts.map(({ col, count, color }) =>
+              count === 0 ? null : (
+                <div
+                  key={col.id}
+                  className="h-full rounded-full"
+                  style={{ background: color, flex: count }}
+                />
+              )
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -8797,6 +8832,7 @@ function KanbanItem({
       <div className="pointer-events-none absolute inset-0" style={bgStyle} />
 
       <DndContext
+          id="dnd-item-renderer"
           sensors={sensors}
           collisionDetection={closestCorners}
           onDragStart={handleDragStart}
@@ -8847,7 +8883,7 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
   const SLabel = ({ children }: { children: React.ReactNode }) => (
     <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</div>
   );
-  const accent = item.kanbanAccentColor ?? "#5865f2";
+  const accent = item.kanbanAccentColor ?? "#d59ee8";
   const [openPicker, setOpenPicker] = useState<string | null>(null);
 
   return (
@@ -8870,12 +8906,12 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
               <div className="relative">
                 <button
                   className="h-5 w-5 rounded border border-[var(--border)] flex-shrink-0"
-                  style={{ background: col.color ?? "#5865f2" }}
+                  style={{ background: col.color ?? "#d59ee8" }}
                   onClick={() => setOpenPicker(openPicker === `col-${col.id}` ? null : `col-${col.id}`)}
                 />
                 {openPicker === `col-${col.id}` && (
                   <div className="absolute right-0 top-7 z-50 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
-                    <input type="color" value={col.color ?? "#5865f2"}
+                    <input type="color" value={col.color ?? "#d59ee8"}
                       onChange={(e) => upd({
                         kanbanColumns: (item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).map((c) =>
                           c.id === col.id ? { ...c, color: e.target.value } : c
@@ -8909,7 +8945,7 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
           ))}
           <button
             onClick={() => upd({
-              kanbanColumns: [...(item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS), { id: nanoid(), title: "New Column", color: "#5865f2" }],
+              kanbanColumns: [...(item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS), { id: nanoid(), title: "New Column", color: "#d59ee8" }],
             })}
             className="flex items-center gap-1 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
           >
@@ -8943,7 +8979,7 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
         <SLabel>Colors</SLabel>
         <div className="flex flex-col gap-2">
           {[
-            { key: "kanbanAccentColor", label: "Accent", default: "#5865f2" },
+            { key: "kanbanAccentColor", label: "Accent", default: "#d59ee8" },
             { key: "kanbanCardBgColor", label: "Card bg", default: "var(--surface-overlay)" },
             { key: "kanbanColumnBgColor", label: "Column bg", default: "var(--surface)" },
             { key: "kanbanHeaderBgColor", label: "Header bg", default: "transparent" },

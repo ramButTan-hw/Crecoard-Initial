@@ -22,6 +22,9 @@ export interface ChatMessage {
   authorAvatar: string;
   content: string;
   timestamp: string; // ISO string
+  gif?: string;       // GIPHY GIF URL
+  image?: string;     // data URL for uploaded image
+  fileName?: string;  // original filename for uploaded image
 }
 
 // ─── File bank item ───────────────────────────────────────────────────────────
@@ -32,6 +35,7 @@ export interface FileBankEntry {
   mimeType: string;
   uploadedBy: string;
   uploadedAt: string;
+  url?: string;
 }
 
 export interface KanbanCard {
@@ -209,8 +213,8 @@ export interface BlockItem {
   // text paragraph style (Google Docs-style preset)
   textParaStyle?: string;
 
-  // text modes: undefined = normal text, "number" = big number input, "formula" = shows computed result
-  textMode?: "number" | "formula";
+  // text modes: undefined = normal text, "number" = big number input
+  textMode?: "number";
 
   // embed
   embedUrl?: string;
@@ -294,6 +298,7 @@ export interface BlockItem {
   // image
   imageUrl?: string;
   imageObjectFit?: "cover" | "contain" | "fill";
+  imageAlt?: string;
 
   // graph
   graphType?: "bar" | "bar-h" | "bar-stacked" | "line" | "multiline" | "area" | "area-stacked" | "pie" | "donut" | "scatter" | "radar";
@@ -575,7 +580,9 @@ function getSavedThemeVars(): ThemeVarMap {
   if (typeof window === "undefined") return DEFAULT_THEME_VARS;
   try {
     const raw = localStorage.getItem("plancraft-theme-vars");
-    return raw ? (JSON.parse(raw) as ThemeVarMap) : DEFAULT_THEME_VARS;
+    // Merge with defaults so new ThemeVarMap fields (added after a save) get their
+    // default values rather than being undefined in old saved data.
+    return raw ? { ...DEFAULT_THEME_VARS, ...(JSON.parse(raw) as ThemeVarMap) } : DEFAULT_THEME_VARS;
   } catch { return DEFAULT_THEME_VARS; }
 }
 
@@ -656,9 +663,10 @@ interface BoardState {
   updateBoard: (id: string, patch: Partial<Omit<Board, "id" | "boxes">>) => void;
   finishBoard: (id: string) => void;
   editBoard: (id: string) => void;
+  reorderBoards: (orderedIds: string[]) => void;
 
   // Box (block)
-  addBox: (boardId: string, box: Omit<Box, "id" | "boardId" | "zIndex">) => string;
+  addBox: (boardId: string, box: Omit<Box, "id" | "boardId" | "zIndex">, id?: string) => string;
   removeBox: (boardId: string, boxId: string) => void;
   updateBox: (boardId: string, boxId: string, patch: Partial<Omit<Box, "id" | "boardId" | "items">>) => void;
   moveBox: (boardId: string, boxId: string, x: number, y: number) => void;
@@ -685,7 +693,7 @@ interface BoardState {
   injectServerBoards: (boards: Board[]) => void;
 
   // Items inside blocks
-  addItem: (boardId: string, boxId: string, item: Omit<BlockItem, "id">) => void;
+  addItem: (boardId: string, boxId: string, item: Omit<BlockItem, "id"> & { id?: string }) => void;
   removeItem: (boardId: string, boxId: string, itemId: string) => void;
   updateItem: (boardId: string, boxId: string, itemId: string, patch: Partial<BlockItem>) => void;
   moveItemUp: (boardId: string, boxId: string, itemId: string) => void;
@@ -699,7 +707,7 @@ interface BoardState {
   resizeCollapsedItem: (boardId: string, boxId: string, itemId: string, w: number, h: number) => void;
 
   // Board-level items (placed directly on canvas)
-  addBoardItem: (boardId: string, item: Omit<BoardLevelItem, "id" | "zIndex"> & { zIndex?: number }) => void;
+  addBoardItem: (boardId: string, item: Omit<BoardLevelItem, "id" | "zIndex"> & { id?: string; zIndex?: number }) => void;
   removeBoardItem: (boardId: string, itemId: string) => void;
   updateBoardItem: (boardId: string, itemId: string, patch: Partial<BoardLevelItem>) => void;
   moveBoardItem: (boardId: string, itemId: string, x: number, y: number) => void;
@@ -750,9 +758,39 @@ export interface UserFont {
   dataUrl: string;
 }
 
+// ─── Sample content ───────────────────────────────────────────────────────────
+
+function makeSampleBoxes(boardId: string): Box[] {
+  const mk = (
+    id: string, title: string, x: number, y: number, w: number, h: number,
+    bg: string, border: string
+  ): Box => ({
+    id,
+    boardId,
+    x, y, width: w, height: h,
+    zIndex: 1,
+    locked: false,
+    title,
+    isExpanded: false,
+    items: [],
+    style: { ...DEFAULT_BOX_STYLE, backgroundColor: bg, borderColor: border, borderRadius: 14 },
+  });
+  return [
+    mk("s1", "Goals",         80,   80,  380, 280, "#2d1e3a", "#d59ee8"),
+    mk("s2", "Ideas",        520,   80,  320, 200, "#2a1f4a", "#9c84ef"),
+    mk("s3", "Creative",     900,   80,  340, 240, "#3a1530", "#eb459e"),
+    mk("s4", "Projects",    1300,   80,  360, 300, "#0d2b3a", "#00b0f4"),
+    mk("s5", "Reading List",  80,  440,  460, 240, "#2d2000", "#faa61a"),
+    mk("s6", "Weekly Review",600,  380,  340, 280, "#0d2a1a", "#57f287"),
+    mk("s7", "Vision Board", 1000, 400,  560, 200, "#1a1b1e", "#373a40"),
+    mk("s8", "Daily Habits",  80,  760,  300, 200, "#2a0d0e", "#ed4245"),
+  ];
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 const initialBoard = makeDefaultBoard("My First Board");
+initialBoard.boxes = makeSampleBoxes(initialBoard.id);
 
 export const useBoardStore = create<BoardState>()(
   immer((set, get) => ({
@@ -896,8 +934,22 @@ export const useBoardStore = create<BoardState>()(
         s.showGrid = true;
       }),
 
-    addBox: (boardId, box) => {
-      const newId = crypto.randomUUID();
+    reorderBoards: (orderedIds) =>
+      set((s) => {
+        const sorted: Board[] = [];
+        for (const id of orderedIds) {
+          const b = s.boards.find((b) => b.id === id);
+          if (b) sorted.push(b);
+        }
+        // Append any boards not in orderedIds (shouldn't happen, but safe)
+        for (const b of s.boards) {
+          if (!sorted.find((x) => x.id === b.id)) sorted.push(b);
+        }
+        s.boards = sorted;
+      }),
+
+    addBox: (boardId, box, id?) => {
+      const newId = id ?? crypto.randomUUID();
       set((s) => {
         const board = findBoardAny(s, boardId);
         if (!board) return;
@@ -1077,6 +1129,8 @@ export const useBoardStore = create<BoardState>()(
         const deck = board.boxes.find((b) => b.id === deckId);
         const box = board.boxes.find((b) => b.id === boxId);
         if (!deck || !box || !deck.isDeck) return;
+        // H4: skip if already in the deck
+        if ((deck.deckSlideIds ?? []).includes(boxId)) return;
         box.deckOwnerId = deckId;
         deck.deckSlideIds = [...(deck.deckSlideIds ?? []), boxId];
         deck.deckFocusIndex = (deck.deckSlideIds.length) - 1;
@@ -1134,7 +1188,8 @@ export const useBoardStore = create<BoardState>()(
       set((s) => {
         const box = findBox(s, boardId, boxId);
         if (!box) return;
-        box.items.push({ ...item, id: nanoid() });
+        const { id: forcedId, ...rest } = item as typeof item & { id?: string };
+        box.items.push({ ...rest, id: forcedId ?? nanoid() } as BlockItem);
       }),
 
     removeItem: (boardId, boxId, itemId) =>
@@ -1223,7 +1278,8 @@ export const useBoardStore = create<BoardState>()(
         if (!board) return;
         if (!board.boardItems) board.boardItems = [];
         const maxZ = Math.max(0, ...board.boxes.map(b => b.zIndex), ...board.boardItems.map(i => i.zIndex));
-        board.boardItems.push({ ...item, id: nanoid(), zIndex: item.zIndex ?? maxZ + 1 });
+        const { id: forcedId, ...rest } = item as typeof item & { id?: string };
+        board.boardItems.push({ ...rest, id: forcedId ?? nanoid(), zIndex: item.zIndex ?? maxZ + 1 } as BoardLevelItem);
       }),
 
     removeBoardItem: (boardId, itemId) =>
@@ -1396,28 +1452,37 @@ export const useBoardStore = create<BoardState>()(
     },
 
     hydrateBoards: () => {
+      // M11: separate try/catch per key so one failure doesn't delete the other
+      let personalBoards: Board[] | null = null;
+      let safeId: string | null = null;
       try {
         const raw = localStorage.getItem("plancraft-boards-v1");
         if (raw) {
           const { boards, activeBoardId } = JSON.parse(raw) as { boards: Board[]; activeBoardId: string };
-          const personalBoards = (Array.isArray(boards) ? boards : []).filter((b) => !b.serverId);
-          if (personalBoards.length > 0) {
-            // Sanitize: activeBoardId must always point to a personal board
-            const safeId = personalBoards.find((b) => b.id === activeBoardId)?.id ?? personalBoards[0].id;
-            set((s) => { s.boards = personalBoards; s.activeBoardId = safeId; });
-          }
-        }
-        const serverRaw = localStorage.getItem("plancraft-server-boards-v1");
-        if (serverRaw) {
-          const serverBoards = JSON.parse(serverRaw) as Record<string, Board>;
-          if (serverBoards && typeof serverBoards === "object") {
-            set((s) => { s.serverBoards = serverBoards; });
+          const filtered = (Array.isArray(boards) ? boards : []).filter((b) => !b.serverId);
+          if (filtered.length > 0) {
+            personalBoards = filtered;
+            safeId = filtered.find((b) => b.id === activeBoardId)?.id ?? filtered[0].id;
           }
         }
       } catch (err) {
-        console.error("[PlanCraft] Failed to load saved boards — data may be corrupt. Starting fresh.", err);
+        console.error("[PlanCraft] Failed to load personal boards — data may be corrupt. Starting fresh.", err);
         localStorage.removeItem("plancraft-boards-v1");
-        localStorage.removeItem("plancraft-server-boards-v1");
+      }
+
+      // M10: do NOT read plancraft-server-boards-v1 — serverBoards is populated
+      // exclusively by injectServerBoards; reading from localStorage would overwrite it.
+
+      // L1: combine into a single atomic set() call
+      if (personalBoards !== null && safeId !== null) {
+        // Seed sample content into the first board if it has no boxes yet (one-time only)
+        if (personalBoards[0].boxes.length === 0 && !localStorage.getItem("plancraft-sample-seeded")) {
+          personalBoards[0].boxes = makeSampleBoxes(personalBoards[0].id);
+          localStorage.setItem("plancraft-sample-seeded", "1");
+        }
+        const _boards = personalBoards;
+        const _safeId = safeId;
+        set((s) => { s.boards = _boards; s.activeBoardId = _safeId; });
       }
     },
   }))

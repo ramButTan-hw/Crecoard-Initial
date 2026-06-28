@@ -6,11 +6,14 @@ import { HexColorPicker } from "react-colorful";
 import { useBoardStore, BoxStyle } from "@/store/boardStore";
 import { WallpaperEditor } from "@/components/ui/WallpaperEditor";
 import { cn } from "@/lib/utils";
+import { useUser } from "@/contexts/UserContext";
+import { uploadFile } from "@/lib/storage";
 
 interface StylePanelProps { boxId: string }
 
 export function StylePanel({ boxId }: StylePanelProps) {
   const { boards, activeBoardId, updateBoxStyle, updateBox, selectBox, setExpandedBox } = useBoardStore();
+  const { identity } = useUser();
   const box = boards.find((b) => b.id === activeBoardId)?.boxes.find((b) => b.id === boxId);
   const [expertMode, setExpertMode] = useState(false);
   const [openSection, setOpenSection] = useState("wallpaper");
@@ -25,10 +28,16 @@ export function StylePanel({ boxId }: StylePanelProps) {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => upd({ wallpaperUrl: ev.target?.result as string });
-    reader.readAsDataURL(file);
     e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      upd({ wallpaperUrl: dataUrl });
+      void uploadFile(file, identity.userId, "wallpapers", file.name).then((url) => {
+        if (url) upd({ wallpaperUrl: url });
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
   return (

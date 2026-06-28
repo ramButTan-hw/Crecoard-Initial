@@ -32,10 +32,62 @@ export interface CursorState {
   y: number;
 }
 
+export interface ProfileListEntry {
+  id: string;
+  text: string;
+  checked: boolean;
+}
+
+export type FontFamily = "sans" | "serif" | "mono" | "hand";
+export type LineHeight = "tight" | "normal" | "relaxed";
+export type LetterSpacing = "normal" | "wide" | "wider";
+
+export type ProfileBlockItem =
+  | {
+      id: string; type: "text"; content: string;
+      fontSize?: number;
+      fontFamily?: FontFamily;
+      fontWeight?: number;
+      bold?: boolean;
+      italic?: boolean;
+      underline?: boolean;
+      strikethrough?: boolean;
+      color?: string;
+      align?: "left" | "center" | "right";
+      lineHeight?: LineHeight;
+      letterSpacing?: LetterSpacing;
+    }
+  | {
+      id: string; type: "list"; title: string; entries: ProfileListEntry[];
+      fontSize?: number;
+      fontFamily?: FontFamily;
+      color?: string;
+    };
+
+export interface ProfileBlock {
+  id: string;
+  color: string;
+  bgImage?: string;
+  bgOpacity?: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  items: ProfileBlockItem[];
+}
+
 export interface SelfIdentity {
   userId: string;
   displayName: string;
   color: string;
+  avatarUrl?: string;
+  bannerUrl?: string;
+  status?: string;
+  statusEmoji?: string;
+  bio?: string;
+  pronouns?: string;
+  favoriteBoardId?: string;
+  profileBoard?: { blocks: ProfileBlock[]; bg?: string; bgImage?: string };
 }
 
 /** A board-level mutation broadcast from one collaborator to others. */
@@ -67,7 +119,7 @@ export interface CollabTableRow {
 // ─── Self-identity ────────────────────────────────────────────────────────────
 
 const COLLAB_COLORS = [
-  "#5865f2", "#eb459e", "#57f287", "#fee75c",
+  "#d59ee8", "#eb459e", "#57f287", "#fee75c",
   "#ed4245", "#00b0f4", "#faa61a", "#9c84ef",
 ];
 
