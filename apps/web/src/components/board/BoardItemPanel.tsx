@@ -2,23 +2,30 @@
 
 import { X, Lock } from "lucide-react";
 import { useBoardStore, useActiveBoard, BoardLevelItem } from "@/store/boardStore";
+import { useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
 import {
   ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel,
   ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel,
 } from "@/components/items/ItemRenderer";
 import { TextStylePanel } from "@/components/board/ExpandedBlock";
+import { EmbedCardStylePanel } from "@/components/items/EmbedCardItem";
+import { TrackerGGStylePanel } from "@/components/items/TrackerGGItem";
 import { ITEM_DEFINITIONS } from "./ItemPalette";
 
 export function BoardItemPanel() {
   const { activeBoardId, selectedBoardItemId, selectBoardItem, updateBoardItem } = useBoardStore();
-  const board = useActiveBoard();
+  const { boardId: serverBoardId } = useServerBoard();
+  const serverBoard = useServerBoardData();
+  const personalBoard = useActiveBoard();
+  const board = serverBoard ?? personalBoard;
+  const boardId = serverBoardId ?? activeBoardId;
 
   const item = board?.boardItems?.find((i) => i.id === selectedBoardItemId);
 
   if (!item) return null;
 
   const upd = (patch: Partial<BoardLevelItem>) =>
-    updateBoardItem(activeBoardId, item.id, patch);
+    updateBoardItem(boardId, item.id, patch);
 
   const def = ITEM_DEFINITIONS.find((d) => d.type === item.type);
 
@@ -55,7 +62,7 @@ export function BoardItemPanel() {
         {item.type === "graph" && (
           <GraphStylePanel
             item={item}
-            boardId={activeBoardId}
+            boardId={boardId}
             boxId=""
             upd={upd}
           />
@@ -70,15 +77,21 @@ export function BoardItemPanel() {
           <ApiStylePanel item={item} upd={upd} />
         )}
         {item.type === "calendar" && (
-          <CalendarStylePanel item={item} upd={upd} boardId={activeBoardId} boxId="" />
+          <CalendarStylePanel item={item} upd={upd} boardId={boardId} boxId="" />
         )}
         {item.type === "table" && (
-          <TableStylePanel item={item} upd={upd} boardId={activeBoardId} boxId="" />
+          <TableStylePanel item={item} upd={upd} boardId={boardId} boxId="" />
         )}
         {item.type === "playlist" && (
           <PlaylistStylePanel item={item} upd={upd} />
         )}
-        {!["text","list","graph","embed","timer","api","calendar","table","playlist"].includes(item.type) && (
+        {item.type === "embed-card" && (
+          <EmbedCardStylePanel item={item} upd={upd} />
+        )}
+        {item.type === "tracker-gg" && (
+          <TrackerGGStylePanel item={item} upd={upd} />
+        )}
+        {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","tracker-gg"].includes(item.type) && (
           <div className="p-4 text-xs text-[var(--text-muted)]">No style options for this item type.</div>
         )}
         {item.settingsLocked && (

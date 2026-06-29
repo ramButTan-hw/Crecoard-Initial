@@ -16,8 +16,38 @@ create table if not exists public.servers (
   updated_at  timestamptz not null default now()
 );
 
-alter table public.servers enable row level security;
+-- ─── server_members ───────────────────────────────────────────────────────────
 
+create table if not exists public.server_members (
+  server_id uuid not null references public.servers(id) on delete cascade,
+  user_id   uuid not null references auth.users(id)    on delete cascade,
+  role      text not null default 'member' check (role in ('owner', 'admin', 'member')),
+  joined_at timestamptz not null default now(),
+  primary key (server_id, user_id)
+);
+
+-- ─── server_invites ───────────────────────────────────────────────────────────
+
+create table if not exists public.server_invites (
+  id         uuid        primary key default gen_random_uuid(),
+  server_id  uuid        not null references public.servers(id) on delete cascade,
+  created_by uuid        not null references auth.users(id),
+  code       text        not null unique
+               default substring(replace(gen_random_uuid()::text, '-', ''), 1, 8),
+  expires_at timestamptz,
+  max_uses   integer,
+  uses_count integer     not null default 0,
+  created_at timestamptz not null default now()
+);
+
+-- ─── RLS ──────────────────────────────────────────────────────────────────────
+-- Enable RLS on all three tables before creating policies
+
+alter table public.servers       enable row level security;
+alter table public.server_members enable row level security;
+alter table public.server_invites enable row level security;
+
+-- servers policies (server_members now exists)
 create policy "Servers visible to members and public"
   on public.servers for select using (
     is_public = true
@@ -43,18 +73,7 @@ create policy "Owners and admins can update server"
 create policy "Owners can delete server"
   on public.servers for delete using (owner_id = auth.uid());
 
--- ─── server_members ───────────────────────────────────────────────────────────
-
-create table if not exists public.server_members (
-  server_id uuid not null references public.servers(id) on delete cascade,
-  user_id   uuid not null references auth.users(id)    on delete cascade,
-  role      text not null default 'member' check (role in ('owner', 'admin', 'member')),
-  joined_at timestamptz not null default now(),
-  primary key (server_id, user_id)
-);
-
-alter table public.server_members enable row level security;
-
+-- server_members policies
 create policy "Members can view all members of shared servers"
   on public.server_members for select using (
     server_id in (
@@ -86,22 +105,7 @@ create policy "Owners and admins can change roles"
     )
   );
 
--- ─── server_invites ───────────────────────────────────────────────────────────
-
-create table if not exists public.server_invites (
-  id         uuid        primary key default gen_random_uuid(),
-  server_id  uuid        not null references public.servers(id) on delete cascade,
-  created_by uuid        not null references auth.users(id),
-  code       text        not null unique
-               default substring(replace(gen_random_uuid()::text, '-', ''), 1, 8),
-  expires_at timestamptz,
-  max_uses   integer,
-  uses_count integer     not null default 0,
-  created_at timestamptz not null default now()
-);
-
-alter table public.server_invites enable row level security;
-
+-- server_invites policies
 create policy "Anyone can look up an invite by code"
   on public.server_invites for select using (true);
 

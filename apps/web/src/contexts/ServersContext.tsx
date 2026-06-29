@@ -4,7 +4,18 @@ import {
   createContext, useCallback, useContext, useEffect, useState,
 } from "react";
 import { supabase } from "@/lib/supabase";
-import type { Server, ServerMember } from "@/types/server";
+import type { Server, ServerMember, ServerRole, MemberRole } from "@/types/server";
+
+const ROLES_STORAGE_KEY = "plancraft-server-roles";
+
+function loadRolesStorage(): Record<string, ServerRole[]> {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(ROLES_STORAGE_KEY) ?? "{}"); } catch { return {}; }
+}
+
+function saveRolesStorage(map: Record<string, ServerRole[]>) {
+  localStorage.setItem(ROLES_STORAGE_KEY, JSON.stringify(map));
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -64,6 +75,17 @@ interface ServersContextValue {
   loadMembers: (serverId: string) => Promise<void>;
   /** Update name / description / icon for a real server in Supabase */
   updateServer: (serverId: string, patch: { name?: string; description?: string; icon?: string }) => Promise<void>;
+  /** Persists custom roles for a server (localStorage for mock, Supabase-ready for real) */
+  serverRoles: Record<string, ServerRole[]>;
+  updateServerRoles: (serverId: string, roles: ServerRole[]) => void;
+  /** Transfer ownership: old owner becomes admin, new owner gets owner role */
+  transferOwnership: (serverId: string, newOwnerId: string) => Promise<void>;
+  /** Remove a member from a server */
+  kickMember: (serverId: string, userId: string) => Promise<void>;
+  /** Change a member's role */
+  updateMemberRole: (serverId: string, userId: string, role: MemberRole) => Promise<void>;
+  /** Force-reload members for a server, bypassing the cache */
+  refreshMembers: (serverId: string) => Promise<void>;
 }
 
 const ServersContext = createContext<ServersContextValue | null>(null);
@@ -79,7 +101,16 @@ export function useServers(): ServersContextValue {
 export function ServersProvider({ children }: { children: React.ReactNode }) {
   const [servers, setServers] = useState<Server[]>([]);
   const [serverMembers, setServerMembers] = useState<Record<string, ServerMember[]>>({});
+  const [serverRoles, setServerRolesState] = useState<Record<string, ServerRole[]>>(loadRolesStorage);
   const [loading, setLoading] = useState(true);
+
+  const updateServerRoles = useCallback((serverId: string, roles: ServerRole[]) => {
+    setServerRolesState((prev) => {
+      const next = { ...prev, [serverId]: roles };
+      saveRolesStorage(next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseReady()) { setLoading(false); return; }
@@ -140,6 +171,25 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
 
     const newServer = rowToServer(data);
     setServers((prev) => [newServer, ...prev]);
+
+    // Pre-populate creator as owner so viewerRole is correct immediately
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("display_name, avatar_url")
+      .eq("id", user.id)
+      .single();
+    const displayName = (profile?.display_name as string) || "Unknown";
+    setServerMembers((prev) => ({
+      ...prev,
+      [newServer.id]: [{
+        userId:   user.id,
+        username: displayName,
+        avatar:   (profile?.avatar_url as string) ?? displayName[0]?.toUpperCase() ?? "?",
+        role:     "owner" as const,
+        online:   true,
+      }],
+    }));
+
     return newServer;
   }, []);
 
@@ -148,11 +198,19 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase
-      .from("server_members")
-      .delete()
-      .eq("server_id", serverId)
-      .eq("user_id", user.id);
+    // Safety: owners must transfer first
+    const myMembership = (serverMembers[serverId] ?? []).find((m) => m.userId === user.id);
+    if (myMembership?.role === "owner") return;
+
+    // If this is the last member, delete the server entirely instead of orphaning it
+    const server = servers.find((s) => s.id === serverId);
+    if (server && server.memberCount <= 1) {
+      await supabase.from("servers").delete().eq("id", serverId);
+    } else {
+      await supabase.from("server_members").delete()
+        .eq("server_id", serverId)
+        .eq("user_id", user.id);
+    }
 
     setServers((prev) => prev.filter((s) => s.id !== serverId));
     setServerMembers((prev) => {
@@ -160,7 +218,7 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
       delete next[serverId];
       return next;
     });
-  }, []);
+  }, [servers, serverMembers]);
 
   const deleteServer = useCallback(async (serverId: string) => {
     if (!isSupabaseReady()) return;
@@ -205,26 +263,75 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const transferOwnership = useCallback(async (serverId: string, newOwnerId: string) => {
+    if (!isSupabaseReady()) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase.from("server_members").update({ role: "owner" }).eq("server_id", serverId).eq("user_id", newOwnerId);
+    await supabase.from("server_members").update({ role: "admin" }).eq("server_id", serverId).eq("user_id", user.id);
+    await supabase.from("servers").update({ owner_id: newOwnerId, updated_at: new Date().toISOString() }).eq("id", serverId);
+
+    setServers((prev) => prev.map((s) => s.id === serverId ? { ...s, ownerId: newOwnerId } : s));
+    setServerMembers((prev) => ({
+      ...prev,
+      [serverId]: (prev[serverId] ?? []).map((m) =>
+        m.userId === newOwnerId ? { ...m, role: "owner" as const }
+        : m.userId === user.id ? { ...m, role: "admin" as const }
+        : m
+      ),
+    }));
+  }, []);
+
+  const kickMember = useCallback(async (serverId: string, userId: string) => {
+    if (!isSupabaseReady()) return;
+    await supabase.from("server_members").delete().eq("server_id", serverId).eq("user_id", userId);
+    setServerMembers((prev) => ({
+      ...prev,
+      [serverId]: (prev[serverId] ?? []).filter((m) => m.userId !== userId),
+    }));
+    setServers((prev) =>
+      prev.map((s) => s.id === serverId ? { ...s, memberCount: Math.max(1, (s.memberCount ?? 1) - 1) } : s)
+    );
+  }, []);
+
+  const updateMemberRole = useCallback(async (serverId: string, userId: string, role: MemberRole) => {
+    if (!isSupabaseReady()) return;
+    const { error } = await supabase.from("server_members").update({ role }).eq("server_id", serverId).eq("user_id", userId);
+    if (error) { console.error(error); return; }
+    setServerMembers((prev) => ({
+      ...prev,
+      [serverId]: (prev[serverId] ?? []).map((m) => m.userId === userId ? { ...m, role } : m),
+    }));
+  }, []);
+
   const loadMembers = useCallback(async (serverId: string) => {
     if (!isSupabaseReady()) return;
     if (serverMembers[serverId]) return; // already loaded
 
-    // Join server_members with profiles for display name + avatar
-    const { data, error } = await supabase
+    const { data: memberData, error: memberError } = await supabase
       .from("server_members")
-      .select("user_id, role, joined_at, profiles(display_name, avatar_url, color)")
+      .select("user_id, role")
       .eq("server_id", serverId);
 
-    if (error || !data) return;
+    if (memberError) { console.error("[ServersContext] loadMembers failed:", memberError.message); return; }
+    if (!memberData?.length) { setServerMembers((prev) => ({ ...prev, [serverId]: [] })); return; }
 
-    const members: ServerMember[] = data.map((row) => {
-      const profile = (row.profiles as unknown as Record<string, unknown> | null) ?? {};
-      const displayName = (profile.display_name as string) || "Unknown";
-      const avatarUrl = profile.avatar_url as string | undefined;
+    const userIds = memberData.map((m) => m.user_id as string);
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url")
+      .in("id", userIds);
+
+    const profileMap = new Map((profileData ?? []).map((p) => [p.id as string, p]));
+
+    const members: ServerMember[] = memberData.map((row) => {
+      const profile = profileMap.get(row.user_id as string);
+      const displayName = (profile?.display_name as string) || "Unknown";
       return {
         userId:   row.user_id as string,
         username: displayName,
-        avatar:   avatarUrl ?? displayName[0]?.toUpperCase() ?? "?",
+        avatar:   (profile?.avatar_url as string) ?? displayName[0]?.toUpperCase() ?? "?",
         role:     row.role as ServerMember["role"],
         online:   false,
       };
@@ -233,10 +340,46 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
     setServerMembers((prev) => ({ ...prev, [serverId]: members }));
   }, [serverMembers]);
 
+  const refreshMembers = useCallback(async (serverId: string) => {
+    if (!isSupabaseReady()) return;
+
+    const { data: memberData, error: memberError } = await supabase
+      .from("server_members")
+      .select("user_id, role")
+      .eq("server_id", serverId);
+
+    if (memberError) { console.error("[ServersContext] refreshMembers failed:", memberError.message); return; }
+    if (!memberData) return;
+
+    const userIds = memberData.map((m) => m.user_id as string);
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url")
+      .in("id", userIds);
+
+    const profileMap = new Map((profileData ?? []).map((p) => [p.id as string, p]));
+
+    const members: ServerMember[] = memberData.map((row) => {
+      const profile = profileMap.get(row.user_id as string);
+      const displayName = (profile?.display_name as string) || "Unknown";
+      return {
+        userId:   row.user_id as string,
+        username: displayName,
+        avatar:   (profile?.avatar_url as string) ?? displayName[0]?.toUpperCase() ?? "?",
+        role:     row.role as ServerMember["role"],
+        online:   false,
+      };
+    });
+
+    setServerMembers((prev) => ({ ...prev, [serverId]: members }));
+  }, []);
+
   return (
     <ServersContext.Provider value={{
-      servers, serverMembers, loading,
-      createServer, leaveServer, deleteServer, generateInvite, loadMembers, updateServer,
+      servers, serverMembers, serverRoles, loading,
+      createServer, leaveServer, deleteServer, generateInvite,
+      loadMembers, refreshMembers, updateServer, updateServerRoles,
+      transferOwnership, kickMember, updateMemberRole,
     }}>
       {children}
     </ServersContext.Provider>

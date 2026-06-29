@@ -126,17 +126,15 @@ export function BoardTabs() {
   const reorderBoards = useBoardStore((s) => s.reorderBoards);
   const hasAppBg = useHasAppBg();
   const [isDesktop, setIsDesktop] = useState(false);
-  useEffect(() => { setIsDesktop(!!window.electron); }, []);
-
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const inputValueRef = useRef(inputValue);
-  useEffect(() => { inputValueRef.current = inputValue; });
+  inputValueRef.current = inputValue;
   const updateBoard = useBoardStore((s) => s.updateBoard);
   const commitRename = useRef<(() => void) | null>(null);
 
-  // Only show personal boards — server boards are accessed via the server nav
-  const personalBoards = boards.filter((b) => !b.serverId);
+  // Only show active personal boards — server boards are via server nav
+  const personalBoards = boards.filter((b) => !b.serverId && !b.deletedAt);
   const boardIds = personalBoards.map((b) => b.id);
 
   const sensors = useSensors(
@@ -229,9 +227,10 @@ export function BoardTabs() {
 
         <button
           onClick={handleAddBoard}
+          disabled={personalBoards.length >= 3}
           style={noDrag}
-          className="ml-1 flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0"
-          title="New board"
+          className="ml-1 flex h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[var(--text-muted)]"
+          title={personalBoards.length >= 3 ? "Board limit reached (3 max)" : "New board"}
         >
           <Plus size={14} />
         </button>

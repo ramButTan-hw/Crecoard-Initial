@@ -19,6 +19,7 @@ export interface ServerMember {
   username: string;
   avatar: string;        // single char or URL
   role: MemberRole;
+  roleIds?: string[];    // custom ServerRole IDs assigned to this member
   online: boolean;
   status?: string;
 }
@@ -30,6 +31,17 @@ export interface RolePermission {
   canManageRoles: boolean;
   canManageMembers: boolean;
   canInviteMembers: boolean;
+  canViewPublishHistory: boolean;
+  canRollback: boolean;
+  canManageBackups: boolean;
+}
+
+export interface ServerBackup {
+  id: string;
+  slot: 1 | 2 | 3;
+  label: string | null;
+  creatorName: string;
+  createdAt: string;
 }
 
 export interface ServerRole {
@@ -38,4 +50,30 @@ export interface ServerRole {
   color: string;     // hex color
   permissions: RolePermission;
   isDefault?: boolean; // true for the built-in @everyone role
+}
+
+export type AuditAction =
+  | "box_moved"
+  | "board_item_added"
+  | "server_updated"
+  | "member_kicked"
+  | "member_role_changed"
+  | "theme_preset_applied";
+
+export interface AuditLogEntry {
+  id: string;
+  userId: string | null;
+  username: string;
+  action: AuditAction;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ServerPublish {
+  id: string;
+  serverId: string;
+  message: string | null;
+  publishedBy: string | null;
+  publisherName: string;
+  publishedAt: string;
 }

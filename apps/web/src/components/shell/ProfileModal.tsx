@@ -68,16 +68,6 @@ function getInitials(name: string) {
   return name.split(" ").slice(0, 2).map((p) => p[0] ?? "").join("").toUpperCase() || "?";
 }
 
-const inputCls = "w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] placeholder:text-[var(--text-muted)] transition-colors";
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{label}</p>
-      {children}
-    </div>
-  );
-}
 
 // ── Main modal ─────────────────────────────────────────────────────────────────
 
@@ -258,16 +248,23 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
                 <Pencil size={12} />
               </button>
             </div>
+            <input
+              value={draft.pronouns ?? ""}
+              onChange={(e) => setDraft((d) => ({ ...d, pronouns: e.target.value }))}
+              placeholder="pronouns (optional)"
+              maxLength={40}
+              className="text-xs text-[var(--text-muted)] bg-transparent outline-none border-b border-transparent focus:border-[var(--border)] placeholder:text-[var(--text-muted)] placeholder:opacity-40 w-48 transition-colors"
+            />
           </div>
         </div>
 
         {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="flex-1 min-h-0 flex flex-col">
           <div className="h-px flex-shrink-0" style={{ background: "var(--border)" }} />
 
           {/* Profile Board */}
-          <div className="px-5 pt-4 pb-4">
-            <div className="flex items-center gap-3 mb-2.5 flex-wrap">
+          <div className="flex-1 flex flex-col min-h-0 px-5 pt-4 pb-4">
+            <div className="flex items-center gap-3 mb-2.5 flex-wrap flex-shrink-0">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Profile Board</p>
               <span className="text-[10px] text-[var(--text-muted)] opacity-60">Click a block to open its editor · drag &amp; resize freely</span>
               <div className="flex items-center gap-1.5 ml-auto flex-wrap">
@@ -303,17 +300,11 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
                 }} />
               </div>
             </div>
-            <ProfileCanvas blocks={profileBlocks} onChange={setProfileBlocks} boardBg={boardBg} boardBgImage={boardBgImage} />
+            <div className="flex-1 min-h-0 flex flex-col">
+              <ProfileCanvas blocks={profileBlocks} onChange={setProfileBlocks} boardBg={boardBg} boardBgImage={boardBgImage} />
+            </div>
           </div>
 
-          {/* More Details */}
-          <div className="border-t px-5 pt-4 pb-6 flex flex-col gap-4" style={{ borderColor: "var(--border)" }}>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">More Details</p>
-            <Field label="Pronouns">
-              <input value={draft.pronouns ?? ""} onChange={(e) => setDraft((d) => ({ ...d, pronouns: e.target.value }))}
-                placeholder="they/them, she/her, he/him…" maxLength={40} className={inputCls} />
-            </Field>
-          </div>
         </div>
 
         {/* Footer */}
@@ -406,13 +397,13 @@ function ProfileCanvas({ blocks, onChange, boardBg, boardBgImage }: { blocks: Pr
 
   return (
     <>
-      {/* Canvas — always full width */}
+      {/* Canvas — fills available flex space */}
       <div
         ref={canvasRef}
-        className="rounded-xl overflow-hidden border border-[var(--border)]"
+        className="rounded-xl overflow-hidden border border-[var(--border)] flex-1"
         style={{
           position: "relative",
-          height: "min(520px, calc(90vh - 320px))",
+          minHeight: "200px",
           background: boardBgImage ? undefined : boardBg,
           backgroundImage: boardBgImage
             ? `radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px), url(${boardBgImage})`

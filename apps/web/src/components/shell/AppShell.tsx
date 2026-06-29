@@ -27,6 +27,8 @@ import { createSnapToGrid } from "@/lib/snapToGrid";
 import { CANVAS_WIDTH, CANVAS_HEIGHT, SNAP_UNIT } from "@/lib/boardConstants";
 import { applyThemeVars, applyAppFont, CSS_VAR_NAMES, ThemeVarMap } from "@/lib/appThemes";
 import { CollabContext, useCollabSessionSetup } from "@/lib/useCollabSession";
+import { getSelfIdentity } from "@/lib/collaboration";
+import { logServerAction } from "@/lib/serverAudit";
 import { ServerBoardContext } from "@/contexts/ServerBoardContext";
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { ServersProvider, useServers } from "@/contexts/ServersContext";
@@ -36,18 +38,12 @@ import { BoardChatProvider } from "@/contexts/BoardChatContext";
 import { FriendsProvider } from "@/contexts/FriendsContext";
 import { MOCK_SERVERS, MOCK_SERVER_MEMBERS, MOCK_SERVER_BOARDS } from "@/lib/mockServerData";
 import type { MemberRole } from "@/types/server";
+import { useWebhookItems } from "@/hooks/useWebhookItems";
 
 function getEventCoords(e: PointerEvent | MouseEvent | TouchEvent) {
   if ("changedTouches" in e) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
   return { x: e.clientX, y: e.clientY };
 }
-
-const DEMO_DMS: Record<string, { username: string; online: boolean }> = {
-  d1: { username: "alex_dev", online: true },
-  d2: { username: "sarah.m", online: false },
-  d3: { username: "jordan", online: true },
-};
-
 
 // Module-level RAF id — AppShell is a singleton so this is safe and avoids a ref.
 let _dragMoveRafId: number | null = null;
@@ -61,6 +57,7 @@ function AppShellInner() {
   // boardId of the currently-active server (real or mock); avoids re-querying MOCK_SERVERS in hot paths
   const [activeServerBoardId, setActiveServerBoardId] = useState<string | null>(null);
   const [openDmIds, setOpenDmIds] = useState<string[]>([]);
+  const dmInfoRef = useRef<Record<string, { username: string; online: boolean }>>({});
   const [showMembers, setShowMembers] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -74,13 +71,22 @@ function AppShellInner() {
   const [mounted, setMounted] = useState(false);
   // Server board context — role can be toggled in the header for preview
   const [viewerRole, setViewerRole] = useState<MemberRole>("admin");
+  // Draft/Live system
+  const [isDraftMode, setIsDraftMode] = useState(true);
+  const [hasLiveVersion, setHasLiveVersion] = useState(false);
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [publishMessage, setPublishMessage] = useState("");
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  // Set to true when owner/admin manually enters live preview so role-sync doesn't auto-flip them back
+  const intentionalLivePreview = useRef(false);
 
-  const { servers: realServers, serverMembers, loadMembers } = useServers();
-  const { identity } = useUser();
-  const { loadServerBoard } = useBoardSync();
+  const { servers: realServers, serverMembers, serverRoles: savedServerRoles, loadMembers } = useServers();
+  const { identity, loading: userLoading, isLoggedIn } = useUser();
+  const { loadServerBoard, loadLiveBoard, publishServerBoard } = useBoardSync();
   const { openConversation } = useMessaging();
 
-  const { addItem, moveBox, bringToFront, selectBox, setDraggingBlock, activeBoardId, zoom, themeVars, appFont, appBg, persistBoards, hydrateBoards, addBoardItem, injectServerBoards, setDragPos } = useBoardStore();
+  const { addItem, moveBox, bringToFront, selectBox, setDraggingBlock, activeBoardId, zoom, themeVars, appFont, appBg, persistBoards, hydrateBoards, hydrateUserTheme, setCurrentUserId, addBoardItem, injectServerBoards, setDragPos } = useBoardStore();
   const selectedBoardItemId = useBoardStore((s) => s.selectedBoardItemId);
   const boardThemeVars = useBoardStore((s) => {
     if (activeView === "server" && activeServerBoardId) {
@@ -93,18 +99,78 @@ function AppShellInner() {
   const board = useActiveBoard();
   const isFinished = board?.isFinished ?? false;
 
+  const webhookBoardId = activeView === "server" && activeServerId
+    ? (realServers.find((s) => s.id === activeServerId) ?? MOCK_SERVERS.find((s) => s.id === activeServerId))?.boardId ?? null
+    : activeBoardId ?? null;
+  useWebhookItems(webhookBoardId);
+
   const collabSession = useCollabSessionSetup(activeBoardId, board?.collabEnabled ?? false);
   const collabRef = useRef(collabSession);
   useEffect(() => { collabRef.current = collabSession; }, [collabSession]);
 
-  // Re-apply app theme vars and font on mount (SSR → client hydration)
+  const supabaseActive =
+    Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL!.includes("placeholder") &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL!.includes("your-project");
+
+  // Re-apply app theme vars and font on mount (SSR → client hydration).
+  // Skip localStorage board hydration when Supabase is configured — BoardSyncContext
+  // is the source of truth for logged-in users and will replace boards after auth.
   useEffect(() => {
     applyThemeVars(themeVars);
     applyAppFont(appFont);
-    hydrateBoards();
-    injectServerBoards(MOCK_SERVER_BOARDS);
+    if (!supabaseActive) {
+      hydrateBoards();
+      injectServerBoards(MOCK_SERVER_BOARDS);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Once Supabase confirms who the user is, scope theme storage to their account.
+  // We wait for userLoading=false so we never act on the initial guest identity.
+  const prevUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (userLoading) return; // Supabase hasn't resolved yet
+    const uid = identity.userId;
+    if (!uid || uid === prevUserIdRef.current) return;
+    prevUserIdRef.current = uid;
+    if (supabaseActive && isLoggedIn) {
+      setCurrentUserId(uid);
+      hydrateUserTheme(uid);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identity.userId, userLoading, isLoggedIn]);
+
+  // If the active server disappears from the member list (leave/kick/delete), go back to board view.
+  useEffect(() => {
+    if (activeView !== "server" || !activeServerId) return;
+    const isMock = MOCK_SERVERS.some((s) => s.id === activeServerId);
+    if (!isMock && !realServers.some((s) => s.id === activeServerId)) {
+      handleLeaveServer();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realServers, activeServerId, activeView]);
+
+  // Sync viewerRole from real membership whenever members load for the active server.
+  // Also switches to the correct draft/live view for the confirmed role.
+  useEffect(() => {
+    if (!activeServerId || activeView !== "server") return;
+    const myMembership = (serverMembers[activeServerId] ?? []).find((m) => m.userId === identity.userId);
+    if (!myMembership) return;
+    const newRole = myMembership.role;
+    setViewerRole(newRole);
+    const server = realServers.find((s) => s.id === activeServerId);
+    if (!server) return;
+    if (newRole === "member") {
+      // Members always see the live board
+      setIsDraftMode(false);
+      setActiveServerBoardId(server.boardId + ":live");
+    } else if (!intentionalLivePreview.current) {
+      // Owners/admins default to draft unless they intentionally entered live preview
+      setIsDraftMode(true);
+      setActiveServerBoardId(server.boardId);
+    }
+  }, [serverMembers, activeServerId, activeView, identity.userId, realServers]);
 
   // While in a server, apply the server board's theme to the document root so the
   // entire UI (sidebar, header, bottom bar) adopts the server's colour scheme.
@@ -171,6 +237,8 @@ function AppShellInner() {
   const snapToGrid = useMemo(() => createSnapToGrid(zoom), [zoom]);
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
+    // Block all drag interactions in live preview and for members
+    if (activeView === "server" && (!isDraftMode || (viewerRole !== "owner" && viewerRole !== "admin"))) return;
     const data = e.active.data.current;
     if (data?.kind === "block") {
       const id = e.active.id as string;
@@ -181,9 +249,10 @@ function AppShellInner() {
       bringToFront(effectiveBoardId, id);
       selectBox(id);
     }
-  }, [activeView, activeServerId, activeServerBoardId, activeBoardId, bringToFront, selectBox, setDraggingBlock]);
+  }, [activeView, activeServerId, activeServerBoardId, activeBoardId, isDraftMode, viewerRole, bringToFront, selectBox, setDraggingBlock]);
 
   const handleDragMove = useCallback((e: DragMoveEvent) => {
+    if (activeView === "server" && (!isDraftMode || (viewerRole !== "owner" && viewerRole !== "admin"))) return;
     if (e.active.data.current?.kind !== "block") return;
     if (_dragMoveRafId !== null) return;
     // Capture snapshot of event data before the RAF fires (dnd-kit may recycle the event)
@@ -205,9 +274,14 @@ function AppShellInner() {
         y: snap(box.y + deltaY / state.zoom),
       });
     });
-  }, [activeView, activeServerId, activeServerBoardId, setDragPos]);
+  }, [activeView, activeServerId, activeServerBoardId, isDraftMode, viewerRole, setDragPos]);
 
   const handleDragEnd = useCallback((e: DragEndEvent) => {
+    // Block all edits in live preview and for members
+    if (activeView === "server" && (!isDraftMode || (viewerRole !== "owner" && viewerRole !== "admin"))) {
+      setDraggingBlock(null);
+      return;
+    }
     // Cancel any pending RAF from handleDragMove so stale updates don't fire after drop
     if (_dragMoveRafId !== null) {
       cancelAnimationFrame(_dragMoveRafId);
@@ -295,6 +369,10 @@ function AppShellInner() {
           };
           state.addBoardItem(boardId, boardItem);
           collabRef.current.broadcastOp({ op: "addBoardItem", boardId, item: boardItem });
+          if (activeServerId) {
+            const ident = getSelfIdentity();
+            void logServerAction(activeServerId, ident.userId, ident.displayName ?? "Unknown", "board_item_added", { itemType: data.itemType as string });
+          }
         }
       }
     }
@@ -302,13 +380,18 @@ function AppShellInner() {
     // Catch-all: always clear draggingBlockId regardless of data.kind so the
     // store never gets stuck with a stale dragging block reference (Bug M9).
     setDraggingBlock(null);
-  }, [activeView, activeServerId, activeServerBoardId, moveBox, setDraggingBlock]);
+  }, [activeView, activeServerId, activeServerBoardId, isDraftMode, viewerRole, moveBox, setDraggingBlock]);
 
   const handleServerSelect = (serverId: string) => {
     const realServer = realServers.find((s) => s.id === serverId);
     const mockServer = MOCK_SERVERS.find((s) => s.id === serverId);
     const server = realServer ?? mockServer;
     if (!server) return;
+
+    // Reset draft/live state when switching servers
+    intentionalLivePreview.current = false;
+    setIsDraftMode(true);
+    setHasLiveVersion(false);
 
     // Track boardId so drag handlers and theme resolution don't re-query the lists
     setActiveServerBoardId(server.boardId);
@@ -329,8 +412,32 @@ function AppShellInner() {
           boxes: [],
         }]);
       }
-      // Then load the real board from Supabase in the background (replaces stub if it exists)
-      void loadServerBoard(realServer.boardId, realServer.id);
+      // Load draft and live board in parallel, then seed draft from live if draft is empty
+      void (async () => {
+        const [, hasLive] = await Promise.all([
+          loadServerBoard(realServer.boardId, realServer.id),
+          loadLiveBoard(realServer.boardId, realServer.id),
+        ]);
+        setHasLiveVersion(hasLive);
+        if (hasLive) {
+          const s = useBoardStore.getState();
+          const draft = s.serverBoards[realServer.boardId];
+          const live  = s.serverBoards[realServer.boardId + ":live"];
+          if (live && !draft?.boxes?.length && !draft?.boardItems?.length) {
+            useBoardStore.setState((st) => ({
+              serverBoards: {
+                ...st.serverBoards,
+                [realServer.boardId]: {
+                  ...live,
+                  id: realServer.boardId,
+                  boxes: (live.boxes ?? []).map((b) => ({ ...b })),
+                  boardItems: (live.boardItems ?? []).map((i) => ({ ...i })),
+                },
+              },
+            }));
+          }
+        }
+      })();
       void loadMembers(serverId);
     }
 
@@ -338,7 +445,13 @@ function AppShellInner() {
     if (serverId !== activeServerId) {
       if (realServer) {
         const myMembership = (serverMembers[serverId] ?? []).find((m) => m.userId === identity.userId);
-        setViewerRole(myMembership?.role ?? "member");
+        const tentativeRole = myMembership?.role ?? "member";
+        setViewerRole(tentativeRole);
+        // Members always start in live view
+        if (tentativeRole === "member") {
+          setIsDraftMode(false);
+          setActiveServerBoardId(server.boardId + ":live");
+        }
       } else {
         const myMembership = MOCK_SERVER_MEMBERS[serverId]?.find((m) => m.userId === "local-user");
         setViewerRole(myMembership?.role ?? "member");
@@ -356,7 +469,51 @@ function AppShellInner() {
     setActiveView("board");
     setActiveServerId(null);
     setActiveServerBoardId(null);
+    intentionalLivePreview.current = false;
     applyThemeVars(themeVars); // Restore personal theme immediately
+  };
+
+  const handleToggleMode = () => {
+    if (!activeServerId) return;
+    const server = realServers.find((s) => s.id === activeServerId);
+    if (!server) return;
+    if (isDraftMode) {
+      intentionalLivePreview.current = true;
+      setIsDraftMode(false);
+      setActiveServerBoardId(server.boardId + ":live");
+    } else {
+      intentionalLivePreview.current = false;
+      setIsDraftMode(true);
+      setActiveServerBoardId(server.boardId);
+    }
+  };
+
+  const handleConfirmPublish = async () => {
+    if (!activeServerId) return;
+    const server = realServers.find((s) => s.id === activeServerId);
+    if (!server) return;
+    setIsPublishing(true);
+    setPublishError(null);
+    const result = await publishServerBoard(
+      server.boardId,
+      server.id,
+      identity.userId,
+      identity.displayName ?? "Unknown",
+      publishMessage.trim() || undefined,
+    );
+    if (result.success) {
+      setHasLiveVersion(true);
+      setPublishMessage("");
+      setPublishModalOpen(false);
+      setPublishError(null);
+    } else {
+      setPublishError(
+        result.error === "migration_missing"
+          ? "Run 20260629000002_server_publishes.sql in your Supabase SQL editor first."
+          : (result.error ?? "Publish failed"),
+      );
+    }
+    setIsPublishing(false);
   };
 
   const handleViewChange = (v: "board" | "server") => {
@@ -368,7 +525,8 @@ function AppShellInner() {
     setActiveView(v);
   };
 
-  const handleDmSelect = (dmId: string) => {
+  const handleDmSelect = (dmId: string, username?: string, online?: boolean) => {
+    if (username) dmInfoRef.current[dmId] = { username, online: online ?? false };
     setOpenDmIds((prev) => prev.includes(dmId) ? prev : [...prev, dmId]);
   };
 
@@ -438,18 +596,37 @@ function AppShellInner() {
           const mockServer = MOCK_SERVERS.find((s) => s.id === activeServerId);
           const server = realServer ?? mockServer;
           if (!server) return null;
-          const members = realServer
+          const rawMembers = realServer
             ? (serverMembers[activeServerId] ?? [])
             : (MOCK_SERVER_MEMBERS[activeServerId] ?? []);
+          // Always show the current user as online
+          const members = rawMembers.map((m) =>
+            m.userId === identity.userId ? { ...m, online: true } : m
+          );
           const onlineCount = members.filter((m) => m.online).length;
+          const isRealServer = !!realServer;
+          const canEdit = viewerRole === "owner" || viewerRole === "admin";
+          const serverRoles = savedServerRoles[activeServerId] ?? server.roles ?? [];
+          const everyoneRoleId = serverRoles.find((r) => r.isDefault)?.id;
+          const myMember = members.find((m) => m.userId === (realServer ? identity.userId : "local-user"));
+          const viewerRoleIds = [
+            ...(myMember?.roleIds ?? []),
+            ...(everyoneRoleId ? [everyoneRoleId] : []),
+          ];
           return (
             <ServerBoardContext.Provider key={activeServerId} value={{
               serverId: activeServerId,
               boardId: server.boardId,
               serverName: server.name,
               viewerRole,
+              viewerRoleIds,
+              serverRoles,
               viewerId: realServer ? identity.userId : "local-user",
               members,
+              isDraftMode,
+              hasLiveVersion,
+              onToggleMode: isRealServer ? handleToggleMode : () => {},
+              onPublish: isRealServer ? () => setPublishModalOpen(true) : () => {},
             }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                 <ServerBoardHeader
@@ -463,14 +640,23 @@ function AppShellInner() {
                   members={members}
                   showMembers={showMembers}
                   onToggleMembers={() => setShowMembers((v) => !v)}
-                  onRoleToggle={setViewerRole}
                   onViewProfile={(u) => setViewingUser(u)}
                 />
                 <CollabContext.Provider value={collabSession}>
                   <DndContext id="dnd-server-canvas" sensors={sensors} modifiers={[snapToGrid]} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragEnd={handleDragEnd}>
-                    <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
-                      {(viewerRole === "owner" || viewerRole === "admin") && <ItemPalette />}
+                    <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}>
+                      {isDraftMode && canEdit && <ItemPalette />}
                       <BoardCanvas />
+                      {selectedBoxId && !expandedBoxId && !selectedBoardItemId && isDraftMode && canEdit && <StylePanel boxId={selectedBoxId} />}
+                      {selectedBoardItemId && !expandedBoxId && isDraftMode && canEdit && <BoardItemPanel />}
+                      {!isDraftMode && !hasLiveVersion && (
+                        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, pointerEvents: "none" }}>
+                          <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Nothing published yet.</p>
+                          {canEdit && (
+                            <p style={{ color: "var(--text-muted)", fontSize: 12, opacity: 0.6 }}>Publish the draft to make it visible to members.</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </DndContext>
                 </CollabContext.Provider>
@@ -509,8 +695,8 @@ function AppShellInner() {
         <DmPopout
           key={dmId}
           dmId={dmId}
-          username={DEMO_DMS[dmId]?.username ?? dmId}
-          online={DEMO_DMS[dmId]?.online ?? false}
+          username={dmInfoRef.current[dmId]?.username ?? dmId}
+          online={dmInfoRef.current[dmId]?.online ?? false}
           index={idx}
           onClose={() => setOpenDmIds((prev) => prev.filter((id) => id !== dmId))}
         />
@@ -562,11 +748,11 @@ function AppShellInner() {
           onClose={() => setViewingUser(null)}
           onDm={
         viewingUser.dmId
-          ? () => { handleDmSelect(viewingUser.dmId!); setViewingUser(null); setShowFriends(false); }
+          ? () => { handleDmSelect(viewingUser.dmId!, viewingUser.displayName, viewingUser.online); setViewingUser(null); setShowFriends(false); }
           : viewingUser.userId && viewingUser.userId !== identity.userId
           ? async () => {
               const convId = await openConversation(viewingUser.userId!);
-              if (convId) { handleDmSelect(convId); setViewingUser(null); }
+              if (convId) { handleDmSelect(convId, viewingUser.displayName, viewingUser.online); setViewingUser(null); }
             }
           : undefined
       }
@@ -575,6 +761,50 @@ function AppShellInner() {
 
       {showUserSettings && (
         <SettingsModal onClose={() => setShowUserSettings(false)} />
+      )}
+
+      {/* Publish modal */}
+      {publishModalOpen && (
+        <div className="fixed inset-0 z-[1010] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div
+            className="w-[420px] rounded-2xl border border-[var(--border)] shadow-2xl p-6"
+            style={{ background: "var(--surface-raised)" }}
+          >
+            <h3 className="text-base font-semibold text-[var(--text-primary)] mb-1">Publish Board</h3>
+            <p className="mb-5 text-xs text-[var(--text-muted)]">
+              Make the current draft visible to all server members.
+            </p>
+            <textarea
+              className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors mb-4"
+              rows={3}
+              placeholder="Describe what changed… (optional)"
+              value={publishMessage}
+              onChange={(e) => setPublishMessage(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void handleConfirmPublish(); }}
+              autoFocus
+            />
+            {publishError && (
+              <p className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400 leading-relaxed">
+                {publishError}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setPublishModalOpen(false); setPublishMessage(""); setPublishError(null); }}
+                className="px-4 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleConfirmPublish()}
+                disabled={isPublishing}
+                className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-all"
+              >
+                {isPublishing ? "Publishing…" : "Publish"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -10,14 +10,15 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   X, Pin, Grid3X3, Upload, AlignLeft, AlignCenter, AlignRight, Trash2,
   CopyPlus, ArrowUp, ArrowDown, RefreshCw, LayoutGrid, Minus, Plus,
-  Lock, LockOpen, Eye, EyeOff,
+  Lock, LockOpen, Eye, EyeOff, ShieldCheck,
 } from "lucide-react";
 import {
   useBoardStore, useActiveBoard,
   BlockItem, Box, ItemType, BoxStyle,
 } from "@/store/boardStore";
-import { useCanEditBoard, useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
-import { ContextMenu } from "@/components/ui/ContextMenu";
+import { useCanEditBoard, useServerBoard, useServerBoardData, roleAllowed } from "@/contexts/ServerBoardContext";
+import { ItemPermissionModal } from "./PermissionModal";
+import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { ItemRenderer, ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel, ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, KanbanStylePanel } from "@/components/items/ItemRenderer";
 import { FontPicker } from "@/components/ui/FontPicker";
 import { loadGoogleFont } from "@/lib/fonts";
@@ -47,7 +48,9 @@ const DEFAULT_SIZES: Record<ItemType, { w: number; h: number }> = {
   playlist: { w: 420, h: 420 },
   kanban:   { w: 700, h: 460 },
   chat:     { w: 380, h: 440 },
-  filebank: { w: 360, h: 340 },
+  filebank:     { w: 360, h: 340 },
+  "embed-card":  { w: 320, h: 220 },
+  "tracker-gg":  { w: 300, h: 260 },
 };
 
 function getDefaultLayout(item: BlockItem, idx: number) {
@@ -111,8 +114,22 @@ function ItemCard({
   onToggleFocus: () => void;
   onToggleSettingsLock: () => void;
 }) {
-  const { resizeExpandedItem } = useBoardStore();
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const { resizeExpandedItem, updateItem } = useBoardStore();
+  const { serverId, viewerRole, viewerRoleIds } = useServerBoard();
+  const box = useBoardStore((s) =>
+    s.boards.find((b) => b.id === boardId)?.boxes.find((bx) => bx.id === boxId) ??
+    s.serverBoards[boardId]?.boxes.find((bx) => bx.id === boxId)
+  );
+  const [permModalOpen, setPermModalOpen] = useState(false);
+
+  // Effective permissions: box-level interact gates all items, item-level perms further restrict
+  const canInteract = !isFinished &&
+    roleAllowed(viewerRole, viewerRoleIds, box?.perms?.interact) &&
+    roleAllowed(viewerRole, viewerRoleIds, item.perms?.interact);
+  const canInput = !isFinished &&
+    roleAllowed(viewerRole, viewerRoleIds, box?.perms?.interact) &&
+    roleAllowed(viewerRole, viewerRoleIds, item.perms?.input);
+
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: item.id,
     disabled: isFinished,
@@ -201,12 +218,10 @@ function ItemCard({
         boxShadow: isFocused ? "0 0 0 2px var(--accent), 0 0 20px var(--accent)55" : undefined,
       }}
       onClick={() => onSelect()}
-      onContextMenu={(e) => {
+      onContextMenuCapture={(e) => {
         if (isFinished) return;
         e.preventDefault();
-        e.stopPropagation();
         onSelect();
-        setCtxMenu({ x: e.clientX, y: e.clientY });
       }}
     >
 
@@ -248,76 +263,40 @@ function ItemCard({
           item={item} boardId={boardId} boxId={boxId} vars={vars}
           collapsed={false} isFinished={isFinished}
           containerW={displayW} containerH={displayH}
+          canInteract={canInteract} canInput={canInput}
+          extraContextItems={!isFinished ? ([
+            { label: isFocused ? "Unfocus" : "Focus", icon: isFocused ? <EyeOff size={14} /> : <Eye size={14} />, onClick: onToggleFocus },
+            { label: item.settingsLocked ? "Unlock settings" : "Lock settings", icon: item.settingsLocked ? <LockOpen size={14} /> : <Lock size={14} />, onClick: onToggleSettingsLock },
+            "separator" as const,
+            { label: item.showInCollapsed ? "Unpin from summary" : "Pin to summary", icon: <Pin size={14} />, onClick: onTogglePin },
+            "separator" as const,
+            { label: "Duplicate", icon: <CopyPlus size={14} />, onClick: onDuplicate },
+            { label: "Move up", icon: <ArrowUp size={14} />, onClick: onMoveUp },
+            { label: "Move down", icon: <ArrowDown size={14} />, onClick: onMoveDown },
+            "separator" as const,
+            { label: "Reset size", icon: <RefreshCw size={14} />, onClick: () => { const sz = DEFAULT_SIZES[item.type] ?? { w: 280, h: 120 }; resizeExpandedItem(boardId, boxId, item.id, sz.w, sz.h); } },
+            { label: "Reset position", icon: <LayoutGrid size={14} />, onClick: onResetLayout },
+            "separator" as const,
+            { label: "Delete item", icon: <Trash2 size={14} />, danger: true, onClick: onDelete },
+            ...(serverId && viewerRole === "owner" ? [
+              "separator" as const,
+              { label: "Set permissions", icon: <ShieldCheck size={14} />, onClick: () => setPermModalOpen(true) },
+            ] : []),
+          ] as ContextMenuEntry[]) : undefined}
         />
+        {permModalOpen && (
+          <ItemPermissionModal
+            targetLabel={item.type}
+            initialPerms={item.perms}
+            onSave={(perms) => updateItem(boardId, boxId, item.id, { perms })}
+            onClose={() => setPermModalOpen(false)}
+          />
+        )}
       </div>
 
       {/* Resize handle */}
       {!isFinished && (
         <ResizeHandle onMouseDown={onResizeMouseDown} isText={isText} />
-      )}
-
-      {ctxMenu && (
-        <ContextMenu
-          x={ctxMenu.x}
-          y={ctxMenu.y}
-          onClose={() => setCtxMenu(null)}
-          items={[
-            {
-              label: isFocused ? "Unfocus" : "Focus",
-              icon: isFocused ? <EyeOff size={14} /> : <Eye size={14} />,
-              onClick: onToggleFocus,
-            },
-            {
-              label: item.settingsLocked ? "Unlock settings" : "Lock settings",
-              icon: item.settingsLocked ? <LockOpen size={14} /> : <Lock size={14} />,
-              onClick: onToggleSettingsLock,
-            },
-            "separator",
-            {
-              label: item.showInCollapsed ? "Unpin from summary" : "Pin to summary",
-              icon: <Pin size={14} />,
-              onClick: onTogglePin,
-            },
-            "separator",
-            {
-              label: "Duplicate",
-              icon: <CopyPlus size={14} />,
-              shortcut: "⌘D",
-              onClick: onDuplicate,
-            },
-            {
-              label: "Move up",
-              icon: <ArrowUp size={14} />,
-              onClick: onMoveUp,
-            },
-            {
-              label: "Move down",
-              icon: <ArrowDown size={14} />,
-              onClick: onMoveDown,
-            },
-            "separator",
-            {
-              label: "Reset size",
-              icon: <RefreshCw size={14} />,
-              onClick: () => {
-                const sz = DEFAULT_SIZES[item.type] ?? { w: 280, h: 120 };
-                resizeExpandedItem(boardId, boxId, item.id, sz.w, sz.h);
-              },
-            },
-            {
-              label: "Reset position",
-              icon: <LayoutGrid size={14} />,
-              onClick: onResetLayout,
-            },
-            "separator",
-            {
-              label: "Delete item",
-              icon: <Trash2 size={14} />,
-              danger: true,
-              onClick: onDelete,
-            },
-          ]}
-        />
       )}
     </div>
   );

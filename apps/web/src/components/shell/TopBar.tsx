@@ -9,6 +9,7 @@ import {
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
 import { useHasAppBg } from "@/lib/useHasAppBg";
 import { useCollab } from "@/lib/useCollabSession";
+import { useBoardSync } from "@/contexts/BoardSyncContext";
 import { ThemePanel } from "./ThemePanel";
 import { ShareModal } from "./ShareModal";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ export function TopBar() {
   const hasAppBg = useHasAppBg();
   const board = useActiveBoard();
   const { members, self, isConnected } = useCollab();
+  const { saveStatus, saveError } = useBoardSync();
 
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(board?.name ?? "");
@@ -109,6 +111,24 @@ export function TopBar() {
             </button>
           )}
         </div>
+
+        {/* Save status */}
+        {saveStatus !== "idle" && (
+          <span
+            className={cn(
+              "text-xs font-medium transition-colors duration-300 select-none",
+              saveStatus === "saving" ? "text-[var(--text-muted)]"
+              : saveStatus === "error" ? "text-red-400"
+              : "text-green-400",
+            )}
+            title={saveStatus === "error" && saveError ? saveError : undefined}
+            style={isDesktop ? { WebkitAppRegion: "no-drag" } as React.CSSProperties : undefined}
+          >
+            {saveStatus === "saving" ? "Saving…"
+             : saveStatus === "error" ? "Save failed — retrying"
+             : "Saved"}
+          </span>
+        )}
 
         {/* Public / Private */}
         {!isFinished && (

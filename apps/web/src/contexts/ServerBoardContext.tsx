@@ -2,16 +2,49 @@
 
 import { createContext, useContext } from "react";
 import { useBoardStore } from "@/store/boardStore";
-import type { MemberRole, ServerMember } from "@/types/server";
+import type { BoxPerms, ItemPerms } from "@/store/boardStore";
+import type { MemberRole, ServerMember, ServerRole } from "@/types/server";
+
+// ─── Role helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * True when the viewer is allowed to perform an action.
+ * - null viewerRole / "owner" → always allowed
+ * - undefined allowed → everyone allowed (no restriction)
+ * - empty [] allowed → owner-only (no non-owner role qualifies)
+ * - otherwise → viewer must hold at least one of the listed ServerRole IDs
+ */
+export function roleAllowed(
+  viewerRole: MemberRole | null,
+  viewerRoleIds: string[],
+  allowed?: string[]
+): boolean {
+  if (viewerRole === null || viewerRole === "owner") return true;
+  if (!allowed) return true;
+  if (allowed.length === 0) return false;
+  return allowed.some((id) => viewerRoleIds.includes(id));
+}
 
 export interface ServerBoardContextValue {
   serverId: string | null;
-  /** The board ID belonging to this server — null in personal view */
+  /** The draft board ID belonging to this server — null in personal view */
   boardId: string | null;
   serverName: string;
   viewerRole: MemberRole | null;
+  /** Custom ServerRole IDs assigned to the viewer (always includes the @everyone role if one exists) */
+  viewerRoleIds: string[];
+  /** All custom roles defined for this server */
+  serverRoles: ServerRole[];
   viewerId: string;
   members: ServerMember[];
+  /** True while editing the draft; false when previewing or viewing the live snapshot */
+  isDraftMode: boolean;
+  /** True if at least one publish exists for this server */
+  hasLiveVersion: boolean;
+  /** Toggle between draft editing and live preview (owners/admins only) */
+  onToggleMode: () => void;
+  /** Open the publish modal (owners/admins only) */
+  onPublish: () => void;
 }
 
 export const ServerBoardContext = createContext<ServerBoardContextValue>({
@@ -19,8 +52,14 @@ export const ServerBoardContext = createContext<ServerBoardContextValue>({
   boardId: null,
   serverName: "",
   viewerRole: null,
+  viewerRoleIds: [],
+  serverRoles: [],
   viewerId: "local-user",
   members: [],
+  isDraftMode: true,
+  hasLiveVersion: false,
+  onToggleMode: () => {},
+  onPublish: () => {},
 });
 
 export function useServerBoard() {
@@ -32,8 +71,17 @@ export function useServerBoardContext() {
   return useContext(ServerBoardContext);
 }
 
-/** Returns the server board object for the current server context, or undefined in personal view. */
+/** Returns the active server board (draft or live) for the current server context. */
 export function useServerBoardData() {
+  const { boardId, isDraftMode } = useContext(ServerBoardContext);
+  return useBoardStore((s) => {
+    if (!boardId) return undefined;
+    return isDraftMode ? s.serverBoards[boardId] : s.serverBoards[boardId + ":live"];
+  });
+}
+
+/** Returns the draft board regardless of current view mode. */
+export function useServerDraftData() {
   const { boardId } = useContext(ServerBoardContext);
   return useBoardStore((s) => (boardId ? s.serverBoards[boardId] : undefined));
 }
@@ -82,4 +130,29 @@ export function useCanInviteMembers() {
 export function useCanManageMembers() {
   const { viewerRole } = useServerBoardContext();
   return viewerRole === "owner";
+}
+
+/**
+ * Resolves effective permissions for a box against the current viewer's role.
+ * Undefined allowed set → everyone is allowed.
+ */
+export function useBoxPerms(perms?: BoxPerms) {
+  const { viewerRole, viewerRoleIds } = useServerBoardContext();
+  return {
+    canEdit: roleAllowed(viewerRole, viewerRoleIds, perms?.edit),
+    canInteract: roleAllowed(viewerRole, viewerRoleIds, perms?.interact),
+  };
+}
+
+/**
+ * Resolves effective permissions for a block item against the current viewer's role.
+ * Undefined allowed set → everyone is allowed.
+ */
+export function useItemPerms(perms?: ItemPerms) {
+  const { viewerRole, viewerRoleIds } = useServerBoardContext();
+  return {
+    canEdit: roleAllowed(viewerRole, viewerRoleIds, perms?.edit),
+    canInput: roleAllowed(viewerRole, viewerRoleIds, perms?.input),
+    canInteract: roleAllowed(viewerRole, viewerRoleIds, perms?.interact),
+  };
 }

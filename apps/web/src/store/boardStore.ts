@@ -6,13 +6,86 @@ import {
   DEFAULT_THEME_VARS, DEFAULT_APP_BG, applyThemeVars, applyAppFont,
 } from "@/lib/appThemes";
 
+// ─── Permission types ─────────────────────────────────────────────────────────
+
+/**
+ * Explicit set of ServerRole IDs allowed for a given action.
+ * undefined = everyone (no restriction).
+ * Owner always retains access regardless of the set.
+ * Empty array [] = owner-only.
+ */
+export interface ItemPerms {
+  edit?: string[];     // ServerRole IDs that can change settings/style
+  input?: string[];    // ServerRole IDs that can type/enter text
+  interact?: string[]; // ServerRole IDs that can click/toggle/play
+}
+
+export interface BoxPerms {
+  edit?: string[];     // ServerRole IDs that can add/remove/move items
+  interact?: string[]; // ServerRole IDs that can interact with items inside
+}
+
 // ─── Item types ───────────────────────────────────────────────────────────────
 
 export type ItemType =
   | "text" | "list" | "embed" | "timer"
   | "image" | "graph" | "api" | "calendar" | "table" | "divider" | "widget"
   | "playlist" | "kanban"
-  | "chat" | "filebank";
+  | "chat" | "filebank"
+  | "embed-card"
+  | "tracker-gg";
+
+// ─── Tracker.gg integration ───────────────────────────────────────────────────
+export type TrackerGGGame =
+  | "valorant" | "apex" | "rocket-league" | "fortnite" | "csgo";
+
+export type TrackerGGPlatform =
+  | "riot" | "origin" | "psn" | "xbl" | "epic" | "steam";
+
+export interface TrackerGGConfig {
+  game: TrackerGGGame;
+  platform: TrackerGGPlatform;
+  username: string;
+}
+
+export interface TrackerGGStat {
+  key: string;
+  label: string;
+  value: string;
+  percentile?: number;
+  iconUrl?: string;
+}
+
+export interface TrackerGGData {
+  username: string;
+  avatarUrl?: string;
+  rankLabel?: string;
+  rankIconUrl?: string;
+  accentColor: string;
+  stats: TrackerGGStat[];
+  fetchedAt: number; // ms timestamp — used to decide if stale
+  error?: string;
+}
+
+// ─── Embed card (webhook / integration display) ───────────────────────────────
+export interface EmbedCardField {
+  label: string;
+  value: string;
+  inline?: boolean;
+}
+
+export interface EmbedCardData {
+  title?: string;
+  description?: string;
+  iconUrl?: string;
+  accentColor?: string;
+  fields?: EmbedCardField[];
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  footer?: string;
+  timestamp?: string; // ISO
+  source?: string;    // "tracker-gg" | "github" | "custom" etc.
+}
 
 // ─── Chat item ────────────────────────────────────────────────────────────────
 export interface ChatMessage {
@@ -205,8 +278,16 @@ export interface BlockItem {
   listProgressShowLabel?: boolean;
   listProgressPosition?: "top" | "bottom";
 
+  // tracker-gg integration
+  trackerGG?: TrackerGGConfig;
+  trackerGGData?: TrackerGGData;
+
+  // embed-card (webhook / integration display)
+  embedCard?: EmbedCardData;
+
   // Settings lock — prevents style panel changes until unlocked
   settingsLocked?: boolean;
+  perms?: ItemPerms;
   // Focus mode — when true, all other items in the same view are dimmed
   isFocused?: boolean;
 
@@ -508,6 +589,7 @@ export interface Box {
   height: number;
   zIndex: number;
   locked: boolean;
+  perms?: BoxPerms;
   title: string;
   isExpanded: boolean;
   items: BlockItem[];
@@ -568,20 +650,44 @@ export interface Board {
   boardThemeVars?: ThemeVarMap;
   collabEnabled?: boolean;
   serverId?: string;     // set when this board belongs to a server
+  webhookToken?: string; // secret token for incoming webhooks
   boxes: Box[];
   boardItems?: BoardLevelItem[];
   createdAt: number;
   updatedAt: number;
+  deletedAt?: number;    // set when soft-deleted; absent or undefined means active
 }
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
 
+function isSupabaseMode(): boolean {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  return Boolean(url) && !url.includes("placeholder") && !url.includes("your-project");
+}
+
+// The last confirmed Supabase user ID, written by setCurrentUserId so the next
+// page load can immediately read the user-specific theme without waiting for auth.
+function getLastUserId(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("plancraft-last-user-id");
+}
+
 function getSavedThemeVars(): ThemeVarMap {
   if (typeof window === "undefined") return DEFAULT_THEME_VARS;
+  if (isSupabaseMode()) {
+    // In Supabase mode, skip the generic key — it may belong to a different user.
+    // Read from the user-specific key saved in the last session, or default.
+    const uid = getLastUserId();
+    if (uid) {
+      try {
+        const raw = localStorage.getItem(`plancraft-theme-vars-${uid}`);
+        if (raw) return { ...DEFAULT_THEME_VARS, ...(JSON.parse(raw) as ThemeVarMap) };
+      } catch {}
+    }
+    return DEFAULT_THEME_VARS;
+  }
   try {
     const raw = localStorage.getItem("plancraft-theme-vars");
-    // Merge with defaults so new ThemeVarMap fields (added after a save) get their
-    // default values rather than being undefined in old saved data.
     return raw ? { ...DEFAULT_THEME_VARS, ...(JSON.parse(raw) as ThemeVarMap) } : DEFAULT_THEME_VARS;
   } catch { return DEFAULT_THEME_VARS; }
 }
@@ -596,14 +702,31 @@ function getSavedThemes(): SavedTheme[] {
 
 function getSavedFont(): string {
   if (typeof window === "undefined") return "Inter";
+  if (isSupabaseMode()) {
+    const uid = getLastUserId();
+    if (uid) {
+      const font = localStorage.getItem(`plancraft-app-font-${uid}`);
+      if (font) return font;
+    }
+    return "Inter";
+  }
   return localStorage.getItem("plancraft-app-font") ?? "Inter";
 }
 
 function getSavedAppBg(): AppBgConfig {
   if (typeof window === "undefined") return { ...DEFAULT_APP_BG };
+  if (isSupabaseMode()) {
+    const uid = getLastUserId();
+    if (uid) {
+      try {
+        const raw = localStorage.getItem(`plancraft-app-bg-${uid}`);
+        if (raw) return { ...DEFAULT_APP_BG, ...(JSON.parse(raw) as Partial<AppBgConfig>) };
+      } catch {}
+    }
+    return { ...DEFAULT_APP_BG };
+  }
   try {
     const raw = localStorage.getItem("plancraft-app-bg");
-    // Merge with defaults so old saved data without new fields still works
     return raw ? { ...DEFAULT_APP_BG, ...(JSON.parse(raw) as Partial<AppBgConfig>) } : { ...DEFAULT_APP_BG };
   } catch { return { ...DEFAULT_APP_BG }; }
 }
@@ -654,11 +777,19 @@ interface BoardState {
   savedThemes: SavedTheme[];
   appFont: string;
   appBg: AppBgConfig;
+  /** Set by AppShell after Supabase auth loads — used to scope theme storage to the account */
+  currentUserId: string | null;
+
+  /** Pending undo toast — set by removeBoard, cleared by restoreBoard or clearTrashToast */
+  trashToast: { boardId: string; boardName: string } | null;
+  clearTrashToast: () => void;
 
   // Board
   addBoard: (name?: string) => void;
   createBoardFromTemplate: (template: import("@/lib/communityTemplates").CommunityBoard) => void;
   removeBoard: (id: string) => void;
+  restoreBoard: (id: string) => void;
+  hardDeleteBoard: (id: string) => void;
   setActiveBoard: (id: string) => void;
   updateBoard: (id: string, patch: Partial<Omit<Board, "id" | "boxes">>) => void;
   finishBoard: (id: string) => void;
@@ -735,6 +866,9 @@ interface BoardState {
   zoomAtCanvasCenter: (newZoom: number) => void;
 
   // Appearance actions
+  setCurrentUserId: (uid: string | null) => void;
+  /** Load theme from user-specific localStorage (or defaults if none saved). */
+  hydrateUserTheme: (uid: string) => void;
   setThemeVars: (vars: ThemeVarMap) => void;        // app-level (Settings)
   setBoardTheme: (boardId: string, vars: ThemeVarMap) => void; // board-level (ThemePanel)
   clearBoardTheme: (boardId: string) => void;
@@ -751,6 +885,11 @@ interface BoardState {
   // Board persistence
   persistBoards: () => void;
   hydrateBoards: () => void;
+
+  // Webhooks
+  setWebhookToken: (boardId: string, token: string | undefined) => void;
+  addWebhookItems: (boardId: string, items: Omit<BoardLevelItem, "id" | "zIndex">[]) => void;
+
 }
 
 export interface UserFont {
@@ -812,17 +951,26 @@ export const useBoardStore = create<BoardState>()(
     savedThemes: getSavedThemes(),
     appFont: getSavedFont(),
     appBg: getSavedAppBg(),
+    currentUserId: null,
+    trashToast: null,
     userFonts: [],
 
-    addBoard: (name) =>
+    clearTrashToast: () => set((s) => { s.trashToast = null; }),
+
+    addBoard: (name) => {
       set((s) => {
+        const personal = s.boards.filter((b) => !b.serverId && !b.deletedAt);
+        if (personal.length >= 3) return;
         const b = makeDefaultBoard(name);
         s.boards.push(b);
         s.activeBoardId = b.id;
-      }),
+      });
+    },
 
     createBoardFromTemplate: (template) =>
       set((s) => {
+        const personal = s.boards.filter((b) => !b.serverId && !b.deletedAt);
+        if (personal.length >= 3) return;
         const boardId = crypto.randomUUID();
         const board: Board = {
           ...makeDefaultBoard(template.name),
@@ -853,9 +1001,35 @@ export const useBoardStore = create<BoardState>()(
 
     removeBoard: (id) =>
       set((s) => {
+        const board = s.boards.find((b) => b.id === id);
+        if (!board) return;
+        board.deletedAt = Date.now();
+        board.updatedAt = Date.now();
+        s.trashToast = { boardId: id, boardName: board.name };
+        if (s.activeBoardId === id) {
+          const next = s.boards.find((b) => b.id !== id && !b.serverId && !b.deletedAt);
+          s.activeBoardId = next?.id ?? "";
+          s.selectedBoxId = null;
+          s.expandedBoxId = null;
+        }
+      }),
+
+    restoreBoard: (id) =>
+      set((s) => {
+        const board = s.boards.find((b) => b.id === id);
+        if (!board) return;
+        delete board.deletedAt;
+        board.updatedAt = Date.now();
+        s.trashToast = null;
+        s.activeBoardId = id;
+      }),
+
+    hardDeleteBoard: (id) =>
+      set((s) => {
         s.boards = s.boards.filter((b) => b.id !== id);
         if (s.activeBoardId === id) {
-          s.activeBoardId = s.boards.length > 0 ? s.boards[0].id : "";
+          const next = s.boards.find((b) => !b.serverId && !b.deletedAt);
+          s.activeBoardId = next?.id ?? "";
           s.selectedBoxId = null;
           s.expandedBoxId = null;
         }
@@ -908,11 +1082,13 @@ export const useBoardStore = create<BoardState>()(
         item.tableMemberRows[userId].push({ ...row, id: crypto.randomUUID() });
       }),
 
-    updateBoard: (id, patch) =>
+    updateBoard: (id, patch) => {
       set((s) => {
         const b = findBoardAny(s, id);
-        if (b) Object.assign(b, patch, { updatedAt: Date.now() });
-      }),
+        if (!b) return;
+        Object.assign(b, patch, { updatedAt: Date.now() });
+      });
+    },
 
     finishBoard: (id) =>
       set((s) => {
@@ -959,7 +1135,7 @@ export const useBoardStore = create<BoardState>()(
       return newId;
     },
 
-    removeBox: (boardId, boxId) =>
+    removeBox: (boardId, boxId) => {
       set((s) => {
         const board = findBoardAny(s, boardId);
         if (!board) return;
@@ -989,7 +1165,8 @@ export const useBoardStore = create<BoardState>()(
         board.boxes = board.boxes.filter((b) => b.id !== boxId);
         if (s.selectedBoxId === boxId) s.selectedBoxId = null;
         if (s.expandedBoxId === boxId) s.expandedBoxId = null;
-      }),
+      });
+    },
 
     updateBox: (boardId, boxId, patch) =>
       set((s) => {
@@ -1272,7 +1449,7 @@ export const useBoardStore = create<BoardState>()(
 
     // ─── Board-level item actions ───────────────────────────────────────────────
 
-    addBoardItem: (boardId, item) =>
+    addBoardItem: (boardId, item) => {
       set((s) => {
         const board = findBoardAny(s, boardId);
         if (!board) return;
@@ -1280,15 +1457,17 @@ export const useBoardStore = create<BoardState>()(
         const maxZ = Math.max(0, ...board.boxes.map(b => b.zIndex), ...board.boardItems.map(i => i.zIndex));
         const { id: forcedId, ...rest } = item as typeof item & { id?: string };
         board.boardItems.push({ ...rest, id: forcedId ?? nanoid(), zIndex: item.zIndex ?? maxZ + 1 } as BoardLevelItem);
-      }),
+      });
+    },
 
-    removeBoardItem: (boardId, itemId) =>
+    removeBoardItem: (boardId, itemId) => {
       set((s) => {
         const board = findBoardAny(s, boardId);
         if (!board) return;
         board.boardItems = (board.boardItems ?? []).filter((i) => i.id !== itemId);
         if (s.selectedBoardItemId === itemId) s.selectedBoardItemId = null;
-      }),
+      });
+    },
 
     updateBoardItem: (boardId, itemId, patch) =>
       set((s) => {
@@ -1387,12 +1566,36 @@ export const useBoardStore = create<BoardState>()(
       s.zoom = clamped;
     }),
 
-    setThemeVars: (vars) => {
-      // App-level theme only — applies to document root (sidebar, panels, etc.)
-      // Board theme is scoped separately via inline CSS vars on the board area div.
+    setCurrentUserId: (uid) => {
+      set((s) => { s.currentUserId = uid; });
+      if (typeof window !== "undefined") {
+        if (uid) localStorage.setItem("plancraft-last-user-id", uid);
+        else localStorage.removeItem("plancraft-last-user-id");
+      }
+    },
+
+    hydrateUserTheme: (uid) => {
+      if (typeof window === "undefined") return;
+      const raw = localStorage.getItem(`plancraft-theme-vars-${uid}`);
+      const vars = raw ? { ...DEFAULT_THEME_VARS, ...(JSON.parse(raw) as ThemeVarMap) } : DEFAULT_THEME_VARS;
+      const font = localStorage.getItem(`plancraft-app-font-${uid}`) ?? "Inter";
+      const bgRaw = localStorage.getItem(`plancraft-app-bg-${uid}`);
+      const bg = bgRaw ? { ...DEFAULT_APP_BG, ...(JSON.parse(bgRaw) as Partial<AppBgConfig>) } : { ...DEFAULT_APP_BG };
       applyThemeVars(vars);
-      if (typeof window !== "undefined")
-        localStorage.setItem("plancraft-theme-vars", JSON.stringify(vars));
+      applyAppFont(font);
+      set((s) => { s.themeVars = vars; s.appFont = font; s.appBg = bg; });
+    },
+
+    setThemeVars: (vars) => {
+      applyThemeVars(vars);
+      if (typeof window !== "undefined") {
+        const uid = get().currentUserId ?? getLastUserId();
+        if (uid) {
+          localStorage.setItem(`plancraft-theme-vars-${uid}`, JSON.stringify(vars));
+        } else {
+          localStorage.setItem("plancraft-theme-vars", JSON.stringify(vars));
+        }
+      }
       set((s) => { s.themeVars = vars; });
     },
 
@@ -1423,22 +1626,58 @@ export const useBoardStore = create<BoardState>()(
 
     setAppFont: (name) => {
       applyAppFont(name);
-      if (typeof window !== "undefined")
-        localStorage.setItem("plancraft-app-font", name);
+      if (typeof window !== "undefined") {
+        const uid = get().currentUserId ?? getLastUserId();
+        if (uid) {
+          localStorage.setItem(`plancraft-app-font-${uid}`, name);
+        } else {
+          localStorage.setItem("plancraft-app-font", name);
+        }
+      }
       set((s) => { s.appFont = name; });
     },
 
     setAppBg: (patch) => {
-      // Spread → new reference → guaranteed re-render for all subscribers
       set((s) => { s.appBg = { ...s.appBg, ...patch }; });
-      if (typeof window !== "undefined")
-        localStorage.setItem("plancraft-app-bg", JSON.stringify(get().appBg));
+      if (typeof window !== "undefined") {
+        const uid = get().currentUserId ?? getLastUserId();
+        if (uid) {
+          localStorage.setItem(`plancraft-app-bg-${uid}`, JSON.stringify(get().appBg));
+        } else {
+          localStorage.setItem("plancraft-app-bg", JSON.stringify(get().appBg));
+        }
+      }
     },
 
     addUserFont: (font) => set((s) => {
       if (!s.userFonts.find((f) => f.name === font.name)) s.userFonts.push(font);
     }),
     removeUserFont: (name) => set((s) => { s.userFonts = s.userFonts.filter((f) => f.name !== name); }),
+
+    setWebhookToken: (boardId, token) =>
+      set((s) => {
+        const board = findBoardAny(s, boardId);
+        if (board) board.webhookToken = token;
+      }),
+
+    addWebhookItems: (boardId, items) =>
+      set((s) => {
+        const board = findBoardAny(s, boardId);
+        if (!board) return;
+        board.boardItems ??= [];
+        const maxZ = Math.max(0, ...board.boxes.map((b) => b.zIndex), ...board.boardItems.map((i) => i.zIndex));
+        items.forEach((item, idx) => {
+          board.boardItems!.push({
+            ...item,
+            id: nanoid(),
+            zIndex: maxZ + 1 + idx,
+            boardX: 80 + idx * 340,
+            boardY: 80,
+            boardW: 320,
+            boardH: 220,
+          } as BoardLevelItem);
+        });
+      }),
 
     persistBoards: () => {
       try {

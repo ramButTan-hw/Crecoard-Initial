@@ -20,7 +20,14 @@ export async function middleware(request: NextRequest) {
   // Local-only dev: Supabase not configured → skip all auth checks
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-  if (!supabaseUrl || supabaseUrl.includes("placeholder")) {
+  const supabaseReady =
+    Boolean(supabaseUrl) &&
+    Boolean(supabaseKey) &&
+    supabaseUrl.startsWith("https://") &&
+    !supabaseUrl.includes("placeholder") &&
+    !supabaseUrl.includes("your-project") &&
+    supabaseKey !== "your-anon-key";
+  if (!supabaseReady) {
     return NextResponse.next({ request });
   }
 

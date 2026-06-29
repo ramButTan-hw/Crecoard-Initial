@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Users, Plus, Layers, X, Pencil, Settings, Layout, LogOut } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Users, Plus, Layers, X, Pencil, Settings, Layout, LogOut, Trash2, RotateCcw } from "lucide-react";
+import { LogoMark } from "@/components/ui/LogoMark";
 import { cn } from "@/lib/utils";
 import { MOCK_SERVERS } from "@/lib/mockServerData";
 import { useUser } from "@/contexts/UserContext";
@@ -27,11 +28,19 @@ export function BottomBar({
   onViewChange, onFriendsToggle, onServerSelect,
   onSettingsOpen, onTemplatesOpen, onProfileOpen,
 }: BottomBarProps) {
+  const [mounted, setMounted] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showServerGrid, setShowServerGrid] = useState(false);
   const [showCreateServer, setShowCreateServer] = useState(false);
   const { identity, signOut } = useUser();
+
+  useEffect(() => setMounted(true), []);
   const { servers: realServers } = useServers();
+  const supabaseReady = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder") &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("your-project")
+  );
   const [serverIcons, setServerIcons] = useState<Record<string, string>>({});
   const [serverOrder, setServerOrder] = useState<string[]>(() => {
     try {
@@ -43,6 +52,20 @@ export function BottomBar({
   const [dragSrcId, setDragSrcId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const boards = useBoardStore((s) => s.boards);
+  const trashToast = useBoardStore((s) => s.trashToast);
+  const clearTrashToast = useBoardStore((s) => s.clearTrashToast);
+  const restoreBoard = useBoardStore((s) => s.restoreBoard);
+  const [toastCountdown, setToastCountdown] = useState(5);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!trashToast) return;
+    setToastCountdown(5);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => { clearTrashToast(); }, 5000);
+    const interval = setInterval(() => setToastCountdown((c) => Math.max(0, c - 1)), 1000);
+    return () => { clearInterval(interval); };
+  }, [trashToast, clearTrashToast]);
 
   useEffect(() => {
     const loadIcons = () => {
@@ -218,7 +241,7 @@ export function BottomBar({
       {showServerGrid && (
         <ServerGridModal
           realServers={realServers.map((s) => ({ id: s.id, name: s.name, icon: s.icon, online: s.onlineCount }))}
-          mockServers={MOCK_SERVERS.map((s) => ({ id: s.id, name: s.name, icon: s.icon, online: s.onlineCount }))}
+          mockServers={supabaseReady ? [] : MOCK_SERVERS.map((s) => ({ id: s.id, name: s.name, icon: s.icon, online: s.onlineCount }))}
           onServerSelect={(id) => { setShowServerGrid(false); onServerSelect(id); }}
           onCreateServer={() => { setShowServerGrid(false); setShowCreateServer(true); }}
           onClose={() => setShowServerGrid(false)}
@@ -233,6 +256,28 @@ export function BottomBar({
         />
       )}
 
+      {/* Undo toast — appears above the bar when a board is deleted */}
+      {trashToast && (
+        <div className="flex items-center gap-3 border-t border-[var(--border)] px-4 py-2.5 overflow-hidden relative" style={{ background: "var(--surface-raised)" }}>
+          <Trash2 size={13} className="text-[var(--text-muted)] flex-shrink-0" />
+          <span className="text-sm text-[var(--text-secondary)] flex-1 min-w-0 truncate">
+            <span className="font-medium text-[var(--text-primary)]">{trashToast.boardName}</span>
+            {" "}moved to trash
+          </span>
+          <button
+            onClick={() => {
+              if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+              restoreBoard(trashToast.boardId);
+            }}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors flex-shrink-0"
+          >
+            <RotateCcw size={12} /> Undo
+          </button>
+          <span className="text-xs text-[var(--text-muted)] w-4 text-center flex-shrink-0">{toastCountdown}s</span>
+          <TrashToastBar key={trashToast.boardId} />
+        </div>
+      )}
+
       {/* Bottom bar */}
       <div
         className="flex h-[52px] flex-shrink-0 items-center border-t border-[var(--border)] overflow-visible"
@@ -242,7 +287,7 @@ export function BottomBar({
         <div className="flex flex-shrink-0 items-center justify-center px-3" style={{ position: "relative", zIndex: 2 }}>
           <button
             onClick={() => setShowProfile((v) => !v)}
-            title={identity.displayName || "Profile"}
+            title={mounted ? (identity.displayName || "Profile") : "Profile"}
             className={cn(
               "relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full overflow-hidden transition-all duration-200",
               showProfile
@@ -250,15 +295,16 @@ export function BottomBar({
                 : "hover:scale-110 hover:ring-2 hover:ring-[var(--accent)] hover:ring-offset-2 hover:ring-offset-[var(--surface-raised)]"
             )}
             style={{
-              background: identity.color ?? "var(--surface-overlay)",
+              background: mounted ? (identity.color ?? "var(--surface-overlay)") : "var(--surface-overlay)",
               transform: "translateY(-10px)",
             }}
+            suppressHydrationWarning
           >
-            {identity.avatarUrl ? (
+            {mounted && identity.avatarUrl ? (
               <img src={identity.avatarUrl} alt="" className="h-full w-full object-cover" />
             ) : (
               <span className="text-sm font-bold text-white select-none">
-                {(identity.displayName[0] ?? "?").toUpperCase()}
+                {mounted ? (identity.displayName[0] ?? "?").toUpperCase() : "?"}
               </span>
             )}
             {/* Online dot */}
@@ -270,7 +316,7 @@ export function BottomBar({
 
         {/* Nav buttons */}
         <div className="flex items-center gap-1 px-1">
-          <BarBtn label="Personal Boards" active={activeView === "board"} onClick={() => onViewChange("board")} icon={<Layers size={18} />} />
+          <BarBtn label="Personal Boards" active={activeView === "board"} onClick={() => onViewChange("board")} icon={<LogoMark size={22} badge />} />
           <BarBtn label="Friends" active={showFriends} onClick={onFriendsToggle} icon={<Users size={18} />} />
         </div>
 
@@ -295,12 +341,12 @@ export function BottomBar({
           ))}
 
           {/* Thin divider between real and mock if both exist */}
-          {realServers.length > 0 && orderedServers.length > 0 && (
+          {!supabaseReady && realServers.length > 0 && orderedServers.length > 0 && (
             <div className="h-5 w-px flex-shrink-0 bg-[var(--border)] mx-0.5" />
           )}
 
-          {/* Mock servers — drag-reorderable */}
-          {orderedServers.map((srv) => (
+          {/* Mock servers — only shown in guest/local mode */}
+          {!supabaseReady && orderedServers.map((srv) => (
             <ServerBtn
               key={srv.id}
               srv={srv}
@@ -513,15 +559,19 @@ function ServerGridModal({
           </>
         )}
 
-        {/* Demo / community servers */}
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          {realServers.length > 0 ? "Demo Servers" : "Discover Servers"}
-        </p>
-        <div className="grid grid-cols-3 gap-3">
-          {mockServers.map((srv) => (
-            <ServerCard key={srv.id} srv={srv} onSelect={() => onServerSelect(srv.id)} />
-          ))}
-        </div>
+        {/* Demo / community servers — hidden in production */}
+        {mockServers.length > 0 && (
+          <>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              {realServers.length > 0 ? "Demo Servers" : "Discover Servers"}
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              {mockServers.map((srv) => (
+                <ServerCard key={srv.id} srv={srv} onSelect={() => onServerSelect(srv.id)} />
+              ))}
+            </div>
+          </>
+        )}
 
         {/* Create server CTA */}
         <button
@@ -532,5 +582,19 @@ function ServerGridModal({
         </button>
       </div>
     </div>
+  );
+}
+
+function TrashToastBar() {
+  const [width, setWidth] = useState(100);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setWidth(0));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <div
+      className="absolute bottom-0 left-0 h-0.5 bg-[var(--accent)] opacity-50"
+      style={{ width: `${width}%`, transition: "width 5s linear" }}
+    />
   );
 }

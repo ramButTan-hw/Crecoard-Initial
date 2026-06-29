@@ -294,19 +294,19 @@ const DEFAULT_SERVER_ROLES: ServerRole[] = [
     name: "@everyone",
     color: "#6d6f75",
     isDefault: true,
-    permissions: { canViewBoard: true, canEditBoard: false, canUploadFiles: false, canManageRoles: false, canManageMembers: false, canInviteMembers: false },
+    permissions: { canViewBoard: true, canEditBoard: false, canUploadFiles: false, canManageRoles: false, canManageMembers: false, canInviteMembers: false, canViewPublishHistory: false, canRollback: false, canManageBackups: false },
   },
   {
     id: "role-moderator",
     name: "Moderator",
     color: "#f2994a",
-    permissions: { canViewBoard: true, canEditBoard: false, canUploadFiles: true, canManageRoles: false, canManageMembers: true, canInviteMembers: true },
+    permissions: { canViewBoard: true, canEditBoard: false, canUploadFiles: true, canManageRoles: false, canManageMembers: true, canInviteMembers: true, canViewPublishHistory: true, canRollback: false, canManageBackups: false },
   },
   {
     id: "role-admin",
     name: "Admin",
     color: "#d59ee8",
-    permissions: { canViewBoard: true, canEditBoard: true, canUploadFiles: true, canManageRoles: true, canManageMembers: true, canInviteMembers: true },
+    permissions: { canViewBoard: true, canEditBoard: true, canUploadFiles: true, canManageRoles: true, canManageMembers: true, canInviteMembers: true, canViewPublishHistory: true, canRollback: true, canManageBackups: true },
   },
 ];
 
@@ -361,23 +361,23 @@ export const MOCK_SERVERS: Server[] = [
 
 export const MOCK_SERVER_MEMBERS: Record<string, ServerMember[]> = {
   s1: [
-    { userId: "local-user", username: "You", avatar: "Y", role: "admin", online: true, status: "Building" },
-    { userId: "u-alex", username: "alex_dev", avatar: "A", role: "owner", online: true, status: "Working on component tokens" },
-    { userId: "u-sarah", username: "sarah.m", avatar: "S", role: "admin", online: false },
-    { userId: "u-jordan", username: "jordan", avatar: "J", role: "member", online: true, status: "In a meeting" },
-    { userId: "u-riley", username: "riley_k", avatar: "R", role: "member", online: false },
+    { userId: "local-user", username: "You", avatar: "Y", role: "admin", roleIds: ["role-admin"], online: true, status: "Building" },
+    { userId: "u-alex", username: "alex_dev", avatar: "A", role: "owner", roleIds: ["role-admin"], online: true, status: "Working on component tokens" },
+    { userId: "u-sarah", username: "sarah.m", avatar: "S", role: "admin", roleIds: ["role-admin"], online: false },
+    { userId: "u-jordan", username: "jordan", avatar: "J", role: "member", roleIds: ["role-moderator"], online: true, status: "In a meeting" },
+    { userId: "u-riley", username: "riley_k", avatar: "R", role: "member", roleIds: [], online: false },
   ],
   s2: [
-    { userId: "local-user", username: "You", avatar: "Y", role: "member", online: true },
-    { userId: "u-alex", username: "alex_dev", avatar: "A", role: "owner", online: true, status: "Closed first customer 🚀" },
-    { userId: "u-mia", username: "mia.dev", avatar: "M", role: "admin", online: true },
-    { userId: "u-jordan", username: "jordan", avatar: "J", role: "member", online: false },
+    { userId: "local-user", username: "You", avatar: "Y", role: "member", roleIds: [], online: true },
+    { userId: "u-alex", username: "alex_dev", avatar: "A", role: "owner", roleIds: ["role-admin"], online: true, status: "Closed first customer 🚀" },
+    { userId: "u-mia", username: "mia.dev", avatar: "M", role: "admin", roleIds: ["role-admin"], online: true },
+    { userId: "u-jordan", username: "jordan", avatar: "J", role: "member", roleIds: [], online: false },
   ],
   s3: [
-    { userId: "local-user", username: "You", avatar: "Y", role: "member", online: true },
-    { userId: "u-alex", username: "alex_dev", avatar: "A", role: "owner", online: true },
-    { userId: "u-riley", username: "riley_k", avatar: "R", role: "member", online: true, status: "Building the PWA wrapper" },
-    { userId: "u-mia", username: "mia.dev", avatar: "M", role: "member", online: false },
-    { userId: "u-jordan", username: "jordan", avatar: "J", role: "member", online: true },
+    { userId: "local-user", username: "You", avatar: "Y", role: "member", roleIds: [], online: true },
+    { userId: "u-alex", username: "alex_dev", avatar: "A", role: "owner", roleIds: ["role-admin"], online: true },
+    { userId: "u-riley", username: "riley_k", avatar: "R", role: "member", roleIds: ["role-moderator"], online: true, status: "Building the PWA wrapper" },
+    { userId: "u-mia", username: "mia.dev", avatar: "M", role: "member", roleIds: [], online: false },
+    { userId: "u-jordan", username: "jordan", avatar: "J", role: "member", roleIds: [], online: true },
   ],
 };

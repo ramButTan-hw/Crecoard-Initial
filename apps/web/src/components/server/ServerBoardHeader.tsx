@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Users, Shield, Crown, Eye, Edit3, ChevronDown, X, CheckCircle2, Settings, ZoomIn, ZoomOut, Grid3X3, UserPlus, Copy, Check, Link2 } from "lucide-react";
+import { Users, Shield, Crown, Eye, Edit3, X, CheckCircle2, Settings, ZoomIn, ZoomOut, Grid3X3, UserPlus, Copy, Check, Link2, Upload } from "lucide-react";
+import { useServers } from "@/contexts/ServersContext";
 import { cn } from "@/lib/utils";
 import { useBoardStore } from "@/store/boardStore";
-import { useServerBoard, useServerBoardData, useCanInviteMembers, useCanManageMembers } from "@/contexts/ServerBoardContext";
+import { useServerBoard, useServerDraftData, useCanInviteMembers, useCanManageMembers } from "@/contexts/ServerBoardContext";
 import type { MemberRole, ServerMember } from "@/types/server";
 import { ServerSettings } from "./ServerSettings";
 import { getSelfIdentity } from "@/lib/collaboration";
@@ -22,8 +23,6 @@ interface ServerBoardHeaderProps {
   members: ServerMember[];
   showMembers: boolean;
   onToggleMembers: () => void;
-  /** Demo-only: lets you switch role to preview member vs admin view */
-  onRoleToggle: (role: MemberRole) => void;
   onViewProfile?: (u: ViewableUser) => void;
 }
 
@@ -42,24 +41,24 @@ const ROLE_ICONS: Record<MemberRole, React.ReactNode> = {
 export function ServerBoardHeader({
   serverId, serverName, serverIcon, description,
   memberCount, onlineCount, viewerRole,
-  members, showMembers, onToggleMembers, onRoleToggle, onViewProfile,
+  members, showMembers, onToggleMembers, onViewProfile,
 }: ServerBoardHeaderProps) {
-  const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
-  const roleButtonRef = useRef<HTMLButtonElement>(null);
-  const [roleMenuPos, setRoleMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => { setIsDesktop(!!window.electron); }, []);
+
+  const { leaveServer } = useServers();
 
   const canEdit = viewerRole === "owner" || viewerRole === "admin";
   const canInviteMembers = useCanInviteMembers();
   const canManageMembers = useCanManageMembers();
 
-  const { finishBoard, editBoard, activeBoardId, showGrid, zoom, toggleGrid, setZoom, zoomAtCanvasCenter } = useBoardStore();
-  const serverBoard = useServerBoardData();
-  const isFinished = serverBoard?.isFinished ?? false;
-  const { boardId: serverBoardId, viewerId } = useServerBoard();
+  const { finishBoard, editBoard, activeBoardId, showGrid, zoom, toggleGrid, zoomAtCanvasCenter } = useBoardStore();
+  const serverDraft = useServerDraftData();
+  const isFinished = serverDraft?.isFinished ?? false;
+  const { boardId: serverBoardId, viewerId, isDraftMode, hasLiveVersion, onToggleMode, onPublish } = useServerBoard();
 
   return (
     <>
@@ -83,6 +82,54 @@ export function ServerBoardHeader({
         )}
 
         <div className="ml-auto flex items-center gap-2" style={isDesktop ? { WebkitAppRegion: "no-drag" } as React.CSSProperties : undefined}>
+          {/* Draft/Live controls */}
+          {canEdit ? (
+            <>
+              <span
+                className={cn(
+                  "select-none rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide",
+                  isDraftMode
+                    ? "bg-[var(--surface-overlay)] text-[var(--text-muted)]"
+                    : "bg-green-500/20 text-green-400",
+                )}
+              >
+                {isDraftMode ? "DRAFT" : "LIVE"}
+              </span>
+              {isDraftMode ? (
+                <>
+                  <button
+                    onClick={onToggleMode}
+                    title={hasLiveVersion ? "Preview live version" : "No publish yet"}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    <Eye size={11} /> {hasLiveVersion ? "Preview Live" : "No live yet"}
+                  </button>
+                  <button
+                    onClick={onPublish}
+                    className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90 transition-all shadow-sm"
+                  >
+                    <Upload size={11} /> Publish
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={onToggleMode}
+                  className="flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  <Edit3 size={11} /> Back to Draft
+                </button>
+              )}
+              <div className="h-4 w-px bg-[var(--border)]" />
+            </>
+          ) : (
+            <>
+              <span className="select-none rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide bg-green-500/20 text-green-400">
+                LIVE
+              </span>
+              <div className="h-4 w-px bg-[var(--border)]" />
+            </>
+          )}
+
           {/* View controls: zoom, grid */}
           <div className="flex items-center gap-0.5">
             <button
@@ -133,67 +180,8 @@ export function ServerBoardHeader({
             <Users size={12} />
           </button>
 
-          {/* Finding #12 — Role switcher gated to non-production with DEV badge.
-              Also shown in staging builds where NEXT_PUBLIC_APP_ENV=staging so that
-              production builds (NODE_ENV=production, NEXT_PUBLIC_APP_ENV unset/"production")
-              always hide it while staging builds can still use it. */}
-          {(process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_APP_ENV === "staging") && (
-            <div className="relative flex items-center gap-1">
-              <span className="text-[9px] font-bold text-yellow-500 bg-yellow-500/10 rounded px-1">DEV</span>
-              <button
-                ref={roleButtonRef}
-                onClick={() => {
-                  if (!showRoleMenu) {
-                    const rect = roleButtonRef.current?.getBoundingClientRect();
-                    setRoleMenuPos(rect ? { top: rect.bottom + 4, right: window.innerWidth - rect.right } : { top: 48, right: 8 });
-                  }
-                  setShowRoleMenu((v) => !v);
-                }}
-                className={cn(
-                  "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium transition-colors hover:bg-[var(--surface-overlay)]",
-                  ROLE_COLORS[viewerRole],
-                  canEdit ? "border-[var(--accent)]/40" : "border-[var(--border)]"
-                )}
-                title="[Dev only] Preview as role"
-              >
-                {ROLE_ICONS[viewerRole]}
-                {viewerRole}
-                <ChevronDown size={10} className="opacity-60" />
-              </button>
-
-              {showRoleMenu && typeof document !== "undefined" && createPortal(
-                <>
-                  <div className="fixed inset-0 z-[9990]" onClick={() => setShowRoleMenu(false)} />
-                  <div
-                    className="fixed z-[9991] rounded-xl border border-[var(--border)] p-1 shadow-xl"
-                    style={{ background: "var(--surface-raised)", minWidth: 160, top: roleMenuPos?.top ?? 48, right: roleMenuPos?.right ?? 8 }}
-                  >
-                    <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                      Preview as role
-                    </p>
-                    {(["owner", "admin", "member"] as MemberRole[]).map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => { onRoleToggle(r); setShowRoleMenu(false); }}
-                        className={cn(
-                          "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-[var(--surface-overlay)]",
-                          r === viewerRole ? "text-[var(--accent)]" : "text-[var(--text-secondary)]"
-                        )}
-                      >
-                        <span className={ROLE_COLORS[r]}>{ROLE_ICONS[r]}</span>
-                        <span className="capitalize">{r}</span>
-                        {r === viewerRole && <span className="ml-auto text-[10px] text-[var(--accent)]">current</span>}
-                      </button>
-                    ))}
-                  </div>
-                </>,
-                document.body
-              )}
-            </div>
-          )}
-
-          {/* Edit Mode / Finish — admins only */}
-          {canEdit && (
+          {/* Edit Mode / Finish — admins only, draft mode only */}
+          {canEdit && isDraftMode && (
             <>
               <div className="h-4 w-px bg-[var(--border)]" />
               {isFinished ? (
@@ -237,7 +225,7 @@ export function ServerBoardHeader({
           >
             <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2">
               <span className="text-xs font-semibold text-[var(--text-primary)]">Members · {memberCount}</span>
-              <button onClick={onToggleMembers} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+              <button onClick={() => { setConfirmLeave(false); onToggleMembers(); }} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
                 <X size={13} />
               </button>
             </div>
@@ -252,6 +240,38 @@ export function ServerBoardHeader({
               )}
               <MemberSection label="Online" members={members.filter((m) => m.online)} viewerId={viewerId} canManageMembers={canManageMembers} onViewProfile={onViewProfile} />
               <MemberSection label="Offline" members={members.filter((m) => !m.online)} viewerId={viewerId} canManageMembers={canManageMembers} onViewProfile={onViewProfile} />
+
+              {/* Leave server */}
+              <div className="mt-2 pt-2 border-t border-[var(--border)]">
+                {viewerRole === "owner" ? (
+                  <p className="px-2 py-1 text-[10px] text-[var(--text-muted)]">
+                    Transfer ownership to leave
+                  </p>
+                ) : confirmLeave ? (
+                  <div className="flex items-center gap-1.5 px-2 py-1">
+                    <span className="text-[10px] text-[var(--text-muted)] flex-1">Leave {serverName}?</span>
+                    <button
+                      onClick={async () => { await leaveServer(serverId); onToggleMembers(); }}
+                      className="rounded px-2 py-1 text-[10px] font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                    >
+                      Leave
+                    </button>
+                    <button
+                      onClick={() => setConfirmLeave(false)}
+                      className="rounded px-1.5 py-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmLeave(true)}
+                    className="w-full text-left px-2 py-1.5 text-[11px] text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                  >
+                    Leave Server
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </>
@@ -264,19 +284,31 @@ export function ServerBoardHeader({
 
       {/* Invite modal */}
       {showInvite && (
-        <InviteModal serverName={serverName} onClose={() => setShowInvite(false)} />
+        <InviteModal serverId={serverId} serverName={serverName} onClose={() => setShowInvite(false)} />
       )}
     </>
   );
 }
 
-function InviteModal({ serverName, onClose }: { serverName: string; onClose: () => void }) {
+function InviteModal({ serverId, serverName, onClose }: { serverId: string; serverName: string; onClose: () => void }) {
+  const { generateInvite } = useServers();
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [linkLoading, setLinkLoading] = useState(true);
   const [email, setEmail] = useState("");
   const [copied, setCopied] = useState(false);
   const [sent, setSent] = useState(false);
-  const inviteLink = `https://plancraft.app/invite/${Math.random().toString(36).slice(2, 10)}`;
+
+  useEffect(() => {
+    void (async () => {
+      const link = await generateInvite(serverId);
+      setInviteLink(link);
+      setLinkLoading(false);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverId]);
 
   const handleCopy = () => {
+    if (!inviteLink) return;
     navigator.clipboard.writeText(inviteLink).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -313,11 +345,14 @@ function InviteModal({ serverName, onClose }: { serverName: string; onClose: () 
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Invite Link</p>
             <div className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5">
               <Link2 size={13} className="flex-shrink-0 text-[var(--text-muted)]" />
-              <span className="flex-1 truncate font-mono text-xs text-[var(--text-secondary)]">{inviteLink}</span>
+              <span className="flex-1 truncate font-mono text-xs text-[var(--text-secondary)]">
+                {linkLoading ? "Generating link…" : (inviteLink ?? "Failed to generate link")}
+              </span>
               <button
                 onClick={handleCopy}
+                disabled={!inviteLink}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors flex-shrink-0",
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors flex-shrink-0 disabled:opacity-40",
                   copied
                     ? "bg-green-500/20 text-green-400"
                     : "bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
@@ -388,7 +423,7 @@ function MemberSection({ label, members, viewerId, canManageMembers, onViewProfi
     return {
       displayName: m.username,
       avatarChar: m.avatar,
-      color: MEMBER_COLORS[m.userId] ?? "#d59ee8",
+      color: "#d59ee8",
       online: m.online,
       status: m.status,
       userId: m.userId,
@@ -407,8 +442,10 @@ function MemberSection({ label, members, viewerId, canManageMembers, onViewProfi
           onClick={() => onViewProfile?.(buildViewableUser(m))}
         >
           <div className="relative flex-shrink-0">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
-              {m.avatar}
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white overflow-hidden">
+              {m.avatar?.startsWith("http")
+                ? <img src={m.avatar} alt="" className="h-full w-full object-cover" />
+                : m.avatar}
             </span>
             <span className={cn(
               "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--surface-raised)]",
@@ -430,10 +467,3 @@ function MemberSection({ label, members, viewerId, canManageMembers, onViewProfi
   );
 }
 
-const MEMBER_COLORS: Record<string, string> = {
-  "u-alex":   "#d59ee8",
-  "u-sarah":  "#eb459e",
-  "u-jordan": "#57f287",
-  "u-riley":  "#fee75c",
-  "u-mia":    "#ed4245",
-};

@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import {
   FileText, List, Video, Timer,
   BarChart2, Plug, CalendarDays, Table2,
   Code2, Music, Kanban, MessageSquare, FolderOpen,
+  ChevronDown, ChevronRight,
+  Layers, LayoutGrid, Image, KanbanSquare, Minus, Zap, Gamepad2,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
-import { BlockItem, ItemType, DEFAULT_BOX_STYLE, useBoardStore, useActiveBoard } from "@/store/boardStore";
+import { BlockItem, ItemType, useBoardStore, useActiveBoard } from "@/store/boardStore";
 import { useHasAppBg } from "@/lib/useHasAppBg";
 import { useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
 import { DEFAULT_WIDGET_CODE } from "@/lib/defaultWidgetCode";
@@ -144,6 +147,31 @@ export const ITEM_DEFINITIONS: {
     serverOnly: true,
     defaultItem: () => ({ type: "filebank", fileBankTitle: "Files", fileBankFiles: [] }),
   },
+  {
+    type: "tracker-gg",
+    label: "Tracker.gg",
+    icon: <Gamepad2 size={15} />,
+    description: "Live player stats — Valorant, Apex & more",
+    defaultItem: () => ({ type: "tracker-gg" }),
+  },
+  {
+    type: "embed-card",
+    label: "Integration Card",
+    icon: <Zap size={15} />,
+    description: "Webhook / bot display card",
+    defaultItem: () => ({
+      type: "embed-card",
+      embedCard: {
+        title: "Integration Card",
+        description: "This card is updated by an incoming webhook. Send a POST request to your board's webhook URL to populate it.",
+        accentColor: "#d59ee8",
+        source: "custom",
+        fields: [
+          { label: "Status", value: "No data yet", inline: true },
+        ],
+      },
+    }),
+  },
 ];
 
 // ─── Draggable palette item ───────────────────────────────────────────────────
@@ -175,6 +203,155 @@ function DraggableItem({ def, selectedBoxId }: { def: (typeof ITEM_DEFINITIONS)[
   );
 }
 
+// ─── Collapsible section header ───────────────────────────────────────────────
+
+function SectionHeader({
+  label, open, onToggle, count,
+}: { label: string; open: boolean; onToggle: () => void; count?: number }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex w-full items-center gap-1.5 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+    >
+      {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+      {label}
+      {count !== undefined && (
+        <span className="ml-auto text-[10px] font-normal tabular-nums">{count}</span>
+      )}
+    </button>
+  );
+}
+
+// ─── Item type icon (small, for collection) ───────────────────────────────────
+
+function ItemTypeIcon({ type, size = 11 }: { type: ItemType; size?: number }) {
+  const p = { size, className: "flex-shrink-0 text-[var(--text-muted)]" };
+  switch (type) {
+    case "text": return <FileText {...p} />;
+    case "list": return <List {...p} />;
+    case "table": return <Table2 {...p} />;
+    case "image": return <Image {...p} />;
+    case "calendar": return <CalendarDays {...p} />;
+    case "timer": return <Timer {...p} />;
+    case "embed": return <Video {...p} />;
+    case "api": return <Plug {...p} />;
+    case "graph": return <BarChart2 {...p} />;
+    case "playlist": return <Music {...p} />;
+    case "kanban": return <KanbanSquare {...p} />;
+    case "chat": return <MessageSquare {...p} />;
+    case "filebank": return <FolderOpen {...p} />;
+    case "widget": return <Code2 {...p} />;
+    case "divider": return <Minus {...p} />;
+    default: return <FileText {...p} />;
+  }
+}
+
+const TYPE_LABEL: Partial<Record<ItemType, string>> = {
+  text: "Text", list: "List", table: "Table", image: "Image",
+  calendar: "Calendar", timer: "Timer", embed: "Embed", api: "API",
+  graph: "Graph", playlist: "Playlist", kanban: "Kanban",
+  chat: "Chat", filebank: "Files", widget: "Widget", divider: "Divider",
+};
+
+// ─── Collection section ───────────────────────────────────────────────────────
+
+function CollectionSection({ boardId }: { boardId: string }) {
+  const board = useBoardStore((s) =>
+    s.boards.find((b) => b.id === boardId) ?? s.serverBoards[boardId]
+  );
+  const [expandedBoxIds, setExpandedBoxIds] = useState<Set<string>>(new Set());
+  const [canvasOpen, setCanvasOpen] = useState(false);
+
+  if (!board) return null;
+
+  const toggle = (id: string) =>
+    setExpandedBoxIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const canvasItems = board.boardItems ?? [];
+  const totalItems = board.boxes.reduce((a, bx) => a + bx.items.length, 0) + canvasItems.length;
+
+  if (board.boxes.length === 0 && canvasItems.length === 0) {
+    return (
+      <p className="px-4 pb-3 text-[11px] text-[var(--text-muted)] italic">
+        Board is empty.
+      </p>
+    );
+  }
+
+  return (
+    <div className="pb-2 space-y-0.5">
+      {/* Blocks */}
+      {board.boxes.map((box) => {
+        const isOpen = expandedBoxIds.has(box.id);
+        return (
+          <div key={box.id}>
+            <button
+              onClick={() => toggle(box.id)}
+              className="flex w-full items-center gap-1.5 px-3 py-1.5 hover:bg-[var(--surface-overlay)] rounded-lg mx-1 transition-colors text-left"
+              style={{ width: "calc(100% - 8px)" }}
+            >
+              {isOpen ? <ChevronDown size={11} className="text-[var(--text-muted)] flex-shrink-0" /> : <ChevronRight size={11} className="text-[var(--text-muted)] flex-shrink-0" />}
+              <LayoutGrid size={11} className="text-[var(--accent)] flex-shrink-0" />
+              <span className="text-[11px] text-[var(--text-secondary)] truncate flex-1">{box.title || "Untitled"}</span>
+              <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">{box.items.length}</span>
+            </button>
+            {isOpen && (
+              <div className="ml-5 mb-1 space-y-0.5">
+                {box.items.length === 0 ? (
+                  <p className="px-3 py-1 text-[10px] text-[var(--text-muted)] italic">Empty</p>
+                ) : (
+                  box.items.map((item) => (
+                    <div key={item.id} className="flex items-center gap-1.5 px-3 py-0.5">
+                      <ItemTypeIcon type={item.type} />
+                      <span className="text-[10px] text-[var(--text-muted)] truncate">
+                        {TYPE_LABEL[item.type] ?? item.type}
+                        {item.text ? <span className="opacity-60"> — {item.text.slice(0, 30)}</span> : null}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Canvas items */}
+      {canvasItems.length > 0 && (
+        <div>
+          <button
+            onClick={() => setCanvasOpen((v) => !v)}
+            className="flex w-full items-center gap-1.5 px-3 py-1.5 hover:bg-[var(--surface-overlay)] rounded-lg mx-1 transition-colors text-left"
+            style={{ width: "calc(100% - 8px)" }}
+          >
+            {canvasOpen ? <ChevronDown size={11} className="text-[var(--text-muted)] flex-shrink-0" /> : <ChevronRight size={11} className="text-[var(--text-muted)] flex-shrink-0" />}
+            <Layers size={11} className="text-[var(--accent)] flex-shrink-0" />
+            <span className="text-[11px] text-[var(--text-secondary)] flex-1">Canvas items</span>
+            <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">{canvasItems.length}</span>
+          </button>
+          {canvasOpen && (
+            <div className="ml-5 mb-1 space-y-0.5">
+              {canvasItems.map((item) => (
+                <div key={item.id} className="flex items-center gap-1.5 px-3 py-0.5">
+                  <ItemTypeIcon type={item.type} />
+                  <span className="text-[10px] text-[var(--text-muted)] truncate">
+                    {TYPE_LABEL[item.type] ?? item.type}
+                    {item.text ? <span className="opacity-60"> — {item.text.slice(0, 30)}</span> : null}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main palette ─────────────────────────────────────────────────────────────
 
 export function ItemPalette() {
@@ -186,6 +363,12 @@ export function ItemPalette() {
   const { serverId } = useServerBoard();
   const visibleDefs = ITEM_DEFINITIONS.filter(d => !d.serverOnly || serverId !== null);
 
+  const [collectionOpen, setCollectionOpen] = useState(true);
+
+  const collectionCount = board
+    ? board.boxes.reduce((a, bx) => a + bx.items.length, 0) + (board.boardItems?.length ?? 0)
+    : 0;
+
   if (board?.isFinished) return null;
 
   return (
@@ -193,7 +376,7 @@ export function ItemPalette() {
       className="flex w-[196px] flex-shrink-0 flex-col overflow-y-auto border-r border-[var(--border)]"
       style={{ background: hasAppBg ? "transparent" : "var(--surface-raised)" }}
     >
-      {/* Items section — always open, no toggle */}
+      {/* Items section */}
       <div className="border-b border-[var(--border)]">
         <div className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
           Items
@@ -204,6 +387,19 @@ export function ItemPalette() {
           ))}
         </div>
       </div>
+
+      {/* Collection section */}
+      {board && (
+        <div className="border-b border-[var(--border)]">
+          <SectionHeader
+            label="Collection"
+            open={collectionOpen}
+            onToggle={() => setCollectionOpen((v) => !v)}
+            count={collectionCount || undefined}
+          />
+          {collectionOpen && <CollectionSection boardId={board.id} />}
+        </div>
+      )}
     </div>
   );
 }

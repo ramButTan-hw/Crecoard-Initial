@@ -37,6 +37,8 @@ interface UserContextValue {
   identity: SelfIdentity;
   /** True until the Supabase fetch resolves; immediately false for guests */
   loading: boolean;
+  /** True only after Supabase confirmed a logged-in user (never true for guests) */
+  isLoggedIn: boolean;
   /** Persists profile changes: Supabase when available, always localStorage */
   updateProfile: (patch: Partial<Omit<SelfIdentity, "userId">>) => Promise<void>;
   /** Signs out of Supabase and redirects to /login */
@@ -57,6 +59,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [identity, setIdentity] = useState<SelfIdentity>(() => getSelfIdentity());
   const [supabaseUserId, setSupabaseUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseReady()) { setLoading(false); return; }
@@ -68,6 +71,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       if (!user || cancelled) { setLoading(false); return; }
 
       setSupabaseUserId(user.id);
+      setIsLoggedIn(true);
 
       // Fetch existing profile row
       let { data: profile } = await supabase
@@ -99,8 +103,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (profile && !cancelled) {
-        const base = getSelfIdentity();
-        const merged = rowToIdentity(profile, { ...base, userId: user.id });
+        // Use a clean base — never let localStorage guest values bleed into an account.
+        const cleanBase: SelfIdentity = {
+          userId: user.id,
+          displayName: "Anonymous",
+          color: "#d59ee8",
+        };
+        const merged = rowToIdentity(profile, cleanBase);
         // Keep localStorage in sync so collaboration cursor functions still work
         updateSelfIdentity(merged);
         setIdentity(merged);
@@ -144,11 +153,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (isSupabaseReady()) await supabase.auth.signOut();
+    // Clear the last-user cache so the next user gets a clean theme slate
+    if (typeof window !== "undefined") localStorage.removeItem("plancraft-last-user-id");
     window.location.href = "/login";
   }, []);
 
   return (
-    <UserContext.Provider value={{ identity, loading, updateProfile, signOut }}>
+    <UserContext.Provider value={{ identity, loading, isLoggedIn, updateProfile, signOut }}>
       {children}
     </UserContext.Provider>
   );

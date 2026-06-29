@@ -8,7 +8,7 @@ import {
   Filter, Search, ArrowUpDown, ArrowUp, ArrowDown,
   Music, SkipBack, SkipForward, Repeat, Shuffle, Volume1, Volume2, VolumeX,
   Radio, Users, Lock, LockOpen, CheckSquare, Square, Copy, FileDown, CopyPlus,
-  ArrowUpToLine, ArrowDownToLine, Maximize2, Eye, EyeOff,
+  ArrowUpToLine, ArrowDownToLine, Maximize2, Eye, EyeOff, CalendarDays, Code2, Pencil,
 } from "lucide-react";
 import { WallpaperEditor } from "@/components/ui/WallpaperEditor";
 import {
@@ -32,6 +32,8 @@ import { useShallow } from "zustand/react/shallow";
 import { FontPicker } from "@/components/ui/FontPicker";
 import { loadGoogleFont } from "@/lib/fonts";
 import { DEFAULT_WIDGET_CODE } from "@/lib/defaultWidgetCode";
+import { EmbedCardItem } from "@/components/items/EmbedCardItem";
+import { TrackerGGItem } from "@/components/items/TrackerGGItem";
 import { nanoid } from "nanoid";
 import DOMPurify from "isomorphic-dompurify";
 import { cn } from "@/lib/utils";
@@ -79,32 +81,45 @@ interface ItemRendererProps {
   containerH?: number;
   /** Override the default updateItem callback (used for board-level items) */
   onUpdate?: (patch: Partial<BlockItem>) => void;
+  /** Extra entries prepended to the table's right-click menu (injected by BoardItemWidget for canvas-level tables) */
+  extraContextItems?: ContextMenuEntry[];
+  /** If false, wraps item in pointer-events:none (viewer lacks interact permission) */
+  canInteract?: boolean;
+  /** If false, text inputs/textareas are read-only (viewer lacks input permission) */
+  canInput?: boolean;
 }
 
 // ─── Main dispatcher ──────────────────────────────────────────────────────────
 
-export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished, containerW, containerH, onUpdate }: ItemRendererProps) {
+export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished, containerW, containerH, onUpdate, extraContextItems, canInteract, canInput }: ItemRendererProps) {
   const upd = onUpdate ?? ((patch: Partial<BlockItem>) =>
     useBoardStore.getState().updateItem(boardId, boxId, item.id, patch));
 
-  switch (item.type) {
-    case "text":     return <TextItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
-    case "list":     return <ListItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} boardId={boardId} boxId={boxId} />;
-    case "embed":    return <EmbedItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
-    case "timer":    return <TimerItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} containerH={containerH} />;
+  const rendered = (() => { switch (item.type) {
+    case "text":     return <TextItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} canInput={canInput} extraContextItems={extraContextItems} />;
+    case "list":     return <ListItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} canInput={canInput} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
+    case "embed":    return <EmbedItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
+    case "timer":    return <TimerItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} containerH={containerH} extraContextItems={extraContextItems} />;
     case "image":    return <ImageItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
-    case "graph":    return <GraphItem item={item} collapsed={collapsed} containerW={containerW} containerH={containerH} boardId={boardId} boxId={boxId} />;
-    case "api":      return <ApiItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
-    case "calendar": return <CalendarItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} />;
-    case "table":    return <TableItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} boardId={boardId} boxId={boxId} />;
+    case "graph":    return <GraphItem item={item} collapsed={collapsed} containerW={containerW} containerH={containerH} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
+    case "api":      return <ApiItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
+    case "calendar": return <CalendarItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
+    case "table":    return <TableItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
     case "divider":  return <hr className="border-[var(--border)] my-1" />;
-    case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} />;
-    case "playlist": return <PlaylistItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
-    case "kanban":   return <KanbanItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
+    case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
+    case "playlist": return <PlaylistItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
+    case "kanban":   return <KanbanItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "chat":     return <ChatBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} />;
-    case "filebank": return <FileBankBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} />;
-    default:         return null;
+    case "filebank":    return <FileBankBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} />;
+    case "embed-card":  return <EmbedCardItem item={item} collapsed={collapsed} />;
+    case "tracker-gg":  return <TrackerGGItem item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} onUpdate={onUpdate} />;
+    default:            return null;
+  }})();
+
+  if (canInteract === false && !isFinished) {
+    return <div style={{ pointerEvents: "none", width: "100%", height: "100%" }}>{rendered}</div>;
   }
+  return rendered;
 }
 
 // ─── Chat + File bank item renderers (thin wrappers) ─────────────────────────
@@ -341,7 +356,8 @@ function useRichSel(
   return { selState, showToolbar, toolbarPos, withSavedRange, wrapSelectionSpan, applyFontSizeRange, applyFontSizeAll, dismissSelToolbar };
 }
 
-function TextItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+function TextItem({ item, upd, collapsed, isFinished, canInput, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; canInput?: boolean; extraContextItems?: ContextMenuEntry[] }) {
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [focused, setFocused] = useState(false);
   const [showToolbar, setShowToolbar] = useState(false);
   const [showWallpaper, setShowWallpaper] = useState(false);
@@ -848,7 +864,7 @@ function TextItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: 
   }
 
   return (
-    <div ref={containerRef} className="relative w-full h-full">
+    <div ref={containerRef} className="relative w-full h-full" onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {/* Hidden file input for bg image */}
       <input ref={bgImageFileRef} type="file" accept="image/*" className="hidden" onChange={handleBgImageFile} />
 
@@ -857,7 +873,7 @@ function TextItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: 
         <div className="flex flex-col items-center justify-center w-full h-full gap-1" style={textStyle}>
           <input
             type="number"
-            readOnly={isFinished}
+            readOnly={isFinished || canInput === false}
             className="bg-transparent outline-none text-center font-mono font-bold w-full"
             style={{ fontSize: item.fontSize ?? 40, color: item.textColor || "var(--accent)" }}
             placeholder="0"
@@ -887,7 +903,7 @@ function TextItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: 
           )}
           <div
             ref={editorRef}
-            contentEditable={!isFinished}
+            contentEditable={!isFinished && canInput !== false}
             suppressContentEditableWarning
             className="doc-editor w-full h-full outline-none overflow-y-auto"
             style={editorTypoStyle}
@@ -966,6 +982,20 @@ function TextItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: 
           onDismiss={() => { setShowToolbar(false); setToolbarPos(null); }}
         />,
         document.body
+      )}
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x} y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          items={[
+            ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
+            { label: "Copy text", icon: <Copy size={14} />, onClick: () => { const el = document.createElement("div"); el.innerHTML = innerHTMLRef.current; navigator.clipboard.writeText(el.innerText); } },
+            ...(!isFinished ? [
+              "separator" as const,
+              { label: "Clear text", icon: <Trash2 size={14} />, danger: true, onClick: () => { if (editorRef.current) editorRef.current.innerHTML = ""; innerHTMLRef.current = ""; upd({ text: "" }); } },
+            ] : []),
+          ]}
+        />
       )}
     </div>
   );
@@ -1659,7 +1689,7 @@ function PanelSlider({ label, value, min, max, step = 1, decimals = 0, onChange 
   );
 }
 
-function ListItem({ item, upd, collapsed, isFinished, boardId, boxId }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; boardId: string; boxId: string }) {
+function ListItem({ item, upd, collapsed, isFinished, canInput, boardId, boxId, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; canInput?: boolean; boardId: string; boxId: string; extraContextItems?: ContextMenuEntry[] }) {
   const entries = item.listItems ?? [];
   const shown = collapsed ? entries.slice(0, 4) : entries;
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
@@ -1869,10 +1899,10 @@ function ListItem({ item, upd, collapsed, isFinished, boardId, boxId }: { item: 
             ) : (
               <div
                 data-entry-id={entry.id}
-                contentEditable={!isFinished}
+                contentEditable={!isFinished && canInput !== false}
                 suppressContentEditableWarning
                 className={cn("flex-1 min-w-0 outline-none", entry.checked && marker === "checkbox" && "line-through opacity-40")}
-                style={{ fontSize: "inherit", fontFamily: "inherit", color: "inherit", wordBreak: "break-word", whiteSpace: "pre-wrap", minHeight: "1em", caretColor: isFinished && editingEntryId !== entry.id ? "transparent" : undefined }}
+                style={{ fontSize: "inherit", fontFamily: "inherit", color: "inherit", wordBreak: "break-word", whiteSpace: "pre-wrap", minHeight: "1em", caretColor: (isFinished || canInput === false) && editingEntryId !== entry.id ? "transparent" : undefined }}
                 ref={(el) => {
                   if (el) editingDivRefs.current.set(entry.id, el);
                   else editingDivRefs.current.delete(entry.id);
@@ -1992,11 +2022,9 @@ function ListItem({ item, upd, collapsed, isFinished, boardId, boxId }: { item: 
         document.body
       )}
       {contextMenu && (() => {
-        const isBoardLevel = boxId === "";
-        const isFoc = item.isFocused ?? false;
-        const s = useBoardStore.getState();
         const tmp = document.createElement("div");
         const ctxItems: ContextMenuEntry[] = [
+          ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
           ...(!isFinished ? [
             { label: "Add item", icon: <Plus size={14} />, onClick: () => setEntries([...entries, { id: nanoid(), text: "", checked: false }]) },
             "separator" as const,
@@ -2019,13 +2047,6 @@ function ListItem({ item, upd, collapsed, isFinished, boardId, boxId }: { item: 
           ] : []),
           "separator" as const,
           { label: "Copy as text", icon: <Copy size={14} />, onClick: () => { const text = entries.map(e => { tmp.innerHTML = e.text ?? ""; return tmp.textContent ?? ""; }).filter(Boolean).join("\n"); navigator.clipboard.writeText(text); } },
-          "separator" as const,
-          { label: isFoc ? "Unfocus" : "Focus", icon: isFoc ? <EyeOff size={14} /> : <Eye size={14} />, onClick: () => isBoardLevel ? s.focusBoardItem(boardId, isFoc ? null : item.id) : s.focusItem(boardId, boxId, isFoc ? null : item.id) },
-          { label: "Bring to front", icon: <ArrowUpToLine size={14} />, onClick: () => isBoardLevel ? s.bringBoardItemToFront(boardId, item.id) : s.bringToFront(boardId, boxId) },
-          { label: "Send to back", icon: <ArrowDownToLine size={14} />, onClick: () => isBoardLevel ? s.sendBoardItemToBack(boardId, item.id) : s.sendToBack(boardId, boxId) },
-          { label: "Duplicate", icon: <CopyPlus size={14} />, onClick: () => isBoardLevel ? s.duplicateBoardItem(boardId, item.id) : s.duplicateBox(boardId, boxId) },
-          "separator" as const,
-          { label: "Delete", icon: <Trash2 size={14} />, danger: true, onClick: () => isBoardLevel ? s.removeBoardItem(boardId, item.id) : s.removeBox(boardId, boxId) },
         ];
         return <ContextMenu x={contextMenu.x} y={contextMenu.y} items={ctxItems} onClose={() => setContextMenu(null)} />;
       })()}
@@ -2035,7 +2056,8 @@ function ListItem({ item, upd, collapsed, isFinished, boardId, boxId }: { item: 
 
 // ─── Embed ────────────────────────────────────────────────────────────────────
 
-function EmbedItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+function EmbedItem({ item, upd, collapsed, isFinished, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; extraContextItems?: ContextMenuEntry[] }) {
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [playing, setPlaying] = useState(false);
   const [editingUrl, setEditingUrl] = useState(false);
   const url = item.embedUrl ?? "";
@@ -2174,7 +2196,7 @@ function EmbedItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
   }
 
   return (
-    <div className="flex flex-col gap-1 w-full h-full">
+    <div className="flex flex-col gap-1 w-full h-full" onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {embedSrc ? (
         <div className="relative w-full flex-1 min-h-0">
           <div className="relative w-full" style={{ paddingBottom: "56.25%", ...wrapStyle }}>
@@ -2187,6 +2209,24 @@ function EmbedItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd:
         </div>
       )}
       {editBar}
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x} y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          items={[
+            ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
+            ...(url ? [
+              { label: "Copy URL", icon: <Copy size={14} />, onClick: () => navigator.clipboard.writeText(url) },
+              { label: "Open in new tab", icon: <ExternalLink size={14} />, onClick: () => window.open(url, "_blank") },
+            ] : []),
+            ...(!isFinished ? [
+              "separator" as const,
+              { label: "Change URL", icon: <Pencil size={14} />, onClick: () => setEditingUrl(true) },
+              ...(url ? ["separator" as const, { label: "Clear URL", icon: <Trash2 size={14} />, danger: true, onClick: () => { upd({ embedUrl: "" }); setPlaying(false); } }] : []),
+            ] : []),
+          ]}
+        />
+      )}
     </div>
   );
 }
@@ -2301,7 +2341,7 @@ const PHASE_LABELS: Record<string, string> = {
   "long-break": "Long Break",
 };
 
-function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; containerH?: number }) {
+function TimerItem({ item, upd, collapsed, isFinished, containerH, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; containerH?: number; extraContextItems?: ContextMenuEntry[] }) {
   const mode = item.timerMode ?? "countdown";
   const total = item.timerSeconds ?? 300;
   const accent = item.timerAccentColor ?? "var(--accent)";
@@ -2332,6 +2372,7 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
   const elapsed = baseElapsed + sinceStart;
 
   // Local UI-only state
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [, setTick] = useState(0);
   const [now, setNow] = useState(new Date());
   const [hovered, setHovered] = useState(false);
@@ -2489,6 +2530,7 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
       style={borderStyle}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
     >
       {/* Background color layer */}
       {item.timerBgColor && (
@@ -2686,6 +2728,19 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH }: { item: Blo
           </div>
         )}
       </div>
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x} y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          items={[
+            ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
+            ...(mode !== "clock" ? [
+              { label: running ? "Pause" : "Start", icon: running ? <Pause size={14} /> : <Play size={14} />, onClick: toggleRunning },
+              { label: "Reset", icon: <RotateCcw size={14} />, onClick: handleReset },
+            ] : []),
+          ]}
+        />
+      )}
     </div>
   );
 }
@@ -3278,8 +3333,9 @@ function resolveGraphValue(val: string | number): number {
   } catch { return NaN; }
 }
 
-function GraphItem({ item, collapsed, containerW, containerH, boardId, boxId }: { item: BlockItem; collapsed?: boolean; containerW?: number; containerH?: number; boardId?: string; boxId?: string }) {
+function GraphItem({ item, collapsed, containerW, containerH, boardId, boxId, extraContextItems }: { item: BlockItem; collapsed?: boolean; containerW?: number; containerH?: number; boardId?: string; boxId?: string; extraContextItems?: ContextMenuEntry[] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => {
     const el = wrapRef.current;
@@ -3363,7 +3419,7 @@ function GraphItem({ item, collapsed, containerW, containerH, boardId, boxId }: 
   const title = item.graphTitle?.trim();
 
   return (
-    <div ref={wrapRef} style={bgStyle}>
+    <div ref={wrapRef} style={bgStyle} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {item.graphBgImage && (
         <div style={{
           position: "absolute", inset: 0, zIndex: 0,
@@ -3393,6 +3449,16 @@ function GraphItem({ item, collapsed, containerW, containerH, boardId, boxId }: 
           </div>
         )}
       </div>
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x} y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          items={[
+            ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
+            { label: "Copy data as JSON", icon: <Copy size={14} />, onClick: () => { navigator.clipboard.writeText(JSON.stringify(item.graphData ?? DEFAULT_GRAPH_DATA, null, 2)); } },
+          ]}
+        />
+      )}
     </div>
   );
 }
@@ -4106,7 +4172,8 @@ function formatValue(v: unknown): string {
 
 // ─── API Item ─────────────────────────────────────────────────────────────────
 
-function ApiItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+function ApiItem({ item, upd, collapsed, isFinished, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; extraContextItems?: ContextMenuEntry[] }) {
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [data, setData] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -4181,7 +4248,7 @@ function ApiItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (
   }
 
   return (
-    <div className="flex h-full flex-col gap-0 text-xs">
+    <div className="flex h-full flex-col gap-0 text-xs" onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {/* Toolbar */}
       <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2 shrink-0">
         <span className={cn("h-2 w-2 rounded-full flex-shrink-0", loading ? "animate-pulse bg-yellow-400" : error ? "bg-red-400" : data ? "bg-green-400" : "bg-[var(--text-muted)]")} />
@@ -4236,6 +4303,18 @@ function ApiItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (
           )
         )}
       </div>
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x} y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          items={[
+            ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
+            { label: "Refresh", icon: <RotateCcw size={14} />, onClick: doFetch },
+            ...(item.apiUrl ? [{ label: "Copy URL", icon: <Copy size={14} />, onClick: () => navigator.clipboard.writeText(item.apiUrl!) }] : []),
+            ...(data != null ? ["separator" as const, { label: "Copy response", icon: <Copy size={14} />, onClick: () => navigator.clipboard.writeText(JSON.stringify(data, null, 2)) }] : []),
+          ]}
+        />
+      )}
     </div>
   );
 }
@@ -4548,7 +4627,8 @@ function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished
   );
 }
 
-function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId?: string; boxId?: string; collapsed?: boolean; isFinished?: boolean }) {
+function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId?: string; boxId?: string; collapsed?: boolean; isFinished?: boolean; extraContextItems?: ContextMenuEntry[] }) {
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const today = new Date();
   const view = item.calendarView ?? "month";
   const mondayFirst = item.calendarFirstDayMonday ?? false;
@@ -4734,7 +4814,7 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished }: { it
   };
 
   return (
-    <div className="relative flex h-full flex-col select-none overflow-hidden" style={containerStyle} onClick={() => setShowDatePicker(false)}>
+    <div className="relative flex h-full flex-col select-none overflow-hidden" style={containerStyle} onClick={() => setShowDatePicker(false)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {/* Background */}
       {item.calendarBgColor && <div style={{ position:"absolute", inset:0, zIndex:0, backgroundColor: item.calendarBgColor, borderRadius: br, opacity: (item.calendarBgOpacity??100)/100, pointerEvents:"none" }} />}
       {item.calendarBgImage && <div style={{ position:"absolute", inset:0, zIndex:0, backgroundImage:`url(${item.calendarBgImage})`, backgroundSize: item.calendarBgImageSize??"cover", backgroundPosition:"center", borderRadius: br, opacity:(item.calendarBgImageOpacity??100)/100, pointerEvents:"none" }} />}
@@ -4946,6 +5026,17 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished }: { it
             </button>
           )}
         </div>
+      )}
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x} y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          items={[
+            ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
+            { label: "Go to today", icon: <CalendarDays size={14} />, onClick: goToday },
+            ...(!isFinished && localEvents.length > 0 ? ["separator" as const, { label: "Clear all events", icon: <Trash2 size={14} />, danger: true, onClick: () => upd({ calendarEvents: [] }) }] : []),
+          ]}
+        />
       )}
     </div>
   );
@@ -5918,7 +6009,7 @@ function computeColSummary(col: TableColumn, rows: TableRow[]): string {
   return "";
 }
 
-function TableItem({ item, upd, collapsed, isFinished, boardId, boxId }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; boardId?: string; boxId?: string }) {
+function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; boardId?: string; boxId?: string; extraContextItems?: ContextMenuEntry[] }) {
   const cols: TableColumn[] = item.tableColumns ?? [{ id: "c1", name: "Name", type: "text" }];
   const rows: TableRow[] = item.tableRows ?? [];
   const striped = item.tableStriped ?? false;
@@ -6718,6 +6809,11 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId }: { item:
           x={contextMenu.x}
           y={contextMenu.y}
           items={[
+            // Block-level items injected from BoardItemWidget (canvas-level tables only)
+            ...(extraContextItems && extraContextItems.length > 0
+              ? [...extraContextItems, "separator" as const]
+              : []),
+            // Table-specific items
             ...(isFinished ? [
               { label: locked ? "Unlock editing" : "Lock editing", icon: locked ? <LockOpen size={14} /> : <Lock size={14} />, onClick: () => setLocked(v => !v) },
               "separator" as const,
@@ -7213,13 +7309,15 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
 // ─── Custom Widget ────────────────────────────────────────────────────────────
 
-function WidgetItem({ item, upd, vars, collapsed, isFinished }: {
+function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems }: {
   item: BlockItem;
   upd: (p: Partial<BlockItem>) => void;
   vars: Record<string, number>;
   collapsed?: boolean;
   isFinished?: boolean;
+  extraContextItems?: ContextMenuEntry[];
 }) {
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [tab, setTab] = useState<"preview" | "code">("preview");
   const [draft, setDraft] = useState(item.widgetCode ?? DEFAULT_WIDGET_CODE);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -7260,7 +7358,7 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished }: {
   }
 
   return (
-    <div className="flex flex-col w-full h-full min-h-0">
+    <div className="flex flex-col w-full h-full min-h-0" onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {/* Tab bar */}
       {!isFinished && (
         <div
@@ -7293,7 +7391,18 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished }: {
           srcDoc={srcDoc}
           className="flex-1 w-full border-none min-h-0"
           style={{ display: "block" }}
-          onLoad={sendVars}
+          onLoad={() => {
+            sendVars();
+            const doc = iframeRef.current?.contentDocument;
+            if (!doc) return;
+            doc.addEventListener("contextmenu", (e: MouseEvent) => {
+              e.preventDefault();
+              const el = iframeRef.current;
+              if (!el) return;
+              const rect = el.getBoundingClientRect();
+              setCtxMenu({ x: rect.left + e.clientX, y: rect.top + e.clientY });
+            });
+          }}
         />
       ) : (
         <textarea
@@ -7318,6 +7427,18 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished }: {
               setTimeout(() => { el.selectionStart = el.selectionEnd = start + 2; }, 0);
             }
           }}
+        />
+      )}
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x} y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          items={[
+            ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
+            { label: tab === "code" ? "Switch to preview" : "Switch to code", icon: <Code2 size={14} />, onClick: () => setTab(t => t === "code" ? "preview" : "code") },
+            { label: "Copy code", icon: <Copy size={14} />, onClick: () => navigator.clipboard.writeText(draft) },
+            ...(!isFinished ? ["separator" as const, { label: "Reset to default", icon: <RotateCcw size={14} />, danger: true, onClick: () => handleCodeChange(DEFAULT_WIDGET_CODE) }] : []),
+          ]}
         />
       )}
     </div>
@@ -7463,7 +7584,8 @@ function getStaticThumbnail(trackUrl: string): string | null {
   return null;
 }
 
-function PlaylistItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+function PlaylistItem({ item, upd, collapsed, isFinished, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; extraContextItems?: ContextMenuEntry[] }) {
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const tracks = item.playlistTracks ?? [];
   const currentIdx = Math.min(item.playlistCurrentIndex ?? 0, Math.max(0, tracks.length - 1));
   const [urlInput, setUrlInput] = useState("");
@@ -7933,7 +8055,7 @@ function PlaylistItem({ item, upd, collapsed, isFinished }: { item: BlockItem; u
   }
 
   return (
-    <div className="relative flex flex-col h-full overflow-hidden" style={containerStyle}>
+    <div className="relative flex flex-col h-full overflow-hidden" style={containerStyle} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {/* BG: image layer */}
       {item.playlistBgImage && (
         <div aria-hidden style={{
@@ -7957,6 +8079,16 @@ function PlaylistItem({ item, upd, collapsed, isFinished }: { item: BlockItem; u
       <div className={cn("relative flex flex-col h-full gap-2", layout !== "card" && "p-1.5")} style={{ zIndex: 2 }}>
         {inner}
       </div>
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x} y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          items={[
+            ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
+            ...(!isFinished && tracks.length > 0 ? [{ label: "Clear queue", icon: <Trash2 size={14} />, danger: true, onClick: () => upd({ playlistTracks: [] }) }] : []),
+          ]}
+        />
+      )}
     </div>
   );
 }
@@ -8539,9 +8671,10 @@ function KanbanColumnContainer({
 }
 
 function KanbanItem({
-  item, upd, collapsed, isFinished: isFinishedProp,
-}: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+  item, upd, collapsed, isFinished: isFinishedProp, extraContextItems,
+}: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; extraContextItems?: ContextMenuEntry[] }) {
   const isFinished = isFinishedProp ?? false;
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const columns: KanbanColumn[] = item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS;
   const cards: KanbanCard[] = item.kanbanCards ?? [];
   const accent = item.kanbanAccentColor ?? "#d59ee8";
@@ -8827,6 +8960,7 @@ function KanbanItem({
     <div
       className="relative flex h-full flex-col"
       onPointerDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
     >
       {/* Background layer — opacity isolated so card content stays at full opacity */}
       <div className="pointer-events-none absolute inset-0" style={bgStyle} />
@@ -8871,6 +9005,17 @@ function KanbanItem({
           onSave={(patch) => handleEditSave(editCard.id, patch)}
           onClose={() => handleEditClose(editCard.id)}
           onCancel={() => handleEditCancel(editCard.id)}
+        />
+      )}
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x} y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          items={[
+            ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
+            ...(!isFinished ? [{ label: "Add column", icon: <Plus size={14} />, onClick: addColumn }] : []),
+            ...(!isFinished && cards.length > 0 ? ["separator" as const, { label: "Clear all cards", icon: <Trash2 size={14} />, danger: true, onClick: () => upd({ kanbanCards: [] }) }] : []),
+          ]}
         />
       )}
     </div>

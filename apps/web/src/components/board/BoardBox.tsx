@@ -7,10 +7,11 @@ import {
   Edit3, Copy, Trash2, Lock, Unlock,
   CopyPlus, Clipboard, ArrowUpToLine, ArrowDownToLine,
   SquareDashedMousePointer, Maximize2, CheckSquare, CheckCircle2,
-  LayoutGrid, Plus,
+  LayoutGrid, Plus, ShieldCheck,
 } from "lucide-react";
 import { Box, BlockItem, useBoardStore } from "@/store/boardStore";
-import { useCanEditBoard } from "@/contexts/ServerBoardContext";
+import { useCanEditBoard, useServerBoard } from "@/contexts/ServerBoardContext";
+import { BoxPermissionModal } from "./PermissionModal";
 import { useCollab } from "@/lib/useCollabSession";
 import { ItemRenderer } from "@/components/items/ItemRenderer";
 import { DeckBox } from "./DeckBox";
@@ -164,9 +165,11 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
     (s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId])?.isFinished ?? false
   );
   const canEdit = useCanEditBoard();
+  const { serverId, viewerRole } = useServerBoard();
   const { broadcastOp } = useCollab();
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [permModalOpen, setPermModalOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameInput, setRenameInput] = useState(box.title);
   const [isHovered, setIsHovered] = useState(false);
@@ -397,6 +400,14 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
         broadcastOp({ op: "removeBox", boardId, boxId: box.id });
       },
     },
+    ...(serverId && viewerRole === "owner" ? [
+      "separator" as const,
+      {
+        label: "Set permissions",
+        icon: <ShieldCheck size={14} />,
+        onClick: () => { setCtxMenu(null); setPermModalOpen(true); },
+      },
+    ] : []),
   ];
 
   return (
@@ -621,6 +632,18 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           y={ctxMenu.y}
           items={canEdit ? blockMenuItems : readOnlyMenuItems}
           onClose={handleCtxMenuClose}
+        />
+      )}
+
+      {permModalOpen && (
+        <BoxPermissionModal
+          targetLabel={box.title || "Untitled"}
+          initialPerms={box.perms}
+          onSave={(perms) => {
+            updateBox(boardId, box.id, { perms });
+            broadcastOp({ op: "updateBox", boardId, boxId: box.id, patch: { perms } });
+          }}
+          onClose={() => setPermModalOpen(false)}
         />
       )}
     </>

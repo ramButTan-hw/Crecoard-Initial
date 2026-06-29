@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CopyPlus, Trash2, ArrowUpToLine, ArrowDownToLine, Lock, Unlock, LockOpen, Eye, EyeOff,
+  CopyPlus, Trash2, ArrowUpToLine, ArrowDownToLine, Lock, Unlock, LockOpen, Eye, EyeOff, ShieldCheck,
 } from "lucide-react";
 import { BoardLevelItem, useBoardStore } from "@/store/boardStore";
-import { useCanEditBoard } from "@/contexts/ServerBoardContext";
+import { useCanEditBoard, useServerBoard, roleAllowed } from "@/contexts/ServerBoardContext";
+import { ItemPermissionModal } from "./PermissionModal";
 import { ItemRenderer } from "@/components/items/ItemRenderer";
-import { ContextMenu } from "@/components/ui/ContextMenu";
+import { ContextMenu, type ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { cn } from "@/lib/utils";
 
 const GRID = 20;
@@ -43,8 +44,13 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
 
   const [livePos, setLivePos] = useState<{ x: number; y: number } | null>(null);
   const [liveSize, setLiveSize] = useState<{ w: number; h: number } | null>(null);
+  const { serverId, viewerRole, viewerRoleIds } = useServerBoard();
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [permModalOpen, setPermModalOpen] = useState(false);
   const isDragging = useRef(false);
+
+  const canInteract = !isFinished && roleAllowed(viewerRole, viewerRoleIds, item.perms?.interact);
+  const canInput = !isFinished && roleAllowed(viewerRole, viewerRoleIds, item.perms?.input);
 
   const displayX = livePos?.x ?? item.boardX;
   const displayY = livePos?.y ?? item.boardY;
@@ -193,6 +199,60 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
 
   const upd = (patch: Partial<BoardLevelItem>) => updateBoardItem(boardId, item.id, patch);
 
+  // Board-level context items injected into every item's right-click menu.
+  const extraContextItems: ContextMenuEntry[] | undefined =
+    !isFinished && canEditBoard
+      ? [
+          {
+            label: item.isFocused ? "Unfocus" : "Focus",
+            icon: item.isFocused ? <EyeOff size={14} /> : <Eye size={14} />,
+            onClick: () => focusBoardItem(boardId, item.isFocused ? null : item.id),
+          },
+          {
+            label: item.settingsLocked ? "Unlock settings" : "Lock settings",
+            icon: item.settingsLocked ? <LockOpen size={14} /> : <Lock size={14} />,
+            onClick: () => updateBoardItem(boardId, item.id, { settingsLocked: !item.settingsLocked } as Partial<BoardLevelItem>),
+          },
+          "separator",
+          {
+            label: "Duplicate",
+            icon: <CopyPlus size={14} />,
+            onClick: () => duplicateBoardItem(boardId, item.id),
+          },
+          "separator",
+          {
+            label: item.locked ? "Unlock position" : "Lock position",
+            icon: item.locked ? <Unlock size={14} /> : <Lock size={14} />,
+            onClick: () => updateBoardItem(boardId, item.id, { locked: !item.locked } as Partial<BoardLevelItem>),
+          },
+          {
+            label: "Bring to front",
+            icon: <ArrowUpToLine size={14} />,
+            onClick: () => bringBoardItemToFront(boardId, item.id),
+          },
+          {
+            label: "Send to back",
+            icon: <ArrowDownToLine size={14} />,
+            onClick: () => sendBoardItemToBack(boardId, item.id),
+          },
+          "separator",
+          {
+            label: "Delete",
+            icon: <Trash2 size={14} />,
+            danger: true,
+            onClick: () => removeBoardItem(boardId, item.id),
+          },
+          ...(serverId && viewerRole === "owner" ? [
+            "separator" as const,
+            {
+              label: "Set permissions",
+              icon: <ShieldCheck size={14} />,
+              onClick: () => setPermModalOpen(true),
+            },
+          ] : []),
+        ]
+      : undefined;
+
   return (
     <>
       <div
@@ -218,7 +278,12 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
             bringBoardItemToFront(boardId, item.id);
           }
         }}
-        onContextMenu={handleContextMenu}
+        onContextMenuCapture={(e) => {
+          if (isFinished || !canEditBoard) return;
+          e.preventDefault();
+          selectBoardItem(item.id);
+          bringBoardItemToFront(boardId, item.id);
+        }}
       >
         {/* Drag handle — thin strip at top, visible on hover */}
         {!isFinished && canEditBoard && (
@@ -257,6 +322,9 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
             containerW={displayW}
             containerH={displayH}
             onUpdate={upd}
+            extraContextItems={extraContextItems}
+            canInteract={canInteract}
+            canInput={canInput}
           />
         </div>
 
@@ -292,6 +360,15 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
           y={ctxMenu.y}
           items={menuItems}
           onClose={handleCtxMenuClose}
+        />
+      )}
+
+      {permModalOpen && (
+        <ItemPermissionModal
+          targetLabel={item.type}
+          initialPerms={item.perms}
+          onSave={(perms) => updateBoardItem(boardId, item.id, { perms } as Partial<BoardLevelItem>)}
+          onClose={() => setPermModalOpen(false)}
         />
       )}
     </>

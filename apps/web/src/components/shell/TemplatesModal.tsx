@@ -28,6 +28,7 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
   const searchRef = useRef<HTMLInputElement>(null);
 
   const createBoardFromTemplate = useBoardStore((s) => s.createBoardFromTemplate);
+  const atBoardLimit = useBoardStore((s) => s.boards.filter((b) => !b.serverId && !b.deletedAt).length >= 3);
 
   // Fetch whenever filters change
   useEffect(() => {
@@ -149,11 +150,18 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
               onClear={() => { setSearch(""); setActiveCategory("all"); }}
             />
           ) : (
-            <div className="grid grid-cols-3 gap-4">
-              {boards.map((board) => (
-                <BoardCard key={board.id} board={board} onUse={handleUse} />
-              ))}
-            </div>
+            <>
+              {atBoardLimit && (
+                <p className="mb-3 text-xs text-[var(--text-muted)] text-center">
+                  Board limit reached (3 max). Delete a board to use a template.
+                </p>
+              )}
+              <div className="grid grid-cols-3 gap-4">
+                {boards.map((board) => (
+                  <BoardCard key={board.id} board={board} onUse={handleUse} disabled={atBoardLimit} />
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -168,12 +176,15 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
 
 // ─── Board card ───────────────────────────────────────────────────────────────
 
-function BoardCard({ board, onUse }: { board: CommunityBoard; onUse: (b: CommunityBoard) => void }) {
+function BoardCard({ board, onUse, disabled }: { board: CommunityBoard; onUse: (b: CommunityBoard) => void; disabled?: boolean }) {
   const cat = TEMPLATE_CATEGORIES.find((c) => c.id === board.category);
   return (
     <div
-      onClick={() => onUse(board)}
-      className="flex flex-col rounded-xl border border-[var(--border)] overflow-hidden cursor-pointer group hover:border-[var(--accent)]/50 transition-colors"
+      onClick={() => !disabled && onUse(board)}
+      className={cn(
+        "flex flex-col rounded-xl border border-[var(--border)] overflow-hidden transition-colors",
+        disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer group hover:border-[var(--accent)]/50"
+      )}
     >
       {/* Preview */}
       <div className="h-36 relative overflow-hidden shrink-0 bg-[var(--surface-overlay)]">

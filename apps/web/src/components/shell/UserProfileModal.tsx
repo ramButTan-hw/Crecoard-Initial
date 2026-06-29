@@ -181,16 +181,15 @@ export function UserProfileModal({
           </div>
         </div>
 
-        {/* Profile board — fixed 520px to match the edit modal canvas */}
-        <div className="flex-shrink-0 border-t border-[var(--border)] overflow-y-auto">
-          <div className="px-5 pt-3 pb-2">
+        {/* Profile board — grows to fill remaining modal height */}
+        <div className="flex-1 flex flex-col min-h-0 border-t border-[var(--border)] overflow-hidden">
+          <div className="px-5 pt-3 pb-2 flex-shrink-0">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Profile Board</p>
           </div>
-          <div className="px-5 pb-5">
+          <div className="flex-1 min-h-0 px-5 pb-5 flex flex-col">
             <div
-              className="relative w-full rounded-xl overflow-hidden border border-[var(--border)]"
+              className="relative flex-1 rounded-xl overflow-hidden border border-[var(--border)]"
               style={{
-                height: "min(520px, calc(90vh - 320px))",
                 background: user.profileBoardBgImage ? undefined : (user.profileBoardBg ?? "#111216"),
                 backgroundImage: user.profileBoardBgImage
                   ? `radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px), url(${user.profileBoardBgImage})`

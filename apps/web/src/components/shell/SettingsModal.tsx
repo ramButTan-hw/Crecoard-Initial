@@ -4,7 +4,7 @@ import { useRef, useState, useEffect } from "react";
 import {
   X, User, Bell, Shield, Palette, Accessibility, Keyboard,
   Info, ChevronRight, Check, Plus, Trash2, Volume2, VolumeX,
-  Eye, EyeOff, MessageSquare, AtSign, Globe, Zap, Monitor,
+  Eye, EyeOff, MessageSquare, AtSign, Globe, Zap, Monitor, RotateCcw, Gamepad2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getSelfIdentity, updateSelfIdentity } from "@/lib/collaboration";
@@ -61,17 +61,19 @@ function savePrefs(p: UserPrefs) {
 }
 
 // ── Section definitions ────────────────────────────────────────────────────
-type SectionId = "account" | "notifications" | "privacy" | "appearance" | "accessibility" | "keybindings" | "about";
+type SectionId = "account" | "notifications" | "privacy" | "appearance" | "accessibility" | "keybindings" | "about" | "data" | "integrations";
 
 interface Section { id: SectionId; label: string; icon: React.ReactNode; group: string }
 
 const SECTIONS: Section[] = [
-  { id: "account",       label: "My Account",    icon: <User size={14} />,          group: "User Settings" },
-  { id: "notifications", label: "Notifications",  icon: <Bell size={14} />,          group: "User Settings" },
-  { id: "privacy",       label: "Privacy & Safety",icon: <Shield size={14} />,       group: "User Settings" },
+  { id: "account",       label: "My Account",     icon: <User size={14} />,          group: "User Settings" },
+  { id: "notifications", label: "Notifications",   icon: <Bell size={14} />,          group: "User Settings" },
+  { id: "privacy",       label: "Privacy & Safety",icon: <Shield size={14} />,        group: "User Settings" },
+  { id: "integrations",  label: "Integrations",    icon: <Gamepad2 size={14} />,      group: "User Settings" },
   { id: "appearance",    label: "Appearance",     icon: <Palette size={14} />,       group: "App Settings" },
   { id: "accessibility", label: "Accessibility",  icon: <Accessibility size={14} />, group: "App Settings" },
   { id: "keybindings",   label: "Keybindings",    icon: <Keyboard size={14} />,      group: "App Settings" },
+  { id: "data",          label: "Recently Deleted",icon: <Trash2 size={14} />,       group: "App Settings" },
   { id: "about",         label: "About",          icon: <Info size={14} />,          group: "Info" },
 ];
 
@@ -136,9 +138,16 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
   const bgFileRef = useRef<HTMLInputElement>(null);
 
   const {
-    themeVars, savedThemes, appFont, appBg,
+    boards, themeVars, savedThemes, appFont, appBg,
     setThemeVars, saveCurrentTheme, deleteSavedTheme, setAppFont, setAppBg,
+    restoreBoard, hardDeleteBoard,
   } = useBoardStore();
+
+  const [confirmHardDelete, setConfirmHardDelete] = useState<string | null>(null);
+
+  const trashedBoards = boards
+    .filter((b) => !b.serverId && b.deletedAt)
+    .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0));
 
   const identity = getSelfIdentity();
 
@@ -277,6 +286,73 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
                       Clears your display name, avatar, and collab identity from this device.
                     </p>
                   </SGroup>
+                </div>
+              )}
+
+              {/* ── RECENTLY DELETED ─────────────────────────────── */}
+              {active === "data" && (
+                <div className="flex flex-col gap-4">
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Boards stay here for 30 days, then are permanently deleted.
+                  </p>
+                  {trashedBoards.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 rounded-xl border border-[var(--border)] py-12 text-center" style={{ background: "var(--surface)" }}>
+                      <Trash2 size={22} className="text-[var(--text-muted)] opacity-40" />
+                      <p className="text-sm text-[var(--text-muted)]">No recently deleted boards</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {trashedBoards.map((board) => {
+                        const daysLeft = board.deletedAt
+                          ? Math.max(0, 30 - Math.floor((Date.now() - board.deletedAt) / (24 * 60 * 60 * 1000)))
+                          : 30;
+                        return (
+                          <div
+                            key={board.id}
+                            className="flex items-center gap-3 rounded-xl border border-[var(--border)] px-4 py-3"
+                            style={{ background: "var(--surface)" }}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-[var(--text-primary)] truncate">{board.name}</p>
+                              <p className="text-[11px] text-[var(--text-muted)]">
+                                {board.boxes.length} block{board.boxes.length !== 1 ? "s" : ""} · {daysLeft}d left
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => { restoreBoard(board.id); setConfirmHardDelete(null); }}
+                              className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors flex-shrink-0"
+                            >
+                              <RotateCcw size={11} /> Restore
+                            </button>
+                            {confirmHardDelete === board.id ? (
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <span className="text-xs text-[var(--text-muted)]">Delete forever?</span>
+                                <button
+                                  onClick={() => { hardDeleteBoard(board.id); setConfirmHardDelete(null); }}
+                                  className="rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                                >
+                                  Delete
+                                </button>
+                                <button
+                                  onClick={() => setConfirmHardDelete(null)}
+                                  className="rounded-lg px-2 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmHardDelete(board.id)}
+                                className="flex items-center gap-1.5 rounded-lg border border-red-500/20 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 hover:border-red-500/40 transition-colors flex-shrink-0"
+                              >
+                                <Trash2 size={11} /> Delete
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -596,6 +672,8 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
               )}
 
               {/* ── ABOUT ────────────────────────────────────────── */}
+              {active === "integrations" && <IntegrationsSection />}
+
               {active === "about" && (
                 <div className="flex flex-col gap-6">
                   <div className="flex items-center gap-4 rounded-xl border border-[var(--border)] p-5" style={{ background: "var(--surface)" }}>
@@ -640,6 +718,69 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
         </div>
       </div>
     </>
+  );
+}
+
+// ── Integrations section ────────────────────────────────────────────────────
+
+function IntegrationsSection() {
+  const integrations = [
+    {
+      name: "Tracker.gg",
+      desc: "Live player stats — Valorant, Apex, Rocket League, Fortnite & CS2",
+      color: "#ff4655",
+      icon: <Gamepad2 size={16} className="text-white" />,
+      available: true,
+    },
+    {
+      name: "GitHub",
+      desc: "Repos, issues, PRs, commit activity",
+      color: "#24292e",
+      icon: null,
+      available: false,
+    },
+    {
+      name: "Steam",
+      desc: "Game hours, achievements, recent activity",
+      color: "#1b2838",
+      icon: null,
+      available: false,
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <p className="text-lg font-bold text-[var(--text-primary)] mb-1">Integrations</p>
+        <p className="text-sm text-[var(--text-muted)]">
+          Built-in integrations — no API keys needed. Just add the item to your board and enter your username.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {integrations.map(({ name, desc, color, icon, available }) => (
+          <div key={name}
+            className={`flex items-center gap-3 p-4 rounded-xl border border-[var(--border)] ${!available ? "opacity-50" : ""}`}
+            style={{ background: "var(--surface)" }}>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: color }}>
+              {icon ?? <span className="text-white text-xs font-bold">{name[0]}</span>}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-[var(--text-primary)]">{name}</p>
+              <p className="text-xs text-[var(--text-muted)]">{desc}</p>
+            </div>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
+              available
+                ? "text-green-400 bg-green-400/10"
+                : "text-[var(--text-muted)] border border-[var(--border)]"
+            }`}>
+              {available ? "Available" : "Soon"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
