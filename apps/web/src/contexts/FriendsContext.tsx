@@ -162,14 +162,27 @@ export function FriendsProvider({ children }: { children: React.ReactNode }) {
     q: string
   ): Promise<{ id: string; displayName: string } | null> => {
     if (!isSupabaseReady() || !q.trim()) return null;
+    const query = q.trim().replace(/^@/, "");
+    if (!query) return null;
     const { data: { user } } = await supabase.auth.getUser();
-    const { data } = await supabase
+
+    // Exact @handle match first (unique), then fall back to a fuzzy display-name match.
+    let { data } = await supabase
       .from("profiles")
       .select("id, display_name")
-      .ilike("display_name", `%${q.trim()}%`)
+      .ilike("username", query)
       .neq("id", user?.id ?? "")
       .limit(1)
       .maybeSingle();
+    if (!data) {
+      ({ data } = await supabase
+        .from("profiles")
+        .select("id, display_name")
+        .ilike("display_name", `%${query}%`)
+        .neq("id", user?.id ?? "")
+        .limit(1)
+        .maybeSingle());
+    }
     if (!data) return null;
     return { id: data.id as string, displayName: data.display_name as string };
   }, []);

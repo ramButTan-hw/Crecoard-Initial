@@ -148,6 +148,7 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
 
   const [confirmHardDelete, setConfirmHardDelete] = useState<string | null>(null);
   const [editUsername, setEditUsername] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
   const { identity: userIdentity } = useUser();
 
   const trashedBoards = boards
@@ -272,7 +273,6 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
                   </div>
 
                   <SGroup label="Account Info">
-                    <InfoRow label="User ID" value={identity.userId.slice(0, 16) + "…"} mono />
                     <div className="flex items-center justify-between rounded-xl border border-[var(--border)] px-4 py-3" style={{ background: "var(--surface)" }}>
                       <span className="text-sm text-[var(--text-muted)]">Username</span>
                       <button onClick={() => setEditUsername(true)} className="text-sm font-medium text-[var(--text-primary)] transition-colors hover:text-[var(--accent)]">
@@ -281,6 +281,14 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
                     </div>
                     <InfoRow label="Display Name" value={identity.displayName} />
                     {identity.bio && <InfoRow label="Bio" value={identity.bio} />}
+                    <button
+                      onClick={() => { void navigator.clipboard.writeText(identity.userId); setCopiedId(true); setTimeout(() => setCopiedId(false), 1500); }}
+                      className="flex w-full items-center justify-between rounded-xl border border-[var(--border)] px-4 py-3 text-left transition-colors hover:border-[var(--text-muted)]"
+                      style={{ background: "var(--surface)" }}
+                    >
+                      <span className="text-sm text-[var(--text-muted)]">User ID <span className="text-[10px]">· for support</span></span>
+                      <span className="font-mono text-xs text-[var(--text-secondary)]">{copiedId ? "Copied!" : "Copy"}</span>
+                    </button>
                   </SGroup>
 
                   {editUsername && (

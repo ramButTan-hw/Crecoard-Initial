@@ -42,14 +42,28 @@ function renderMessageContent(
   myUserId: string,
   myName: string,
   resolve: (id: string) => string | undefined,
+  resolveBox: (id: string) => string | undefined,
 ): React.ReactNode {
-  const parts = content.split(/(<@[0-9a-fA-F-]{36}>|@[A-Za-z0-9_.\-]+|https?:\/\/[^\s]+)/g);
+  const parts = content.split(/(<@[0-9a-fA-F-]{36}>|<box:[A-Za-z0-9_\-]+>|@[A-Za-z0-9_.\-]+|https?:\/\/[^\s]+)/g);
   return parts.map((part, i) => {
     if (/^https?:\/\//.test(part)) {
       return (
         <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="break-all text-[var(--accent)] underline hover:opacity-80">
           {part}
         </a>
+      );
+    }
+    const boxTok = part.match(/^<box:([A-Za-z0-9_\-]+)>$/);
+    if (boxTok) {
+      const id = boxTok[1]!;
+      return (
+        <button
+          key={i}
+          onClick={() => window.dispatchEvent(new CustomEvent("crecoard:focus-box", { detail: { boxId: id } }))}
+          className="mx-0.5 inline-flex items-center gap-1 rounded bg-[var(--accent)]/15 px-1.5 align-baseline font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/25"
+        >
+          ▦ {resolveBox(id) ?? "board item"}
+        </button>
       );
     }
     let name: string | null = null;
@@ -170,11 +184,47 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
     return map;
   }, [roster, messages, profiles]);
 
+  // ── #box links ────────────────────────────────────────────────────────────
+  // Boxes are read non-reactively (getState) so a chat panel doesn't re-render
+  // on every canvas edit.
+  const pendingBoxes = useRef<{ id: string; title: string }[]>([]);
+  const [boxQuery, setBoxQuery] = useState<string | null>(null);
+  const boxStart = useRef(0);
+  const boardBoxes = (): { id: string; title: string }[] => {
+    const b = useBoardStore.getState().serverBoards[chatBoardId] ?? useBoardStore.getState().boards.find((bd) => bd.id === chatBoardId);
+    return (b?.boxes ?? []).map((x) => ({ id: x.id, title: x.title || "Untitled" }));
+  };
+  const resolveBox = (id: string): string | undefined => boardBoxes().find((b) => b.id === id)?.title;
+  const boxCandidates = useMemo(() => {
+    if (boxQuery === null) return [];
+    const q = boxQuery.toLowerCase();
+    return boardBoxes().filter((b) => b.title.toLowerCase().includes(q)).slice(0, 6);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boxQuery, chatBoardId]);
+
   const onInputChange = (value: string, cursor: number) => {
     setInput(value);
-    const m = value.slice(0, cursor).match(/(?:^|\s)@([A-Za-z0-9_.\-]*)$/);
-    if (m) { setMentionQuery(m[1] ?? ""); mentionStart.current = cursor - (m[1]?.length ?? 0) - 1; }
-    else setMentionQuery(null);
+    const upto = value.slice(0, cursor);
+    const at = upto.match(/(?:^|\s)@([A-Za-z0-9_.\-]*)$/);
+    if (at) { setMentionQuery(at[1] ?? ""); mentionStart.current = cursor - (at[1]?.length ?? 0) - 1; setBoxQuery(null); return; }
+    const hash = upto.match(/(?:^|\s)#([A-Za-z0-9_\-]*)$/);
+    if (hash) { setBoxQuery(hash[1] ?? ""); boxStart.current = cursor - (hash[1]?.length ?? 0) - 1; setMentionQuery(null); return; }
+    setMentionQuery(null);
+    setBoxQuery(null);
+  };
+
+  const pickBox = (b: { id: string; title: string }) => {
+    const before = input.slice(0, boxStart.current);
+    const after = input.slice(boxStart.current).replace(/^#[A-Za-z0-9_\-]*/, "");
+    setInput(`${before}#${b.title} ${after}`);
+    if (!pendingBoxes.current.some((p) => p.id === b.id)) pendingBoxes.current.push(b);
+    setBoxQuery(null);
+  };
+
+  const encodeBoxes = (text: string): string => {
+    let out = text;
+    for (const bx of pendingBoxes.current) out = out.replace(`#${bx.title}`, `<box:${bx.id}>`);
+    return out;
   };
 
   const pickMention = (c: { id: string; name: string; handle?: string }) => {
@@ -244,13 +294,15 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
       identity.userId,
       identity.displayName,
       authorAvatar,
-      encodeMentions(text),
+      encodeBoxes(encodeMentions(text)),
       pendingImage ? { imageUrl, fileName: pendingImage.name } : undefined
     );
     setInput("");
     setPendingImage(null);
     setMentionQuery(null);
+    setBoxQuery(null);
     pendingMentions.current = [];
+    pendingBoxes.current = [];
   };
 
   const sendGif = (gifUrl: string) => {
@@ -426,7 +478,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                         background: bubbles ? (isYou ? accent : "var(--surface-overlay)") : undefined,
                       }}
                     >
-                      {renderMessageContent(msg.content, identity.userId, identity.displayName, (id) => profiles.get(id)?.displayName)}
+                      {renderMessageContent(msg.content, identity.userId, identity.displayName, (id) => profiles.get(id)?.displayName, resolveBox)}
                     </p>
                   )}
                   {msg.gif && (
@@ -497,6 +549,21 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
           </div>
         )}
 
+        {boxQuery !== null && boxCandidates.length > 0 && (
+          <div className="absolute bottom-full left-2 right-2 z-[201] mb-1 overflow-hidden rounded-xl border border-[var(--border)] shadow-2xl" style={{ background: "var(--surface-raised)" }}>
+            {boxCandidates.map((b) => (
+              <button
+                key={b.id}
+                onMouseDown={(e) => { e.preventDefault(); pickBox(b); }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
+              >
+                <span className="text-[var(--text-muted)]">▦</span>
+                <span className="truncate">{b.title}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {pendingImage && (
           <div className="mb-1.5 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] p-2">
             <img
@@ -555,7 +622,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
             placeholder={`Message #${channelName}…`}
             value={input}
             onChange={(e) => onInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
-            onBlur={() => setTimeout(() => setMentionQuery(null), 120)}
+            onBlur={() => setTimeout(() => { setMentionQuery(null); setBoxQuery(null); }, 120)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();

@@ -185,7 +185,7 @@ export function FriendsView({
                 value={addFriendInput}
                 onChange={(e) => { setAddFriendInput(e.target.value); setAddFriendStatus(null); }}
                 onKeyDown={(e) => { if (e.key === "Enter") void handleSendRequest(); }}
-                placeholder="Enter display name…"
+                placeholder="Add by @username…"
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] py-1.5 px-3 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none transition-colors focus:border-[var(--accent)]"
               />
               {addFriendStatus && (

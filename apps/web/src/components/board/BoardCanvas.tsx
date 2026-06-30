@@ -283,6 +283,29 @@ export function BoardCanvas() {
     return () => window.removeEventListener("plancraft:fit-board", handler);
   }, [handleFitContent]);
 
+  // Center the canvas on a specific box and select it (chat box links).
+  const handleFocusBox = useCallback((boxId: string) => {
+    if (!viewportRef.current) return;
+    const b = (board?.boxes ?? []).find((x) => x.id === boxId);
+    if (!b) return;
+    const vw = viewportRef.current.clientWidth;
+    const vh = viewportRef.current.clientHeight;
+    const PAD = 140;
+    const newZoom = Math.min(1.2, Math.max(0.1, Math.min(vw / (b.width + PAD * 2), vh / (b.height + PAD * 2))));
+    setZoom(newZoom);
+    setPanOffset({ x: vw / 2 - (b.x + b.width / 2) * newZoom, y: vh / 2 - (b.y + b.height / 2) * newZoom });
+    selectBox(boxId);
+  }, [board, setZoom, setPanOffset, selectBox]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const id = (e as CustomEvent).detail?.boxId as string | undefined;
+      if (id) requestAnimationFrame(() => handleFocusBox(id));
+    };
+    window.addEventListener("crecoard:focus-box", handler);
+    return () => window.removeEventListener("crecoard:focus-box", handler);
+  }, [handleFocusBox]);
+
   // Ctrl/Cmd + wheel → zoom toward cursor
   useEffect(() => {
     const el = viewportRef.current;
