@@ -46,6 +46,50 @@ function GIcon() {
   );
 }
 
+type OAuthProvider = "google" | "apple" | "azure";
+
+function AppleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path fill="currentColor" d="M17.543 12.718c-.022-2.27 1.85-3.36 1.934-3.414-1.054-1.542-2.693-1.753-3.275-1.777-1.395-.142-2.722.82-3.43.82-.706 0-1.795-.8-2.95-.778-1.52.022-2.92.883-3.703 2.243-1.578 2.737-.403 6.79 1.13 9.013.75 1.088 1.645 2.31 2.82 2.266 1.13-.045 1.557-.73 2.924-.73 1.366 0 1.75.73 2.948.708 1.216-.022 1.987-1.11 2.732-2.203.86-1.262 1.214-2.485 1.236-2.548-.027-.012-2.37-.91-2.393-3.612zM15.31 5.882c.624-.756 1.044-1.807.93-2.853-.898.036-1.985.598-2.63 1.353-.578.67-1.084 1.74-.948 2.766.999.078 2.022-.508 2.648-1.266z"/>
+    </svg>
+  );
+}
+
+function MicrosoftIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 23 23" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <rect x="1" y="1" width="10" height="10" fill="#F25022" />
+      <rect x="12" y="1" width="10" height="10" fill="#7FBA00" />
+      <rect x="1" y="12" width="10" height="10" fill="#00A4EF" />
+      <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
+    </svg>
+  );
+}
+
+function OAuthButtons({ loading, onProvider }: { loading: boolean; onProvider: (p: OAuthProvider) => void }) {
+  return (
+    <>
+      <div className="auth-divider">
+        <div className="auth-divider-line" />
+        <span className="auth-divider-text">or</span>
+        <div className="auth-divider-line" />
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <button type="button" className="auth-btn auth-btn-secondary" onClick={() => onProvider("google")} disabled={loading}>
+          <GIcon /> Continue with Google
+        </button>
+        <button type="button" className="auth-btn auth-btn-secondary" onClick={() => onProvider("apple")} disabled={loading}>
+          <AppleIcon /> Continue with Apple
+        </button>
+        <button type="button" className="auth-btn auth-btn-secondary" onClick={() => onProvider("azure")} disabled={loading}>
+          <MicrosoftIcon /> Continue with Microsoft
+        </button>
+      </div>
+    </>
+  );
+}
+
 const CSS = `
 .auth-page {
   min-height: 100vh;
@@ -434,12 +478,16 @@ export default function LoginPage() {
     }
   }
 
-  async function handleGoogleAuth() {
+  async function handleOAuth(provider: OAuthProvider) {
     setError(null);
     setLoading(true);
     const { error: ae } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      provider,
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        // Azure/Microsoft needs the email scope requested explicitly.
+        ...(provider === "azure" ? { scopes: "email" } : {}),
+      },
     });
     if (ae) { setError(ae.message); setLoading(false); }
   }
@@ -559,15 +607,7 @@ export default function LoginPage() {
                 </button>
               </form>
 
-              <div className="auth-divider">
-                <div className="auth-divider-line" />
-                <span className="auth-divider-text">or</span>
-                <div className="auth-divider-line" />
-              </div>
-
-              <button type="button" className="auth-btn auth-btn-secondary" onClick={handleGoogleAuth} disabled={loading}>
-                <GIcon /> Continue with Google
-              </button>
+              <OAuthButtons loading={loading} onProvider={handleOAuth} />
 
               <div className="auth-footer">
                 <span>Need an account? </span>
@@ -745,6 +785,8 @@ export default function LoginPage() {
                   {loading ? "Creating account…" : "Continue"}
                 </button>
               </form>
+
+              <OAuthButtons loading={loading} onProvider={handleOAuth} />
 
               <div className="auth-footer">
                 <span>Already have an account? </span>
