@@ -88,6 +88,14 @@ function renderMessageContent(
   });
 }
 
+// A readable label for a board-level item (which has no title of its own).
+function itemLabel(it: BlockItem): string {
+  if (it.type === "text" && it.text) return it.text.replace(/\s+/g, " ").trim().slice(0, 24) || "Text";
+  if (it.type === "chat") return `#${it.chatChannelName ?? "general"} chat`;
+  if (it.type === "list" && it.listTitle) return it.listTitle;
+  return it.type.charAt(0).toUpperCase() + it.type.slice(1);
+}
+
 interface ChatBlockProps {
   item: BlockItem;
   boardId: string;
@@ -192,7 +200,11 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const boxStart = useRef(0);
   const boardBoxes = (): { id: string; title: string }[] => {
     const b = useBoardStore.getState().serverBoards[chatBoardId] ?? useBoardStore.getState().boards.find((bd) => bd.id === chatBoardId);
-    return (b?.boxes ?? []).map((x) => ({ id: x.id, title: x.title || "Untitled" }));
+    if (!b) return [];
+    return [
+      ...(b.boxes ?? []).map((x) => ({ id: x.id, title: x.title || "Untitled" })),
+      ...(b.boardItems ?? []).map((it) => ({ id: it.id, title: itemLabel(it) })),
+    ];
   };
   const resolveBox = (id: string): string | undefined => boardBoxes().find((b) => b.id === id)?.title;
   const boxCandidates = useMemo(() => {

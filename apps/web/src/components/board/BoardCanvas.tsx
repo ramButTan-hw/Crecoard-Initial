@@ -283,19 +283,26 @@ export function BoardCanvas() {
     return () => window.removeEventListener("plancraft:fit-board", handler);
   }, [handleFitContent]);
 
-  // Center the canvas on a specific box and select it (chat box links).
-  const handleFocusBox = useCallback((boxId: string) => {
+  // Center the canvas on a box or board-level item and select it (chat links).
+  const handleFocusBox = useCallback((targetId: string) => {
     if (!viewportRef.current) return;
-    const b = (board?.boxes ?? []).find((x) => x.id === boxId);
-    if (!b) return;
+    const box = (board?.boxes ?? []).find((x) => x.id === targetId);
+    const item = box ? undefined : (board?.boardItems ?? []).find((x) => x.id === targetId);
+    const r = box
+      ? { x: box.x, y: box.y, w: box.width, h: box.height }
+      : item
+        ? { x: item.boardX ?? 0, y: item.boardY ?? 0, w: item.boardW ?? 320, h: item.boardH ?? 220 }
+        : null;
+    if (!r) return;
     const vw = viewportRef.current.clientWidth;
     const vh = viewportRef.current.clientHeight;
     const PAD = 140;
-    const newZoom = Math.min(1.2, Math.max(0.1, Math.min(vw / (b.width + PAD * 2), vh / (b.height + PAD * 2))));
+    const newZoom = Math.min(1.2, Math.max(0.1, Math.min(vw / (r.w + PAD * 2), vh / (r.h + PAD * 2))));
     setZoom(newZoom);
-    setPanOffset({ x: vw / 2 - (b.x + b.width / 2) * newZoom, y: vh / 2 - (b.y + b.height / 2) * newZoom });
-    selectBox(boxId);
-  }, [board, setZoom, setPanOffset, selectBox]);
+    setPanOffset({ x: vw / 2 - (r.x + r.w / 2) * newZoom, y: vh / 2 - (r.y + r.h / 2) * newZoom });
+    if (box) selectBox(targetId);
+    else selectBoardItem(targetId);
+  }, [board, setZoom, setPanOffset, selectBox, selectBoardItem]);
 
   useEffect(() => {
     const handler = (e: Event) => {
