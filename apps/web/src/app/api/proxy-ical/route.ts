@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiUser, rateLimit, getClientIp } from "@/lib/apiAuth";
 
 export async function GET(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (!auth.ok) return auth.response;
+
+  const limited = rateLimit(`proxy-ical:${auth.userId ?? getClientIp(req)}`, { limit: 60, windowMs: 60_000 });
+  if (!limited.ok) return limited.response;
+
   const rawUrl = new URL(req.url).searchParams.get("url");
 
   if (!rawUrl) {

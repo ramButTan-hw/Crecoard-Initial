@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import dns from "dns/promises";
+import { requireApiUser, rateLimit, getClientIp } from "@/lib/apiAuth";
 
 // ─── SSRF block-list ──────────────────────────────────────────────────────────
 // Reject targets that resolve to private / link-local / loopback address space.
@@ -55,6 +56,15 @@ const ALLOWED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
  * That removes the sensitive value from every request body.
  */
 export async function POST(req: NextRequest) {
+  // ── 0. Authenticate & rate-limit ─────────────────────────────────────────────
+  // This route forwards arbitrary headers (including Authorization) to arbitrary
+  // HTTPS hosts, so it must never be open to anonymous callers.
+  const auth = await requireApiUser();
+  if (!auth.ok) return auth.response;
+
+  const limited = rateLimit(`proxy:${auth.userId ?? getClientIp(req)}`, { limit: 60, windowMs: 60_000 });
+  if (!limited.ok) return limited.response;
+
   // ── 1. Parse & validate request body ────────────────────────────────────────
   let payload: {
     url?: unknown;

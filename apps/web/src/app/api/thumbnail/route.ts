@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiUser, rateLimit, getClientIp } from "@/lib/apiAuth";
 
 const OEMBED: { test: RegExp; endpoint: (url: string) => string }[] = [
   {
@@ -16,6 +17,12 @@ const OEMBED: { test: RegExp; endpoint: (url: string) => string }[] = [
 ];
 
 export async function GET(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (!auth.ok) return auth.response;
+
+  const limited = rateLimit(`thumbnail:${auth.userId ?? getClientIp(req)}`, { limit: 120, windowMs: 60_000 });
+  if (!limited.ok) return limited.response;
+
   const url = new URL(req.url).searchParams.get("url");
   if (!url) return NextResponse.json({ thumbnail: null });
 

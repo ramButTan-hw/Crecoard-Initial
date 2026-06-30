@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SteamData } from "@/store/boardStore";
+import { requireApiUser, rateLimit, getClientIp } from "@/lib/apiAuth";
 
 const STEAM_BASE = "https://api.steampowered.com";
 
@@ -27,6 +28,12 @@ async function resolveToSteamId(identifier: string, key: string): Promise<string
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (!auth.ok) return auth.response;
+
+  const limited = rateLimit(`steam:${auth.userId ?? getClientIp(req)}`, { limit: 30, windowMs: 60_000 });
+  if (!limited.ok) return limited.response;
+
   let body: { identifier?: string };
   try {
     body = await req.json();

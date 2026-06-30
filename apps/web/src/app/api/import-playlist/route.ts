@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiUser, rateLimit, getClientIp } from "@/lib/apiAuth";
 
 export async function GET(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (!auth.ok) return auth.response;
+
+  const limited = rateLimit(`import-playlist:${auth.userId ?? getClientIp(req)}`, { limit: 20, windowMs: 60_000 });
+  if (!limited.ok) return limited.response;
+
   const { searchParams } = new URL(req.url);
   const platform = searchParams.get("platform");
   const id = searchParams.get("id");

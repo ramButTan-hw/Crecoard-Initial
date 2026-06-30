@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { TrackerGGGame, TrackerGGPlatform, TrackerGGData, TrackerGGStat } from "@/store/boardStore";
+import { requireApiUser, rateLimit, getClientIp } from "@/lib/apiAuth";
 
 const TRN_BASE = "https://public-api.tracker.gg/v2";
 
@@ -34,6 +35,12 @@ const RANK_STAT: Partial<Record<TrackerGGGame, string>> = {
 };
 
 export async function POST(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (!auth.ok) return auth.response;
+
+  const limited = rateLimit(`tracker-gg:${auth.userId ?? getClientIp(req)}`, { limit: 30, windowMs: 60_000 });
+  if (!limited.ok) return limited.response;
+
   let body: { game?: string; platform?: string; username?: string };
   try {
     body = await req.json();

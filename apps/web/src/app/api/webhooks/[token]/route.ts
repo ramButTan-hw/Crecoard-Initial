@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { rateLimit, getClientIp } from "@/lib/apiAuth";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -23,6 +24,11 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
+
+  // Token-gated endpoint hit by external services — no user session. Throttle by
+  // IP to blunt token brute-forcing and insert floods.
+  const limited = rateLimit(`webhook:${getClientIp(req)}`, { limit: 60, windowMs: 60_000 });
+  if (!limited.ok) return limited.response;
 
   if (!isConfigured()) {
     return NextResponse.json(
