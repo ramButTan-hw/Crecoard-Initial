@@ -19,9 +19,17 @@ const PAGE_SIZE = 100;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/** A single reaction row: one user reacting to one message with one emoji. */
+export interface ChatReaction {
+  userId: string;
+  emoji: string;
+}
+
 interface BoardChatContextValue {
   /** Messages indexed by itemId. */
   messagesByItem: Record<string, ChatMessage[]>;
+  /** Raw reactions indexed by message id (grouping/counts derived in the UI). */
+  reactionsByMessage: Record<string, ChatReaction[]>;
   /**
    * Load messages for a chat item and subscribe to Realtime inserts.
    * Returns an unsubscribe function — call it when the ChatBlock unmounts.
@@ -40,13 +48,20 @@ interface BoardChatContextValue {
     content: string,
     opts?: { gifUrl?: string; imageUrl?: string; fileName?: string }
   ) => Promise<void>;
+  /** Add or remove the current user's reaction to a message (optimistic). */
+  toggleReaction: (messageId: string, boardId: string, emoji: string, userId: string) => Promise<void>;
+  /** Pin or unpin a message within its (board, channel) (optimistic). */
+  togglePin: (messageId: string, boardId: string, channel: string, pinned: boolean) => Promise<void>;
 }
 
 const BoardChatContext = createContext<BoardChatContextValue>({
   messagesByItem: {},
+  reactionsByMessage: {},
   loadAndSubscribe: () => () => {},
   loadOlder: async () => 0,
   sendMessage: async () => {},
+  toggleReaction: async () => {},
+  togglePin: async () => {},
 });
 
 export function useBoardChat(): BoardChatContextValue {
@@ -92,7 +107,20 @@ export function useBoardChatItem(itemId: string, boardId: string, channelName?: 
     [chatKey]
   );
 
-  return { messages, send, chatKey, loadOlder };
+  const toggleReaction = useCallback(
+    (messageId: string, emoji: string, userId: string) =>
+      ctx.toggleReaction(messageId, boardId, emoji, userId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chatKey]
+  );
+
+  const togglePin = useCallback(
+    (messageId: string, pinned: boolean) => ctx.togglePin(messageId, boardId, channel, pinned),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chatKey]
+  );
+
+  return { messages, send, chatKey, loadOlder, reactions: ctx.reactionsByMessage, toggleReaction, togglePin };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -108,6 +136,9 @@ function rowToMessage(row: Record<string, unknown>): ChatMessage {
     gif: (row.gif_url as string | null) ?? undefined,
     image: (row.image_url as string | null) ?? undefined,
     fileName: (row.file_name as string | null) ?? undefined,
+    pinned: Boolean(row.pinned),
+    pinnedAt: (row.pinned_at as string | null) ?? undefined,
+    pinnedBy: (row.pinned_by as string | null) ?? undefined,
   };
 }
 
@@ -117,6 +148,11 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
   const { identity } = useUser();
   const { push: pushNotification, isActive } = useNotifications();
   const [messagesByItem, setMessagesByItem] = useState<Record<string, ChatMessage[]>>({});
+  const [reactionsByMessage, setReactionsByMessage] = useState<Record<string, ChatReaction[]>>({});
+  // Mirror of reactionsByMessage so toggleReaction can read current state without
+  // a stale closure (it needs to know whether the reaction already exists).
+  const reactionsRef = useRef<Record<string, ChatReaction[]>>({});
+  useEffect(() => { reactionsRef.current = reactionsByMessage; }, [reactionsByMessage]);
   const channels = useRef<Record<string, RealtimeChannel>>({});
   const loaded = useRef<Set<string>>(new Set());
   // Reference count: how many ChatBlock instances are subscribed to each itemId
@@ -129,6 +165,27 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
     return () => {
       Object.values(chans).forEach((ch) => void supabase.removeChannel(ch));
     };
+  }, []);
+
+  // Fetch all reactions for a set of message ids and merge them in, replacing any
+  // previously-known reactions for those messages (so a reload reflects deletions).
+  const loadReactionsFor = useCallback(async (ids: string[]): Promise<void> => {
+    const real = ids.filter((id) => !id.startsWith("opt-"));
+    if (!real.length || !isSupabaseReady()) return;
+    const { data } = await supabase
+      .from("board_chat_reactions")
+      .select("message_id, user_id, emoji")
+      .in("message_id", real);
+    if (!data) return;
+    setReactionsByMessage((prev) => {
+      const next = { ...prev };
+      for (const id of real) next[id] = [];
+      for (const r of data) {
+        const mid = r.message_id as string;
+        (next[mid] ??= []).push({ userId: r.user_id as string, emoji: r.emoji as string });
+      }
+      return next;
+    });
   }, []);
 
   const loadAndSubscribe = useCallback((itemId: string, boardId: string, channel: string): () => void => {
@@ -191,6 +248,73 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
             });
           }
         )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "board_chat_messages",
+            filter: `board_id=eq.${boardId}`,
+          },
+          (payload) => {
+            const row = payload.new as Record<string, unknown>;
+            if (((row.channel as string) ?? "general") !== channel) return;
+            const id = row.id as string;
+            setMessagesByItem((prev) => {
+              const existing = prev[key];
+              if (!existing) return prev;
+              let changed = false;
+              const updated = existing.map((m) => {
+                if (m.id !== id) return m;
+                changed = true;
+                return {
+                  ...m,
+                  pinned: Boolean(row.pinned),
+                  pinnedAt: (row.pinned_at as string | null) ?? undefined,
+                  pinnedBy: (row.pinned_by as string | null) ?? undefined,
+                };
+              });
+              return changed ? { ...prev, [key]: updated } : prev;
+            });
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "board_chat_reactions",
+            filter: `board_id=eq.${boardId}`,
+          },
+          (payload) => {
+            const r = payload.new as Record<string, unknown>;
+            const mid = r.message_id as string;
+            const entry = { userId: r.user_id as string, emoji: r.emoji as string };
+            setReactionsByMessage((prev) => {
+              const list = prev[mid] ?? [];
+              if (list.some((x) => x.userId === entry.userId && x.emoji === entry.emoji)) return prev;
+              return { ...prev, [mid]: [...list, entry] };
+            });
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "DELETE",
+            schema: "public",
+            table: "board_chat_reactions",
+            filter: `board_id=eq.${boardId}`,
+          },
+          (payload) => {
+            const r = payload.old as Record<string, unknown>;
+            const mid = r.message_id as string;
+            setReactionsByMessage((prev) => {
+              const list = prev[mid];
+              if (!list) return prev;
+              return { ...prev, [mid]: list.filter((x) => !(x.userId === r.user_id && x.emoji === r.emoji)) };
+            });
+          }
+        )
         .subscribe();
 
       channels.current[key] = ch;
@@ -213,6 +337,7 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
               ...prev,
               [key]: ordered.map(rowToMessage as (r: unknown) => ChatMessage),
             }));
+            void loadReactionsFor(ordered.map((r) => (r as { id: string }).id));
           }
         });
     }
@@ -249,8 +374,9 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
       const ids = new Set(existing.map((m) => m.id));
       return { ...prev, [key]: [...older.filter((m) => !ids.has(m.id)), ...existing] };
     });
+    void loadReactionsFor(older.map((m) => m.id));
     return data.length;
-  }, []);
+  }, [loadReactionsFor]);
 
   const sendMessage = useCallback(async (
     itemId: string,
@@ -315,8 +441,83 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const toggleReaction = useCallback(async (
+    messageId: string,
+    boardId: string,
+    emoji: string,
+    userId: string,
+  ): Promise<void> => {
+    // Optimistic-only messages aren't persisted yet, so there's nothing to react to.
+    if (messageId.startsWith("opt-")) return;
+    const has = (reactionsRef.current[messageId] ?? []).some((x) => x.userId === userId && x.emoji === emoji);
+
+    // Optimistic toggle.
+    setReactionsByMessage((prev) => {
+      const list = prev[messageId] ?? [];
+      return {
+        ...prev,
+        [messageId]: has
+          ? list.filter((x) => !(x.userId === userId && x.emoji === emoji))
+          : [...list, { userId, emoji }],
+      };
+    });
+
+    if (!isSupabaseReady()) return;
+
+    const { error } = has
+      ? await supabase.from("board_chat_reactions").delete()
+          .eq("message_id", messageId).eq("user_id", userId).eq("emoji", emoji)
+      : await supabase.from("board_chat_reactions")
+          .insert({ message_id: messageId, board_id: boardId, user_id: userId, emoji });
+
+    // Roll back on failure.
+    if (error) {
+      setReactionsByMessage((prev) => {
+        const list = prev[messageId] ?? [];
+        return {
+          ...prev,
+          [messageId]: has
+            ? [...list, { userId, emoji }]
+            : list.filter((x) => !(x.userId === userId && x.emoji === emoji)),
+        };
+      });
+    }
+  }, []);
+
+  const togglePin = useCallback(async (
+    messageId: string,
+    boardId: string,
+    channel: string,
+    pinned: boolean,
+  ): Promise<void> => {
+    if (messageId.startsWith("opt-")) return;
+    const key = chatKeyFor(boardId, channel);
+
+    const apply = (want: boolean) => setMessagesByItem((prev) => {
+      const existing = prev[key];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [key]: existing.map((m) =>
+          m.id === messageId
+            ? { ...m, pinned: want, pinnedAt: want ? new Date().toISOString() : undefined }
+            : m
+        ),
+      };
+    });
+
+    apply(pinned); // optimistic
+    if (!isSupabaseReady()) return;
+
+    const { error } = await supabase.rpc("set_chat_message_pinned", {
+      p_message_id: messageId,
+      p_pinned: pinned,
+    });
+    if (error) apply(!pinned); // rollback
+  }, []);
+
   return (
-    <BoardChatContext.Provider value={{ messagesByItem, loadAndSubscribe, loadOlder, sendMessage }}>
+    <BoardChatContext.Provider value={{ messagesByItem, reactionsByMessage, loadAndSubscribe, loadOlder, sendMessage, toggleReaction, togglePin }}>
       {children}
     </BoardChatContext.Provider>
   );

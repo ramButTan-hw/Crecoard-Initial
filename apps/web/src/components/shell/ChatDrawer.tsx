@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { X, Hash, Plus, Search } from "lucide-react";
+import { X, Hash, Plus, Search, Pin } from "lucide-react";
 import { useBoardStore } from "@/store/boardStore";
 import type { BlockItem } from "@/store/boardStore";
 import { supabase } from "@/lib/supabase";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { chatKeyFor } from "@/contexts/BoardChatContext";
+import { chatKeyFor, useBoardChat } from "@/contexts/BoardChatContext";
 import { ChatBlock } from "@/components/items/ChatBlock";
 import { cn } from "@/lib/utils";
 
@@ -19,11 +19,14 @@ export function ChatDrawer({ boardId, onClose }: { boardId: string; onClose: () 
   const board = useBoardStore((s) => s.boards.find((b) => b.id === boardId) ?? s.serverBoards[boardId]);
   const addChatChannel = useBoardStore((s) => s.addChatChannel);
   const { unread } = useNotifications();
+  const { togglePin } = useBoardChat();
   const [newName, setNewName] = useState("");
   const [active, setActive] = useState("general");
   const [searching, setSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<{ id: string; channel: string; author: string; content: string; ts: string }[]>([]);
+  const [showPins, setShowPins] = useState(false);
+  const [pins, setPins] = useState<{ id: string; author: string; content: string; gif?: string; image?: string; ts: string }[]>([]);
 
   // Search this board's chat history (across channels).
   useEffect(() => {
@@ -61,6 +64,37 @@ export function ChatDrawer({ boardId, onClose }: { boardId: string; onClose: () 
   const activeChannel = channels.includes(active) ? active : channels[0] ?? "general";
   const syntheticItem = { id: `drawer-${activeChannel}`, type: "chat", showInCollapsed: false, chatChannelName: activeChannel } as BlockItem;
 
+  // Load this channel's pinned messages whenever the Pins panel is open.
+  useEffect(() => {
+    if (!showPins) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("board_chat_messages")
+        .select("id, author_name, content, gif_url, image_url, pinned_at")
+        .eq("board_id", boardId)
+        .eq("channel", activeChannel)
+        .eq("pinned", true)
+        .order("pinned_at", { ascending: false })
+        .limit(50);
+      if (cancelled) return;
+      setPins((data ?? []).map((r) => ({
+        id: r.id as string,
+        author: r.author_name as string,
+        content: r.content as string,
+        gif: (r.gif_url as string | null) ?? undefined,
+        image: (r.image_url as string | null) ?? undefined,
+        ts: r.pinned_at as string,
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [showPins, activeChannel, boardId]);
+
+  const unpin = (id: string) => {
+    void togglePin(id, boardId, activeChannel, false);
+    setPins((prev) => prev.filter((p) => p.id !== id));
+  };
+
   const handleCreate = () => {
     const name = newName.trim();
     if (!name) return;
@@ -79,7 +113,10 @@ export function ChatDrawer({ boardId, onClose }: { boardId: string; onClose: () 
       <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
         <span className="text-sm font-semibold text-[var(--text-primary)]">Chat</span>
         <div className="flex items-center gap-0.5">
-          <button onClick={() => { setSearching((v) => !v); setSearchQuery(""); }} className={cn("rounded p-1 transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]", searching ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>
+          <button onClick={() => { setShowPins((v) => !v); setSearching(false); }} title="Pinned messages" className={cn("rounded p-1 transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]", showPins ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>
+            <Pin size={15} />
+          </button>
+          <button onClick={() => { setSearching((v) => !v); setSearchQuery(""); setShowPins(false); }} className={cn("rounded p-1 transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]", searching ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>
             <Search size={15} />
           </button>
           <button onClick={onClose} className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">
@@ -113,6 +150,38 @@ export function ChatDrawer({ boardId, onClose }: { boardId: string; onClose: () 
                 </span>
                 <span className="truncate text-sm text-[var(--text-secondary)]">{r.content || "(attachment)"}</span>
               </button>
+            ))}
+          </div>
+        </div>
+      ) : showPins ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex items-center gap-1 border-b border-[var(--border)] px-3 py-2 text-xs text-[var(--text-muted)]">
+            <Pin size={12} className="text-[var(--accent)]" />
+            <span>Pinned in</span>
+            <Hash size={11} />
+            <span className="font-semibold text-[var(--text-primary)]">{activeChannel}</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {pins.length === 0 ? (
+              <p className="p-4 text-center text-xs text-[var(--text-muted)]">No pinned messages in this channel yet.</p>
+            ) : pins.map((p) => (
+              <div key={p.id} className="group flex items-start gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-[var(--surface-overlay)]">
+                <div className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
+                    {p.author} · {new Date(p.ts).toLocaleDateString()}
+                  </span>
+                  <span className="block truncate text-sm text-[var(--text-secondary)]">
+                    {p.content || (p.gif ? "(GIF)" : p.image ? "(image)" : "(attachment)")}
+                  </span>
+                </div>
+                <button
+                  onClick={() => unpin(p.id)}
+                  title="Unpin"
+                  className="mt-0.5 hidden shrink-0 rounded p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent)] group-hover:block"
+                >
+                  <X size={12} />
+                </button>
+              </div>
             ))}
           </div>
         </div>

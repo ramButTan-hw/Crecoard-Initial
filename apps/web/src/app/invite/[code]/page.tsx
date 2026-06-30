@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { postChatActivity } from "@/lib/chatActivity";
 
 interface InviteInfo {
   code: string;
+  serverId: string;
   serverName: string;
   serverIcon: string;
   serverDescription: string;
@@ -50,6 +52,7 @@ export default function InvitePage() {
 
       setInfo({
         code: row.code as string,
+        serverId: row.server_id as string,
         serverName: (row.server_name as string) || "Unknown Server",
         serverIcon: (row.server_icon as string) || "🌐",
         serverDescription: (row.server_description as string) || "",
@@ -89,6 +92,20 @@ export default function InvitePage() {
       else setError("Failed to join server. Please try again.");
       setJoining(false);
       return;
+    }
+
+    // Announce the join in the server's primary board chat. We're now a member,
+    // so RLS lets us read the server's board_id and insert the activity line.
+    const [{ data: srv }, { data: profile }] = await Promise.all([
+      supabase.from("servers").select("board_id").eq("id", info.serverId).maybeSingle(),
+      supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
+    ]);
+    if (srv?.board_id) {
+      await postChatActivity({
+        boardId: srv.board_id as string,
+        actorId: user.id,
+        content: `${(profile?.display_name as string) || "Someone"} joined the server`,
+      });
     }
 
     setJoined(true);

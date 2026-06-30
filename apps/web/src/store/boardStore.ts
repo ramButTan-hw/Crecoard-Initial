@@ -134,6 +134,9 @@ export interface ChatMessage {
   gif?: string;       // GIPHY GIF URL
   image?: string;     // data URL for uploaded image
   fileName?: string;  // original filename for uploaded image
+  pinned?: boolean;   // pinned within its (board, channel)
+  pinnedAt?: string;  // ISO string — when it was pinned
+  pinnedBy?: string;  // user id who pinned it
 }
 
 // ─── File bank item ───────────────────────────────────────────────────────────

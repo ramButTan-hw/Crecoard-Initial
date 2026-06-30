@@ -4,6 +4,7 @@ import {
   createContext, useCallback, useContext, useEffect, useState,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { postChatActivity } from "@/lib/chatActivity";
 import type { Server, ServerMember, ServerRole, MemberRole } from "@/types/server";
 
 const ROLES_STORAGE_KEY = "plancraft-server-roles";
@@ -208,6 +209,15 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
     if (server && server.memberCount <= 1) {
       await supabase.from("servers").delete().eq("id", serverId);
     } else {
+      // Announce the departure before leaving (still a member, so the insert is
+      // allowed and remaining members receive it over Realtime).
+      if (server) {
+        await postChatActivity({
+          boardId: server.boardId,
+          actorId: user.id,
+          content: `${myMembership?.username ?? "Someone"} left the server`,
+        });
+      }
       await supabase.from("server_members").delete()
         .eq("server_id", serverId)
         .eq("user_id", user.id);
@@ -286,6 +296,8 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
 
   const kickMember = useCallback(async (serverId: string, userId: string) => {
     if (!isSupabaseReady()) return;
+    const target = (serverMembers[serverId] ?? []).find((m) => m.userId === userId);
+    const server = servers.find((s) => s.id === serverId);
     await supabase.from("server_members").delete().eq("server_id", serverId).eq("user_id", userId);
     setServerMembers((prev) => ({
       ...prev,
@@ -294,7 +306,16 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
     setServers((prev) =>
       prev.map((s) => s.id === serverId ? { ...s, memberCount: Math.max(1, (s.memberCount ?? 1) - 1) } : s)
     );
-  }, []);
+    // Announce the removal (actor is the current admin/owner performing the kick).
+    const { data: { user } } = await supabase.auth.getUser();
+    if (server && user) {
+      await postChatActivity({
+        boardId: server.boardId,
+        actorId: user.id,
+        content: `${target?.username ?? "A member"} was removed from the server`,
+      });
+    }
+  }, [servers, serverMembers]);
 
   const updateMemberRole = useCallback(async (serverId: string, userId: string, role: MemberRole) => {
     if (!isSupabaseReady()) return;

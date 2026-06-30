@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Smile, ImageIcon, X } from "lucide-react";
+import { Send, Smile, ImageIcon, X, Pin, Search, Plus } from "lucide-react";
 import type { BlockItem, Board } from "@/store/boardStore";
 import { useBoardStore } from "@/store/boardStore";
 import { useServers } from "@/contexts/ServersContext";
@@ -97,6 +97,22 @@ function itemLabel(it: BlockItem): string {
   return it.type.charAt(0).toUpperCase() + it.type.slice(1);
 }
 
+/** Group a message's raw reactions into { emoji, count, mine } for display. */
+function groupReactions(
+  rx: { userId: string; emoji: string }[] | undefined,
+  myId: string,
+): { emoji: string; count: number; mine: boolean }[] {
+  if (!rx || rx.length === 0) return [];
+  const map = new Map<string, { count: number; mine: boolean }>();
+  for (const r of rx) {
+    const g = map.get(r.emoji) ?? { count: 0, mine: false };
+    g.count++;
+    if (r.userId === myId) g.mine = true;
+    map.set(r.emoji, g);
+  }
+  return [...map.entries()].map(([emoji, g]) => ({ emoji, count: g.count, mine: g.mine }));
+}
+
 interface ChatBlockProps {
   item: BlockItem;
   boardId: string;
@@ -117,9 +133,17 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const serverId = useBoardStore((s) => (s.serverBoards[chatBoardId] ?? s.boards.find((b) => b.id === chatBoardId))?.serverId);
   const { serverMembers } = useServers();
   const roster = serverId ? (serverMembers[serverId] ?? []) : [];
-  const { messages, send, chatKey, loadOlder } = useBoardChatItem(item.id, chatBoardId, channelName);
+  const { messages, send, chatKey, loadOlder, reactions, toggleReaction, togglePin } = useBoardChatItem(item.id, chatBoardId, channelName);
   const [allLoaded, setAllLoaded] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  // Which message currently has its reaction emoji-picker open.
+  const [reactingTo, setReactingTo] = useState<string | null>(null);
+  // In-chat search (filters the loaded messages in this channel).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [chatSearch, setChatSearch] = useState("");
+  // Attachments ("+") popover — groups GIF + image upload so the input bar stays
+  // compact when the chat box is scaled down narrow.
+  const [showAttach, setShowAttach] = useState(false);
 
   const handleLoadOlder = async () => {
     if (loadingOlder || messages.length === 0) return;
@@ -398,23 +422,56 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   }
 
   // ── Expanded view ────────────────────────────────────────────────────────────
+  const searchTerm = chatSearch.trim().toLowerCase();
+  const displayed = searchTerm
+    ? messages.filter((m) => m.authorName !== "System" && (m.content ?? "").toLowerCase().includes(searchTerm))
+    : messages;
+
   return (
     <div className="relative flex h-full flex-col" style={rootStyle}>
       {bgLayer}
       {/* Channel header */}
       {!hideHeader && (
-        <div className="relative z-10 flex flex-shrink-0 items-center gap-1.5 border-b border-[var(--border)] px-3 py-2">
-          <span className="text-sm text-[var(--text-muted)]">#</span>
-          <span className="text-sm font-semibold text-[var(--text-primary)]">{channelName}</span>
-          <div className="ml-auto flex items-center gap-2">
-            {unreadCount > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
-                style={{ background: accent }}>
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
+        <div className="relative z-10 flex flex-shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+          <span
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-sm font-bold leading-none text-white"
+            style={{ background: accent }}
+          >
+            #
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-primary)]">{channelName}</span>
+          {unreadCount > 0 && (
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
+              style={{ background: accent }}>
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+          <span className="text-[10px] text-[var(--text-muted)]">{messages.length}</span>
+          <button
+            onClick={() => setSearchOpen((v) => { if (v) setChatSearch(""); return !v; })}
+            title="Search this channel"
+            className={cn(
+              "flex-shrink-0 rounded-md p-1 transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]",
+              searchOpen ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
             )}
-            <span className="text-[10px] text-[var(--text-muted)]">{messages.length} msg</span>
-          </div>
+          >
+            <Search size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* In-chat search bar */}
+      {!hideHeader && searchOpen && (
+        <div className="relative z-10 flex flex-shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+          <Search size={13} className="flex-shrink-0 text-[var(--text-muted)]" />
+          <input
+            autoFocus
+            value={chatSearch}
+            onChange={(e) => setChatSearch(e.target.value)}
+            placeholder="Search messages…"
+            className="min-w-0 flex-1 bg-transparent text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+          />
+          {searchTerm && <span className="flex-shrink-0 text-[10px] text-[var(--text-muted)]">{displayed.length} found</span>}
         </div>
       )}
 
@@ -424,15 +481,17 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
         className="relative z-10 flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2"
         style={{ minHeight: 0, scrollbarWidth: "thin" }}
       >
-        {messages.length === 0 ? (
+        {displayed.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
-            <span className="text-2xl">#</span>
-            <p className="text-xs font-semibold text-[var(--text-primary)]">#{channelName}</p>
-            <p className="text-[11px] text-[var(--text-muted)]">This is the beginning of #{channelName}.</p>
+            <span className="text-2xl">{searchTerm ? "🔍" : "#"}</span>
+            <p className="text-xs font-semibold text-[var(--text-primary)]">{searchTerm ? "No matches" : `#${channelName}`}</p>
+            <p className="text-[11px] text-[var(--text-muted)]">
+              {searchTerm ? `No messages matching “${chatSearch.trim()}”.` : `This is the beginning of #${channelName}.`}
+            </p>
           </div>
         ) : (
           <>
-            {messages.length >= 50 && !allLoaded && (
+            {!searchTerm && messages.length >= 50 && !allLoaded && (
               <button
                 onClick={handleLoadOlder}
                 disabled={loadingOlder}
@@ -441,11 +500,11 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                 {loadingOlder ? "Loading…" : "Load older messages"}
               </button>
             )}
-            {messages.map((msg, i) => {
-            const prev = messages[i - 1];
+            {displayed.map((msg, i) => {
+            const prev = displayed[i - 1];
             const showDate = !prev || new Date(prev.timestamp).toDateString() !== new Date(msg.timestamp).toDateString();
             const isSystem = msg.authorName === "System";
-            const consecutive = !!prev && !showDate && !isSystem && prev.authorId === msg.authorId && prev.authorName !== "System";
+            const consecutive = !searchTerm && !!prev && !showDate && !isSystem && prev.authorId === msg.authorId && prev.authorName !== "System";
             const isYou = msg.authorId === identity.userId;
             const liveAvatar = profiles.get(msg.authorId)?.avatarUrl ?? msg.authorAvatar;
             const liveName = profiles.get(msg.authorId)?.displayName ?? msg.authorName;
@@ -473,10 +532,43 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                 {dateDivider}
                 <div
                   className={cn(
-                    "group flex items-start gap-2 rounded px-1 py-0.5 transition-colors hover:bg-[var(--surface-overlay)]/40",
+                    "group relative flex items-start gap-2 rounded px-1 py-0.5 transition-colors hover:bg-[var(--surface-overlay)]/40",
                     consecutive ? "mt-0" : "mt-2.5"
                   )}
                 >
+                {/* Message actions — appear on row hover */}
+                <div className="absolute right-1 top-0 z-10 hidden items-center gap-0.5 rounded-md border border-[var(--border)] bg-[var(--surface-raised)] p-0.5 shadow-sm group-hover:flex">
+                  <button
+                    onClick={() => void togglePin(msg.id, !msg.pinned)}
+                    title={msg.pinned ? "Unpin" : "Pin"}
+                    className={cn(
+                      "rounded p-1 transition-colors hover:text-[var(--accent)]",
+                      msg.pinned ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+                    )}
+                  >
+                    <Pin size={12} />
+                  </button>
+                  <button
+                    onClick={() => setReactingTo((cur) => (cur === msg.id ? null : msg.id))}
+                    title="Add reaction"
+                    className="rounded p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
+                  >
+                    <Smile size={12} />
+                  </button>
+                </div>
+                {reactingTo === msg.id && (
+                  <>
+                    <div className="fixed inset-0 z-[200]" onClick={() => setReactingTo(null)} />
+                    <div className="absolute right-1 top-7 z-[201]">
+                      <EmojiPicker
+                        onSelect={(emoji) => {
+                          void toggleReaction(msg.id, emoji, identity.userId);
+                          setReactingTo(null);
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
                 {!consecutive ? (
                   <div
                     className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white"
@@ -491,6 +583,11 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                 )}
 
                 <div className="min-w-0 flex-1">
+                  {msg.pinned && (
+                    <div className="flex items-center gap-1 text-[10px] font-medium text-[var(--accent)]">
+                      <Pin size={9} /> Pinned
+                    </div>
+                  )}
                   {!consecutive && (
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-xs font-semibold text-[var(--text-primary)]">{liveName}</span>
@@ -526,6 +623,30 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                       className="mt-1 max-h-[200px] rounded-xl object-cover"
                     />
                   )}
+                  {(() => {
+                    const groups = groupReactions(reactions[msg.id], identity.userId);
+                    if (groups.length === 0) return null;
+                    return (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {groups.map((g) => (
+                          <button
+                            key={g.emoji}
+                            onClick={() => void toggleReaction(msg.id, g.emoji, identity.userId)}
+                            title={g.mine ? "Remove your reaction" : "React"}
+                            className={cn(
+                              "flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] leading-none transition-colors",
+                              g.mine
+                                ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]"
+                                : "border-[var(--border)] bg-[var(--surface-overlay)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"
+                            )}
+                          >
+                            <span>{g.emoji}</span>
+                            <span className="font-semibold">{g.count}</span>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
               </Fragment>
@@ -614,30 +735,56 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
           </div>
         )}
 
-        <div className="flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] py-1 pl-1.5 pr-1.5">
+        <div className="flex items-center gap-1 rounded-2xl border border-[var(--border)] bg-[var(--surface-overlay)] py-1 pl-1.5 pr-1 transition-colors focus-within:border-[var(--accent)]/60">
+          {/* Attachments — GIF + image grouped so the bar stays compact when narrow */}
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => { setShowAttach((v) => !v); setShowEmoji(false); setShowGif(false); }}
+              title="Add GIF or image"
+              className={cn(
+                "rounded-full p-1.5 transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--accent)]",
+                showAttach ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+              )}
+            >
+              <Plus size={15} />
+            </button>
+            {showAttach && (
+              <>
+                <div className="fixed inset-0 z-[200]" onClick={() => setShowAttach(false)} />
+                <div
+                  className="absolute bottom-full left-0 z-[201] mb-2 w-36 overflow-hidden rounded-xl border border-[var(--border)] py-1 shadow-2xl"
+                  style={{ background: "var(--surface-raised)" }}
+                >
+                  <button
+                    onClick={() => { setShowAttach(false); setShowGif(true); setShowEmoji(false); }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
+                  >
+                    <span className="flex h-4 w-7 items-center justify-center rounded border border-[var(--border)] text-[9px] font-bold">GIF</span>
+                    Send a GIF
+                  </button>
+                  <button
+                    onClick={() => { setShowAttach(false); fileInputRef.current?.click(); }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
+                  >
+                    <ImageIcon size={14} /> Upload image
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Emoji */}
           <button
-            onClick={() => { setShowEmoji((v) => !v); setShowGif(false); }}
+            onClick={() => { setShowEmoji((v) => !v); setShowGif(false); setShowAttach(false); }}
             title="Emoji"
-            className="flex-shrink-0 rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--accent)]"
+            className={cn(
+              "flex-shrink-0 rounded-full p-1.5 transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--accent)]",
+              showEmoji ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
+            )}
           >
-            <Smile size={13} />
+            <Smile size={15} />
           </button>
 
-          <button
-            onClick={() => { setShowGif((v) => !v); setShowEmoji(false); }}
-            title="GIF"
-            className="flex-shrink-0 rounded-md border border-[var(--border)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            GIF
-          </button>
-
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            title="Upload image"
-            className="flex-shrink-0 rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--accent)]"
-          >
-            <ImageIcon size={13} />
-          </button>
           <input
             ref={fileInputRef}
             type="file"
@@ -646,10 +793,8 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
             onChange={handleFileChange}
           />
 
-          <div className="mx-0.5 h-3.5 w-px flex-shrink-0 bg-[var(--border)]" />
-
           <input
-            className="min-w-0 flex-1 bg-transparent text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+            className="min-w-0 flex-1 bg-transparent px-1 py-1 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
             placeholder={`Message #${channelName}…`}
             value={input}
             onChange={(e) => onInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
@@ -665,9 +810,11 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
           <button
             onClick={() => void handleSend()}
             disabled={!input.trim() && !pendingImage}
-            className="flex-shrink-0 text-[var(--text-muted)] transition-colors hover:text-[var(--accent)] disabled:opacity-30"
+            title="Send"
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-white transition-opacity disabled:opacity-30"
+            style={{ background: accent }}
           >
-            <Send size={12} />
+            <Send size={13} />
           </button>
         </div>
       </div>
