@@ -18,6 +18,7 @@ interface Collaborator {
   userId: string;
   name: string;
   color: string;
+  canEdit: boolean;
 }
 
 function Avatar({ name, color, size = 28 }: { name: string; color: string; size?: number }) {
@@ -69,9 +70,15 @@ export function ShareModal({ onClose }: Props) {
         userId: r.user_id as string,
         name: (p?.display_name as string) || "Member",
         color: (p?.color as string) || "#8b8d99",
+        canEdit: r.can_edit as boolean,
       };
     }));
   }, [activeBoardId, isSharedWithMe]);
+
+  const setCollaboratorPermission = async (userId: string, edit: boolean) => {
+    setCollaborators((cs) => cs.map((c) => (c.userId === userId ? { ...c, canEdit: edit } : c)));
+    await supabase.rpc("set_collaborator_can_edit", { p_board_id: activeBoardId, p_user_id: userId, p_can_edit: edit });
+  };
 
   // Load (or create) the share link + its current permission for boards we own.
   // Opening the link grants access, so we also switch on live collaboration.
@@ -196,7 +203,8 @@ export function ShareModal({ onClose }: Props) {
               </div>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[10px] text-[var(--text-muted)]">
-                  {canEdit ? "Anyone signed in with this link can view and edit." : "Anyone signed in with this link can view only."}
+                  {canEdit ? "New people who open this link can edit." : "New people who open this link can view only."}
+                  {collaborators.length > 0 ? " Set individuals below." : ""}
                 </p>
                 {shareUrl && (
                   <button onClick={resetLink} className="shrink-0 text-[10px] text-[var(--text-muted)] underline hover:text-[var(--text-primary)]">Reset link</button>
@@ -214,6 +222,10 @@ export function ShareModal({ onClose }: Props) {
                   <div key={c.userId} className="group flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-[var(--surface-overlay)] transition-colors">
                     <Avatar name={c.name} color={c.color} size={28} />
                     <span className="flex-1 min-w-0 truncate text-sm text-[var(--text-primary)]">{c.name}</span>
+                    <div className="flex items-center rounded-full bg-[var(--surface-overlay)] p-0.5 text-[10px] font-medium shrink-0">
+                      <button onClick={() => setCollaboratorPermission(c.userId, true)} className={cn("rounded-full px-2 py-0.5 transition-colors", c.canEdit ? "bg-[var(--accent)] text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]")}>Edit</button>
+                      <button onClick={() => setCollaboratorPermission(c.userId, false)} className={cn("rounded-full px-2 py-0.5 transition-colors", !c.canEdit ? "bg-[var(--accent)] text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]")}>View</button>
+                    </div>
                     <button
                       onClick={() => removeCollaborator(c.userId)}
                       className="shrink-0 text-[11px] text-[var(--text-muted)] opacity-0 transition hover:text-red-400 group-hover:opacity-100"
