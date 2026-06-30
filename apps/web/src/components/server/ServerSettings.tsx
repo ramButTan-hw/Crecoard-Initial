@@ -116,7 +116,17 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
   });
   const [iconCropSrc, setIconCropSrc] = useState<string | null>(null);
   const [savedOverview, setSavedOverview] = useState(false);
+  const [activityChannelValue, setActivityChannelValue] = useState(() => realServer?.activityChannel ?? "general");
   const iconFileRef = useRef<HTMLInputElement>(null);
+
+  // Chat channels available on the server board, for the activity-channel picker.
+  const activityChannelOptions = (() => {
+    const set = new Set<string>(["general", activityChannelValue]);
+    (currentBoard?.chatChannels ?? []).forEach((c) => set.add(c));
+    currentBoard?.boxes?.forEach((box) => box.items?.forEach((it) => { if (it.type === "chat") set.add(it.chatChannelName ?? "general"); }));
+    currentBoard?.boardItems?.forEach((it) => { if (it.type === "chat") set.add(it.chatChannelName ?? "general"); });
+    return [...set];
+  })();
 
   const handleSaveOverview = async () => {
     let finalIconUrl = iconUrl;
@@ -129,6 +139,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
         name: nameValue,
         description: descValue,
         icon: finalIconUrl ?? iconEmoji,
+        activityChannel: activityChannelValue,
       });
       if (finalIconUrl !== iconUrl) setIconUrl(finalIconUrl);
       void logServerAction(serverId, myUserId, myUsername, "server_updated", { name: nameValue });
@@ -388,6 +399,25 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
                     className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] resize-none transition-colors"
                   />
                 </div>
+                {isReal && (
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                      Member activity channel
+                    </label>
+                    <select
+                      value={activityChannelValue}
+                      onChange={(e) => setActivityChannelValue(e.target.value)}
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+                    >
+                      {activityChannelOptions.map((c) => (
+                        <option key={c} value={c}>#{c}</option>
+                      ))}
+                    </select>
+                    <p className="mt-1.5 text-xs text-[var(--text-muted)]">
+                      Join, leave, and kick messages are posted to this channel.
+                    </p>
+                  </div>
+                )}
                 <div className="flex justify-end">
                   <button
                     onClick={() => void handleSaveOverview()}

@@ -15,6 +15,8 @@ export interface Server {
   onlineCount: number;
   createdAt: string;
   roles?: ServerRole[];
+  /** Chat channel that receives member join/leave/kick activity messages. */
+  activityChannel: string;
 }
 
 export interface ServerMember {

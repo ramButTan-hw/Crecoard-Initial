@@ -97,7 +97,7 @@ export default function InvitePage() {
     // Announce the join in the server's primary board chat. We're now a member,
     // so RLS lets us read the server's board_id and insert the activity line.
     const [{ data: srv }, { data: profile }] = await Promise.all([
-      supabase.from("servers").select("board_id").eq("id", info.serverId).maybeSingle(),
+      supabase.from("servers").select("board_id, activity_channel").eq("id", info.serverId).maybeSingle(),
       supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
     ]);
     if (srv?.board_id) {
@@ -105,6 +105,7 @@ export default function InvitePage() {
         boardId: srv.board_id as string,
         actorId: user.id,
         content: `${(profile?.display_name as string) || "Someone"} joined the server`,
+        channel: (srv.activity_channel as string) || "general",
       });
     }
 

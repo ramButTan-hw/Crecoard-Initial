@@ -7689,7 +7689,9 @@ function getStaticThumbnail(trackUrl: string): string | null {
   return null;
 }
 
-function PlaylistItem({ item, upd, collapsed, isFinished, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; extraContextItems?: ContextMenuEntry[] }) {
+function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; extraContextItems?: ContextMenuEntry[] }) {
+  // Playlists stay interactive even on a finished board — people keep adding songs
+  // to a shared queue — so add/remove are intentionally not gated on isFinished.
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const tracks = item.playlistTracks ?? [];
   const currentIdx = Math.min(item.playlistCurrentIndex ?? 0, Math.max(0, tracks.length - 1));
@@ -7999,19 +8001,17 @@ function PlaylistItem({ item, upd, collapsed, isFinished, extraContextItems }: {
             <span className="text-[10px] tabular-nums w-4 shrink-0 text-center" style={{ color: active ? accent : "var(--text-muted)" }}>{i + 1}</span>
             <PlatformBadge platform={trackEmbed.platform} />
             <span className={cn("flex-1 text-[11px] truncate", active ? "font-medium" : "text-[var(--text-secondary)]")} style={active ? { color: accent } : undefined}>{track.title}</span>
-            {!isFinished && (
-              <button onClick={(e) => { e.stopPropagation(); removeTrack(track.id); }}
-                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-[var(--text-muted)] hover:text-red-400 transition-all">
-                <XIcon size={10} />
-              </button>
-            )}
+            <button onClick={(e) => { e.stopPropagation(); removeTrack(track.id); }}
+              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-[var(--text-muted)] hover:text-red-400 transition-all">
+              <XIcon size={10} />
+            </button>
           </div>
         );
       })}
     </div>
   ) : null;
 
-  const addTrackEl = !isFinished ? (
+  const addTrackEl = (
     <div className="shrink-0 border-t border-white/10 pt-2 flex flex-col gap-1.5">
       <input value={urlInput} onChange={(e) => { setUrlInput(e.target.value); setImportError(null); }}
         onKeyDown={(e) => { if (e.key === "Enter") addTrack(); }}
@@ -8050,7 +8050,7 @@ function PlaylistItem({ item, upd, collapsed, isFinished, extraContextItems }: {
         );
       })()}
     </div>
-  ) : null;
+  );
 
   // ── Layout assembly ─────────────────────────────────────────────────────────
 
@@ -8190,7 +8190,7 @@ function PlaylistItem({ item, upd, collapsed, isFinished, extraContextItems }: {
           onClose={() => setCtxMenu(null)}
           items={[
             ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
-            ...(!isFinished && tracks.length > 0 ? [{ label: "Clear queue", icon: <Trash2 size={14} />, danger: true, onClick: () => upd({ playlistTracks: [] }) }] : []),
+            ...(tracks.length > 0 ? [{ label: "Clear queue", icon: <Trash2 size={14} />, danger: true, onClick: () => upd({ playlistTracks: [] }) }] : []),
           ]}
         />
       )}

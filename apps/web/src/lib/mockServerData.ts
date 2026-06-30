@@ -280,6 +280,7 @@ export const MOCK_SERVERS: Server[] = [
     onlineCount: 3,
     createdAt: new Date(Date.now() - 30 * 86400_000).toISOString(),
     roles: DEFAULT_SERVER_ROLES,
+    activityChannel: "general",
   },
   {
     id: "s2",
@@ -293,6 +294,7 @@ export const MOCK_SERVERS: Server[] = [
     onlineCount: 7,
     createdAt: new Date(Date.now() - 60 * 86400_000).toISOString(),
     roles: DEFAULT_SERVER_ROLES,
+    activityChannel: "general",
   },
   {
     id: "s3",
@@ -306,6 +308,7 @@ export const MOCK_SERVERS: Server[] = [
     onlineCount: 42,
     createdAt: new Date(Date.now() - 90 * 86400_000).toISOString(),
     roles: DEFAULT_SERVER_ROLES,
+    activityChannel: "general",
   },
 ];
 

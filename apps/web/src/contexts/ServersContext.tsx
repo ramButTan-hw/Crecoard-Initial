@@ -40,6 +40,7 @@ function rowToServer(row: ServerRow): Server {
     memberCount: (row.member_count as number) || 1,
     onlineCount: 0,
     createdAt:   row.created_at as string,
+    activityChannel: (row.activity_channel as string) || "general",
   };
 }
 
@@ -74,8 +75,8 @@ interface ServersContextValue {
   generateInvite: (serverId: string) => Promise<string | null>;
   /** Loads members for a server if not yet cached */
   loadMembers: (serverId: string) => Promise<void>;
-  /** Update name / description / icon for a real server in Supabase */
-  updateServer: (serverId: string, patch: { name?: string; description?: string; icon?: string }) => Promise<void>;
+  /** Update name / description / icon / activity channel for a real server in Supabase */
+  updateServer: (serverId: string, patch: { name?: string; description?: string; icon?: string; activityChannel?: string }) => Promise<void>;
   /** Persists custom roles for a server (localStorage for mock, Supabase-ready for real) */
   serverRoles: Record<string, ServerRole[]>;
   updateServerRoles: (serverId: string, roles: ServerRole[]) => void;
@@ -216,6 +217,7 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
           boardId: server.boardId,
           actorId: user.id,
           content: `${myMembership?.username ?? "Someone"} left the server`,
+          channel: server.activityChannel,
         });
       }
       await supabase.from("server_members").delete()
@@ -260,13 +262,14 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
 
   const updateServer = useCallback(async (
     serverId: string,
-    patch: { name?: string; description?: string; icon?: string }
+    patch: { name?: string; description?: string; icon?: string; activityChannel?: string }
   ) => {
     if (!isSupabaseReady()) return;
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (patch.name !== undefined) update.name = patch.name.trim();
     if (patch.description !== undefined) update.description = patch.description.trim();
     if (patch.icon !== undefined) update.icon = patch.icon;
+    if (patch.activityChannel !== undefined) update.activity_channel = patch.activityChannel;
     const { error } = await supabase.from("servers").update(update).eq("id", serverId);
     if (error) { console.error(error); return; }
     setServers((prev) =>
@@ -313,6 +316,7 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
         boardId: server.boardId,
         actorId: user.id,
         content: `${target?.username ?? "A member"} was removed from the server`,
+        channel: server.activityChannel,
       });
     }
   }, [servers, serverMembers]);
