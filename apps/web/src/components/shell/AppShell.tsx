@@ -95,7 +95,24 @@ function AppShellInner() {
   const { loadServerBoard, loadLiveBoard, publishServerBoard } = useBoardSync();
   const { openConversation } = useMessaging();
 
-  const { addItem, moveBox, bringToFront, selectBox, setDraggingBlock, activeBoardId, zoom, themeVars, appFont, appBg, persistBoards, hydrateBoards, hydrateUserTheme, setCurrentUserId, addBoardItem, injectServerBoards, setDragPos } = useBoardStore();
+  const { addItem, moveBox, bringToFront, selectBox, setDraggingBlock, activeBoardId, zoom, themeVars, appFont, appBg, persistBoards, hydrateBoards, hydrateUserTheme, setCurrentUserId, addBoardItem, injectServerBoards, setDragPos, setActiveBoard } = useBoardStore();
+
+  // Cross-board chat links: if a box link targets a different personal board,
+  // switch to it first, then re-fire so the canvas focuses the box.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { boardId?: string; boxId?: string } | undefined;
+      if (!detail?.boxId || !detail.boardId || detail.boardId === activeBoardId) return;
+      const isPersonal = useBoardStore.getState().boards.some((b) => b.id === detail.boardId);
+      if (!isPersonal) return;
+      if (activeView === "server") { setActiveServerId(null); setActiveServerBoardId(null); setActiveView("board"); }
+      setActiveBoard(detail.boardId);
+      const boxId = detail.boxId;
+      setTimeout(() => window.dispatchEvent(new CustomEvent("crecoard:focus-box", { detail: { boxId } })), 90);
+    };
+    window.addEventListener("crecoard:focus-box", handler);
+    return () => window.removeEventListener("crecoard:focus-box", handler);
+  }, [activeBoardId, activeView, setActiveBoard]);
   const selectedBoardItemId = useBoardStore((s) => s.selectedBoardItemId);
   const boardThemeVars = useBoardStore((s) => {
     if (activeView === "server" && activeServerBoardId) {

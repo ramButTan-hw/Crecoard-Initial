@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Send, Smile, ImageIcon, X } from "lucide-react";
-import type { BlockItem } from "@/store/boardStore";
+import type { BlockItem, Board } from "@/store/boardStore";
 import { useBoardStore } from "@/store/boardStore";
 import { useServers } from "@/contexts/ServersContext";
 import { useBoardChatItem } from "@/contexts/BoardChatContext";
@@ -42,9 +42,9 @@ function renderMessageContent(
   myUserId: string,
   myName: string,
   resolve: (id: string) => string | undefined,
-  resolveBox: (id: string) => string | undefined,
+  resolveBox: (boardId: string | undefined, id: string) => string | undefined,
 ): React.ReactNode {
-  const parts = content.split(/(<@[0-9a-fA-F-]{36}>|<box:[A-Za-z0-9_\-]+>|@[A-Za-z0-9_.\-]+|https?:\/\/[^\s]+)/g);
+  const parts = content.split(/(<@[0-9a-fA-F-]{36}>|<box:[A-Za-z0-9_|\-]+>|@[A-Za-z0-9_.\-]+|https?:\/\/[^\s]+)/g);
   return parts.map((part, i) => {
     if (/^https?:\/\//.test(part)) {
       return (
@@ -53,16 +53,17 @@ function renderMessageContent(
         </a>
       );
     }
-    const boxTok = part.match(/^<box:([A-Za-z0-9_\-]+)>$/);
+    const boxTok = part.match(/^<box:([A-Za-z0-9_\-]+)(?:\|([A-Za-z0-9_\-]+))?>$/);
     if (boxTok) {
-      const id = boxTok[1]!;
+      const boxBoardId = boxTok[2] ? boxTok[1]! : undefined;
+      const id = boxTok[2] ?? boxTok[1]!;
       return (
         <button
           key={i}
-          onClick={() => window.dispatchEvent(new CustomEvent("crecoard:focus-box", { detail: { boxId: id } }))}
+          onClick={() => window.dispatchEvent(new CustomEvent("crecoard:focus-box", { detail: { boardId: boxBoardId, boxId: id } }))}
           className="mx-0.5 inline-flex items-center gap-1 rounded bg-[var(--accent)]/15 px-1.5 align-baseline font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/25"
         >
-          ▦ {resolveBox(id) ?? "board item"}
+          ▦ {resolveBox(boxBoardId, id) ?? "board item"}
         </button>
       );
     }
@@ -195,18 +196,36 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   // ── #box links ────────────────────────────────────────────────────────────
   // Boxes are read non-reactively (getState) so a chat panel doesn't re-render
   // on every canvas edit.
-  const pendingBoxes = useRef<{ id: string; title: string }[]>([]);
+  const pendingBoxes = useRef<{ id: string; title: string; boardId: string }[]>([]);
   const [boxQuery, setBoxQuery] = useState<string | null>(null);
   const boxStart = useRef(0);
-  const boardBoxes = (): { id: string; title: string }[] => {
-    const b = useBoardStore.getState().serverBoards[chatBoardId] ?? useBoardStore.getState().boards.find((bd) => bd.id === chatBoardId);
-    if (!b) return [];
-    return [
-      ...(b.boxes ?? []).map((x) => ({ id: x.id, title: x.title || "Untitled" })),
-      ...(b.boardItems ?? []).map((it) => ({ id: it.id, title: itemLabel(it) })),
-    ];
+  const fromBoard = (b: Board, prefix: string) => [
+    ...(b.boxes ?? []).map((x) => ({ id: x.id, title: prefix + (x.title || "Untitled"), boardId: b.id })),
+    ...(b.boardItems ?? []).map((it) => ({ id: it.id, title: prefix + itemLabel(it), boardId: b.id })),
+  ];
+  const boardBoxes = (): { id: string; title: string; boardId: string }[] => {
+    const st = useBoardStore.getState();
+    const cur = st.serverBoards[chatBoardId] ?? st.boards.find((bd) => bd.id === chatBoardId);
+    const out = cur ? fromBoard(cur, "") : [];
+    // Cross-board: in personal context, also offer items from your other boards.
+    if (!serverId) {
+      for (const b of st.boards) {
+        if (b.id === chatBoardId || b.deletedAt) continue;
+        out.push(...fromBoard(b, `${b.name}: `));
+      }
+    }
+    return out;
   };
-  const resolveBox = (id: string): string | undefined => boardBoxes().find((b) => b.id === id)?.title;
+  const resolveBoxTitle = (boxBoardId: string | undefined, id: string): string | undefined => {
+    const st = useBoardStore.getState();
+    const b = (boxBoardId ? (st.serverBoards[boxBoardId] ?? st.boards.find((x) => x.id === boxBoardId)) : undefined)
+      ?? st.serverBoards[chatBoardId] ?? st.boards.find((x) => x.id === chatBoardId);
+    if (!b) return undefined;
+    const box = (b.boxes ?? []).find((x) => x.id === id);
+    if (box) return box.title || "Untitled";
+    const it = (b.boardItems ?? []).find((x) => x.id === id);
+    return it ? itemLabel(it) : undefined;
+  };
   const boxCandidates = useMemo(() => {
     if (boxQuery === null) return [];
     const q = boxQuery.toLowerCase();
@@ -225,7 +244,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
     setBoxQuery(null);
   };
 
-  const pickBox = (b: { id: string; title: string }) => {
+  const pickBox = (b: { id: string; title: string; boardId: string }) => {
     const before = input.slice(0, boxStart.current);
     const after = input.slice(boxStart.current).replace(/^#[A-Za-z0-9_\-]*/, "");
     setInput(`${before}#${b.title} ${after}`);
@@ -235,7 +254,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
 
   const encodeBoxes = (text: string): string => {
     let out = text;
-    for (const bx of pendingBoxes.current) out = out.replace(`#${bx.title}`, `<box:${bx.id}>`);
+    for (const bx of pendingBoxes.current) out = out.replace(`#${bx.title}`, `<box:${bx.boardId}|${bx.id}>`);
     return out;
   };
 
@@ -490,7 +509,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                         background: bubbles ? (isYou ? accent : "var(--surface-overlay)") : undefined,
                       }}
                     >
-                      {renderMessageContent(msg.content, identity.userId, identity.displayName, (id) => profiles.get(id)?.displayName, resolveBox)}
+                      {renderMessageContent(msg.content, identity.userId, identity.displayName, (id) => profiles.get(id)?.displayName, resolveBoxTitle)}
                     </p>
                   )}
                   {msg.gif && (
