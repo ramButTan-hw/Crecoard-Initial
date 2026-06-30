@@ -15,6 +15,8 @@ function isSupabaseReady(): boolean {
   return Boolean(url) && !url.includes("placeholder");
 }
 
+const PAGE_SIZE = 100;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface BoardChatContextValue {
@@ -25,6 +27,8 @@ interface BoardChatContextValue {
    * Returns an unsubscribe function — call it when the ChatBlock unmounts.
    */
   loadAndSubscribe: (itemId: string, boardId: string, channel: string) => () => void;
+  /** Fetch a page of older messages before `beforeIso`; returns how many loaded. */
+  loadOlder: (boardId: string, channel: string, beforeIso: string) => Promise<number>;
   /** Send a message (optimistic + Supabase insert). */
   sendMessage: (
     itemId: string,
@@ -41,6 +45,7 @@ interface BoardChatContextValue {
 const BoardChatContext = createContext<BoardChatContextValue>({
   messagesByItem: {},
   loadAndSubscribe: () => () => {},
+  loadOlder: async () => 0,
   sendMessage: async () => {},
 });
 
@@ -81,7 +86,13 @@ export function useBoardChatItem(itemId: string, boardId: string, channelName?: 
     [chatKey]
   );
 
-  return { messages, send, chatKey };
+  const loadOlder = useCallback(
+    (beforeIso: string) => ctx.loadOlder(boardId, channel, beforeIso),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chatKey]
+  );
+
+  return { messages, send, chatKey, loadOlder };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -186,18 +197,20 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
 
     if (!loaded.current.has(key)) {
       loaded.current.add(key);
+      // Load the most recent page, then reverse to oldest-first for display.
       void supabase
         .from("board_chat_messages")
         .select("*")
         .eq("board_id", boardId)
         .eq("channel", channel)
-        .order("created_at", { ascending: true })
-        .limit(200)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE)
         .then(({ data }) => {
           if (data) {
+            const ordered = [...data].reverse();
             setMessagesByItem((prev) => ({
               ...prev,
-              [key]: data.map(rowToMessage as (r: unknown) => ChatMessage),
+              [key]: ordered.map(rowToMessage as (r: unknown) => ChatMessage),
             }));
           }
         });
@@ -215,6 +228,27 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
         }
       }
     };
+  }, []);
+
+  const loadOlder = useCallback(async (boardId: string, channel: string, beforeIso: string): Promise<number> => {
+    if (!isSupabaseReady()) return 0;
+    const key = chatKeyFor(boardId, channel);
+    const { data } = await supabase
+      .from("board_chat_messages")
+      .select("*")
+      .eq("board_id", boardId)
+      .eq("channel", channel)
+      .lt("created_at", beforeIso)
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
+    if (!data || data.length === 0) return 0;
+    const older = [...data].reverse().map(rowToMessage as (r: unknown) => ChatMessage);
+    setMessagesByItem((prev) => {
+      const existing = prev[key] ?? [];
+      const ids = new Set(existing.map((m) => m.id));
+      return { ...prev, [key]: [...older.filter((m) => !ids.has(m.id)), ...existing] };
+    });
+    return data.length;
   }, []);
 
   const sendMessage = useCallback(async (
@@ -281,7 +315,7 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <BoardChatContext.Provider value={{ messagesByItem, loadAndSubscribe, sendMessage }}>
+    <BoardChatContext.Provider value={{ messagesByItem, loadAndSubscribe, loadOlder, sendMessage }}>
       {children}
     </BoardChatContext.Provider>
   );

@@ -39,7 +39,17 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   // Chat is one continuous stream per board. The server "live" view uses a
   // boardId of `<id>:live`, so strip it — draft and live share the same channel.
   const chatBoardId = boardId.replace(/:live$/, "");
-  const { messages, send, chatKey } = useBoardChatItem(item.id, chatBoardId, channelName);
+  const { messages, send, chatKey, loadOlder } = useBoardChatItem(item.id, chatBoardId, channelName);
+  const [allLoaded, setAllLoaded] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+
+  const handleLoadOlder = async () => {
+    if (loadingOlder || messages.length === 0) return;
+    setLoadingOlder(true);
+    const count = await loadOlder(messages[0]!.timestamp);
+    if (count < 100) setAllLoaded(true);
+    setLoadingOlder(false);
+  };
   const { unread, registerActive, unregisterActive, markRead } = useNotifications();
   const unreadCount = unread[chatKey] ?? 0;
 
@@ -209,7 +219,17 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
             <p className="text-[11px] text-[var(--text-muted)]">This is the beginning of #{channelName}.</p>
           </div>
         ) : (
-          messages.map((msg, i) => {
+          <>
+            {messages.length >= 50 && !allLoaded && (
+              <button
+                onClick={handleLoadOlder}
+                disabled={loadingOlder}
+                className="mx-auto mb-1 rounded-full px-3 py-1 text-[11px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
+              >
+                {loadingOlder ? "Loading…" : "Load older messages"}
+              </button>
+            )}
+            {messages.map((msg, i) => {
             const prev = messages[i - 1];
             const showDate = !prev || new Date(prev.timestamp).toDateString() !== new Date(msg.timestamp).toDateString();
             const consecutive = !!prev && !showDate && prev.authorId === msg.authorId;
@@ -283,7 +303,8 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
               </div>
               </Fragment>
             );
-          })
+          })}
+          </>
         )}
       </div>
 
