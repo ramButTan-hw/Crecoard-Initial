@@ -17,6 +17,9 @@ import { BoardItemPanel } from "../board/BoardItemPanel";
 import { StylePanel } from "../box/StylePanel";
 import { ServerBoardHeader } from "../server/ServerBoardHeader";
 import { DmPopout } from "./DmPopout";
+import { ChatDrawer } from "./ChatDrawer";
+import { MessageSquare } from "lucide-react";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { SettingsPanel } from "./SettingsPanel";
 import { TemplatesModal } from "./TemplatesModal";
 import { ProfileModal } from "./ProfileModal";
@@ -60,6 +63,8 @@ function AppShellInner() {
   const [activeServerBoardId, setActiveServerBoardId] = useState<string | null>(null);
   const [openDmIds, setOpenDmIds] = useState<string[]>([]);
   const dmInfoRef = useRef<Record<string, { username: string; online: boolean }>>({});
+  const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const { unread } = useNotifications();
   const [showMembers, setShowMembers] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -693,6 +698,33 @@ function AppShellInner() {
           </div>
         </>
       )}
+
+      {/* Chat drawer + edge toggle (per-board channels) */}
+      {(() => {
+        const cbid = ((activeView === "server" && activeServerId ? (activeServerBoardId ?? activeBoardId) : activeBoardId) ?? "").replace(/:live$/, "");
+        if (!cbid) return null;
+        const totalUnread = Object.entries(unread).reduce((sum, [k, v]) => (k.startsWith(cbid + "::") ? sum + v : sum), 0);
+        return (
+          <>
+            {!showChatDrawer && (
+              <button
+                onClick={() => setShowChatDrawer(true)}
+                title="Chat"
+                className="fixed right-0 top-1/2 z-[1090] flex -translate-y-1/2 items-center gap-1.5 rounded-l-xl border border-r-0 border-[var(--border)] px-2.5 py-2 shadow-lg transition-colors hover:text-[var(--accent)]"
+                style={{ background: "var(--surface-raised)" }}
+              >
+                <MessageSquare size={16} className="text-[var(--text-secondary)]" />
+                {totalUnread > 0 && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[9px] font-bold text-white">
+                    {totalUnread > 99 ? "99+" : totalUnread}
+                  </span>
+                )}
+              </button>
+            )}
+            {showChatDrawer && <ChatDrawer boardId={cbid} onClose={() => setShowChatDrawer(false)} />}
+          </>
+        );
+      })()}
 
       {/* DM popout modals */}
       {openDmIds.map((dmId, idx) => (

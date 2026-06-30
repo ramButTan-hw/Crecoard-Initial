@@ -701,6 +701,7 @@ export interface Board {
   collabEnabled?: boolean;
   serverId?: string;     // set when this board belongs to a server
   webhookToken?: string; // secret token for incoming webhooks
+  chatChannels?: string[]; // chat channels available on this board (for the chat drawer)
   boxes: Box[];
   boardItems?: BoardLevelItem[];
   createdAt: number;
@@ -952,6 +953,7 @@ interface BoardState {
 
   // Webhooks
   setWebhookToken: (boardId: string, token: string | undefined) => void;
+  addChatChannel: (boardId: string, name: string) => void;
   addWebhookItems: (boardId: string, items: Omit<BoardLevelItem, "id" | "zIndex">[]) => void;
 
 }
@@ -1704,6 +1706,16 @@ export const useBoardStore = create<BoardState>()(
       set((s) => {
         const board = findBoardAny(s, boardId);
         if (board) board.webhookToken = token;
+      }),
+
+    addChatChannel: (boardId, name) =>
+      set((s) => {
+        const board = findBoardAny(s, boardId);
+        if (!board) return;
+        const clean = name.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+        if (!clean) return;
+        const list = board.chatChannels ?? ["general"];
+        if (!list.includes(clean)) board.chatChannels = [...list, clean];
       }),
 
     addWebhookItems: (boardId, items) =>
