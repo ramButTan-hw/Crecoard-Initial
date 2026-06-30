@@ -84,6 +84,7 @@ interface ServersContextValue {
   kickMember: (serverId: string, userId: string) => Promise<void>;
   /** Change a member's role */
   updateMemberRole: (serverId: string, userId: string, role: MemberRole) => Promise<void>;
+  updateMemberRoleIds: (serverId: string, userId: string, roleIds: string[]) => Promise<void>;
   /** Force-reload members for a server, bypassing the cache */
   refreshMembers: (serverId: string) => Promise<void>;
 }
@@ -305,13 +306,23 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const updateMemberRoleIds = useCallback(async (serverId: string, userId: string, roleIds: string[]) => {
+    if (!isSupabaseReady()) return;
+    const { error } = await supabase.from("server_members").update({ role_ids: roleIds }).eq("server_id", serverId).eq("user_id", userId);
+    if (error) { console.error(error); return; }
+    setServerMembers((prev) => ({
+      ...prev,
+      [serverId]: (prev[serverId] ?? []).map((m) => m.userId === userId ? { ...m, roleIds } : m),
+    }));
+  }, []);
+
   const loadMembers = useCallback(async (serverId: string) => {
     if (!isSupabaseReady()) return;
     if (serverMembers[serverId]) return; // already loaded
 
     const { data: memberData, error: memberError } = await supabase
       .from("server_members")
-      .select("user_id, role")
+      .select("user_id, role, role_ids")
       .eq("server_id", serverId);
 
     if (memberError) { console.error("[ServersContext] loadMembers failed:", memberError.message); return; }
@@ -333,6 +344,7 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
         username: displayName,
         avatar:   (profile?.avatar_url as string) ?? displayName[0]?.toUpperCase() ?? "?",
         role:     row.role as ServerMember["role"],
+        roleIds:  (row.role_ids as string[] | null) ?? [],
         online:   false,
       };
     });
@@ -345,7 +357,7 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
 
     const { data: memberData, error: memberError } = await supabase
       .from("server_members")
-      .select("user_id, role")
+      .select("user_id, role, role_ids")
       .eq("server_id", serverId);
 
     if (memberError) { console.error("[ServersContext] refreshMembers failed:", memberError.message); return; }
@@ -367,6 +379,7 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
         username: displayName,
         avatar:   (profile?.avatar_url as string) ?? displayName[0]?.toUpperCase() ?? "?",
         role:     row.role as ServerMember["role"],
+        roleIds:  (row.role_ids as string[] | null) ?? [],
         online:   false,
       };
     });
@@ -379,7 +392,7 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
       servers, serverMembers, serverRoles, loading,
       createServer, leaveServer, deleteServer, generateInvite,
       loadMembers, refreshMembers, updateServer, updateServerRoles,
-      transferOwnership, kickMember, updateMemberRole,
+      transferOwnership, kickMember, updateMemberRole, updateMemberRoleIds,
     }}>
       {children}
     </ServersContext.Provider>

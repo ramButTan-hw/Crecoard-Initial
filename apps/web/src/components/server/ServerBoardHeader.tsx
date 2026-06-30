@@ -432,8 +432,9 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
   label: string; serverId: string; members: ServerMember[]; viewerId: string; canManageMembers: boolean;
   onViewProfile?: (u: ViewableUser) => void;
 }) {
-  const { updateMemberRole, kickMember } = useServers();
+  const { updateMemberRole, kickMember, updateMemberRoleIds, serverRoles } = useServers();
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const customRoles = (serverRoles[serverId] ?? []).filter((r) => !r.isDefault);
   if (members.length === 0) return null;
 
   const buildViewableUser = (m: ServerMember): ViewableUser => {
@@ -509,6 +510,31 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
                   )}
                   {m.role !== "member" && (
                     <button onClick={() => { void updateMemberRole(serverId, m.userId, "member"); setMenuFor(null); }} className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">Make member</button>
+                  )}
+                  {customRoles.length > 0 && (
+                    <>
+                      <div className="my-1 h-px bg-[var(--border)]" />
+                      <p className="px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Roles</p>
+                      {customRoles.map((r) => {
+                        const has = (m.roleIds ?? []).includes(r.id);
+                        return (
+                          <button
+                            key={r.id}
+                            onClick={() => {
+                              const next = has
+                                ? (m.roleIds ?? []).filter((id) => id !== r.id)
+                                : [...(m.roleIds ?? []), r.id];
+                              void updateMemberRoleIds(serverId, m.userId, next);
+                            }}
+                            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors"
+                          >
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
+                            <span className="flex-1 truncate">{r.name}</span>
+                            {has && <Check size={12} className="text-[var(--accent)]" />}
+                          </button>
+                        );
+                      })}
+                    </>
                   )}
                   <div className="my-1 h-px bg-[var(--border)]" />
                   <button onClick={() => { void kickMember(serverId, m.userId); setMenuFor(null); }} className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs text-red-400 hover:bg-red-500/10 transition-colors">Kick from server</button>
