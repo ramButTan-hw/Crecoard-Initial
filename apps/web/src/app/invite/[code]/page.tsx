@@ -195,9 +195,11 @@ export default function InvitePage() {
           width: 80, height: 80, borderRadius: 20,
           background: "#2e3035", display: "flex", alignItems: "center",
           justifyContent: "center", fontSize: 36, margin: "0 auto 20px",
-          border: "2px solid #3e4045",
+          border: "2px solid #3e4045", overflow: "hidden",
         }}>
-          {info!.serverIcon}
+          {info!.serverIcon.startsWith("http") || info!.serverIcon.startsWith("data:")
+            ? <img src={info!.serverIcon} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            : info!.serverIcon}
         </div>
 
         <p style={{ color: "#8b8d99", fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>

@@ -68,9 +68,12 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
             <Sparkles size={18} className="text-[var(--accent)] shrink-0" />
             <div>
-              <h2 className="text-base font-semibold text-[var(--text-primary)] leading-tight">Community Boards</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-semibold text-[var(--text-primary)] leading-tight">Community Boards</h2>
+                <span className="rounded-full bg-[var(--accent)]/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[var(--accent)]">Coming soon</span>
+              </div>
               <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-tight">
-                Browse and use boards shared by the community.
+                Browsing and sharing community boards is coming soon.
               </p>
             </div>
           </div>
@@ -249,12 +252,12 @@ function EmptyState({
     <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
       <div>
         <p className="text-sm font-semibold text-[var(--text-primary)]">
-          {hasSearch ? "No boards match your filters" : "No community boards yet"}
+          {hasSearch ? "No boards match your filters" : "Community boards are coming soon"}
         </p>
         <p className="text-[12px] text-[var(--text-muted)] mt-1">
           {hasSearch
             ? "Try a different search or category."
-            : "Be the first to share a board with the community."}
+            : "Soon you'll be able to browse and share boards with the community."}
         </p>
       </div>
       {hasSearch ? (

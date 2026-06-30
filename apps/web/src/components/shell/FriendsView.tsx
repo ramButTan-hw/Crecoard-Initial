@@ -25,16 +25,6 @@ interface DisplayFriend {
   dmId?: string | null;
 }
 
-// ── Demo seed data shown for guest / pre-auth users ───────────────────────────
-
-const DEMO_FRIENDS: DisplayFriend[] = [
-  { id: "f1", username: "alex_dev",  avatarChar: "A", color: "#d59ee8", online: true,  status: "Working on a new board", dmId: "d1" },
-  { id: "f2", username: "sarah.m",   avatarChar: "S", color: "#eb459e", online: false, status: "",                        dmId: "d2" },
-  { id: "f3", username: "jordan",    avatarChar: "J", color: "#57f287", online: true,  status: "Building something cool", dmId: "d3" },
-  { id: "f4", username: "riley_k",   avatarChar: "R", color: "#fee75c", online: true,  status: "",                        dmId: null },
-  { id: "f5", username: "mia.dev",   avatarChar: "M", color: "#ed4245", online: false, status: "",                        dmId: null },
-];
-
 const TABS: { id: Tab; label: string }[] = [
   { id: "online",  label: "Online" },
   { id: "all",     label: "All" },
@@ -72,21 +62,18 @@ export function FriendsView({
   const [addFriendStatus, setAddFriendStatus] = useState<string | null>(null);
   const [addFriendLoading, setAddFriendLoading] = useState(false);
 
-  // Use real friends when logged in, demo otherwise
   const isLoggedIn = Boolean(identity.userId && !identity.userId.startsWith("guest-"));
-  const displayFriends: DisplayFriend[] = isLoggedIn
-    ? friends.map((f) => ({
-        id: f.friendshipId,
-        userId: f.userId,
-        username: f.displayName,
-        avatarChar: f.avatarChar,
-        avatarUrl: f.avatarUrl,
-        color: f.color,
-        online: false,   // global presence is a future feature
-        status: undefined,
-        dmId: null,
-      }))
-    : DEMO_FRIENDS;
+  const displayFriends: DisplayFriend[] = friends.map((f) => ({
+    id: f.friendshipId,
+    userId: f.userId,
+    username: f.displayName,
+    avatarChar: f.avatarChar,
+    avatarUrl: f.avatarUrl,
+    color: f.color,
+    online: false,   // TODO: wire to PresenceContext now that live presence exists
+    status: undefined,
+    dmId: null,
+  }));
 
   const online = displayFriends.filter((f) => f.online);
   const pendingCount = isLoggedIn ? pendingReceived.length + pendingSent.length : 0;

@@ -9,6 +9,7 @@ import {
   Music, SkipBack, SkipForward, Repeat, Shuffle, Volume1, Volume2, VolumeX,
   Radio, Users, Lock, LockOpen, CheckSquare, Square, Copy, FileDown, CopyPlus,
   ArrowUpToLine, ArrowDownToLine, Maximize2, Eye, EyeOff, CalendarDays, Code2, Pencil,
+  List, ListOrdered, Link2, Unlink, IndentIncrease, IndentDecrease, RemoveFormatting, GripVertical,
 } from "lucide-react";
 import { WallpaperEditor } from "@/components/ui/WallpaperEditor";
 import {
@@ -17,7 +18,7 @@ import {
   ScatterChart, Scatter, ZAxis,
   XAxis, YAxis, Tooltip, Legend, CartesianGrid, LabelList,
 } from "recharts";
-import { BlockItem, BoardLevelItem, CalendarEvent, CalendarFeed, TableLink, TableColumn, TableRow, TableFilter, FilterOp, ListEntry, PlaylistTrack, GraphPoint, KanbanCard, KanbanColumn, useBoardStore } from "@/store/boardStore";
+import { BlockItem, BoardLevelItem, CalendarEvent, CalendarFeed, TableLink, TableColumn, TableRow, TableFilter, FilterOp, ListEntry, PlaylistTrack, GraphPoint, KanbanCard, KanbanColumn, useBoardStore, type Board } from "@/store/boardStore";
 import {
   DndContext, DragOverlay, PointerSensor, KeyboardSensor,
   useSensor, useSensors, useDroppable, closestCorners,
@@ -54,6 +55,66 @@ export const PARA_STYLES: {
   { id: "h3",       label: "Heading 3", fontSize: 16, bold: true,  italic: false },
   { id: "caption",  label: "Caption",   fontSize: 11, bold: false, italic: true  },
   { id: "code",     label: "Code",      fontSize: 13, bold: false, italic: false, fontFamily: "Courier New" },
+];
+
+// Whole-item aesthetic presets for the Text block — one click sets font, size,
+// colour and background together. Minimalist: text labels, no emoji.
+export const TEXT_PRESETS: { id: string; label: string; style: Partial<BlockItem> }[] = [
+  { id: "document", label: "Document", style: { fontFamily: "Georgia",         fontSize: 16, bold: false, italic: false, align: "left", textColor: "",        textBgColor: "" } },
+  { id: "note",     label: "Note",     style: { fontFamily: "Inter",           fontSize: 14, bold: false, italic: false, align: "left", textColor: "",        textBgColor: "rgba(255,255,255,0.04)" } },
+  { id: "heading",  label: "Heading",  style: { fontFamily: "Inter",           fontSize: 28, bold: true,  italic: false, align: "left", textColor: "",        textBgColor: "" } },
+  { id: "callout",  label: "Callout",  style: { fontFamily: "Inter",           fontSize: 15, bold: false, italic: false, align: "left", textColor: "#ffffff", textBgColor: "var(--accent)" } },
+  { id: "mono",     label: "Mono",     style: { fontFamily: "JetBrains Mono",   fontSize: 13, bold: false, italic: false, align: "left", textColor: "",        textBgColor: "" } },
+];
+
+// Inline markdown shortcut: when invoked (on space), converts a **bold**, *italic*,
+// ~~strike~~ or `code` run ending right before the cursor into the matching inline
+// element. Pure DOM — works in any contentEditable (Text block + List rows).
+// Returns true if it converted (caller should preventDefault + persist innerHTML).
+function applyInlineMarkdownAtCursor(): boolean {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return false;
+  const range = sel.getRangeAt(0);
+  if (!range.collapsed) return false;
+  const container = range.startContainer;
+  if (container.nodeType !== Node.TEXT_NODE) return false;
+  const textNode = container as Text;
+  const before = textNode.data.slice(0, range.startOffset);
+  const patterns: { re: RegExp; make: (inner: string) => HTMLElement }[] = [
+    { re: /\*\*([^*]+)\*\*$/,          make: (s) => { const el = document.createElement("strong"); el.textContent = s; return el; } },
+    { re: /(?<!\*)\*([^*\s][^*]*)\*$/, make: (s) => { const el = document.createElement("em"); el.textContent = s; return el; } },
+    { re: /~~([^~]+)~~$/,              make: (s) => { const el = document.createElement("s"); el.textContent = s; return el; } },
+    { re: /`([^`]+)`$/,                make: (s) => { const el = document.createElement("code"); el.textContent = s; el.style.cssText = "font-family:monospace;background:var(--surface-overlay);padding:0 4px;border-radius:3px"; return el; } },
+  ];
+  for (const { re, make } of patterns) {
+    const m = before.match(re);
+    if (!m) continue;
+    const start = m.index!;
+    const afterText = textNode.data.slice(range.startOffset);
+    textNode.data = textNode.data.slice(0, start);
+    const el = make(m[1]!);
+    const space = document.createTextNode(" ");
+    const afterNode = document.createTextNode(afterText);
+    const parent = textNode.parentNode!;
+    parent.insertBefore(afterNode, textNode.nextSibling);
+    parent.insertBefore(space, afterNode);
+    parent.insertBefore(el, space);
+    const r = document.createRange();
+    r.setStart(space, 1);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    return true;
+  }
+  return false;
+}
+
+// One-click looks for the List item — minimalist, text labels (no emoji).
+const LIST_PRESETS: { id: string; label: string; style: Partial<BlockItem> }[] = [
+  { id: "checklist", label: "Checklist", style: { listMarker: "checkbox", listDividerStyle: "none",  listRowSpacing: 6 } },
+  { id: "outline",   label: "Outline",   style: { listMarker: "bullet",   listDividerStyle: "none",  listRowSpacing: 4 } },
+  { id: "steps",     label: "Steps",     style: { listMarker: "number",   listDividerStyle: "solid", listRowSpacing: 8 } },
+  { id: "minimal",   label: "Minimal",   style: { listMarker: "none",     listDividerStyle: "none",  listRowSpacing: 2 } },
 ];
 
 const API_PRESETS: { id: string; label: string; url: string; method: "GET" | "POST"; authType: "none" | "bearer" | "apikey"; authHeader?: string; note?: string }[] = [
@@ -752,18 +813,29 @@ function TextItem({ item, upd, collapsed, isFinished, canInput, extraContextItem
     }
     const fullText = blockEl.textContent?.trim() ?? "";
 
-    const swapBlock = (tag: string) => {
-      e.preventDefault();
-      const newEl = document.createElement(tag);
-      blockEl!.parentNode!.replaceChild(newEl, blockEl!);
+    // Place the caret inside a freshly-created (empty) block. Browsers won't let
+    // the caret enter a truly empty block element (which made the shortcuts seem
+    // to "do nothing" after converting), so seed it with an invisible zero-width
+    // space and drop the caret after it. The ZWSP renders as nothing and is
+    // overwritten as soon as the user types.
+    const caretInto = (el: HTMLElement) => {
+      const seed = document.createTextNode("​");
+      el.appendChild(seed);
       const r = document.createRange();
-      r.setStart(newEl, 0);
+      r.setStart(seed, 1);
       r.collapse(true);
       sel.removeAllRanges();
       sel.addRange(r);
       const html = editorRef.current?.innerHTML ?? "";
       innerHTMLRef.current = html;
       upd({ text: html });
+    };
+
+    const swapBlock = (tag: string) => {
+      e.preventDefault();
+      const newEl = document.createElement(tag);
+      blockEl!.parentNode!.replaceChild(newEl, blockEl!);
+      caretInto(newEl);
     };
 
     const swapList = (listTag: "ul" | "ol") => {
@@ -772,9 +844,17 @@ function TextItem({ item, upd, collapsed, isFinished, canInput, extraContextItem
       const li = document.createElement("li");
       list.appendChild(li);
       blockEl!.parentNode!.replaceChild(list, blockEl!);
+      caretInto(li);
+    };
+
+    // [] / [ ] at line start → a checklist line (reuses the .chk checkbox)
+    const swapChecklist = () => {
+      e.preventDefault();
+      blockEl!.innerHTML =
+        `<span class="chk" data-checked="false" contenteditable="false" style="cursor:pointer;user-select:none;display:inline-block;margin-right:5px;line-height:1">☐</span>​`;
       const r = document.createRange();
-      r.setStart(li, 0);
-      r.collapse(true);
+      r.selectNodeContents(blockEl!);
+      r.collapse(false);
       sel.removeAllRanges();
       sel.addRange(r);
       const html = editorRef.current?.innerHTML ?? "";
@@ -782,10 +862,23 @@ function TextItem({ item, upd, collapsed, isFinished, canInput, extraContextItem
       upd({ text: html });
     };
 
+    // Inline markdown (**bold**, *italic*, ~~strike~~, `code`) — shared helper.
+    // Runs before the block checks; the two never overlap (block markers are the
+    // whole line, inline ones aren't).
+    if (applyInlineMarkdownAtCursor()) {
+      e.preventDefault();
+      const html = editorRef.current?.innerHTML ?? "";
+      innerHTMLRef.current = html;
+      upd({ text: html });
+      return;
+    }
+
     if (fullText === "#") swapBlock("h1");
     else if (fullText === "##") swapBlock("h2");
     else if (fullText === "###") swapBlock("h3");
     else if (fullText === ">") swapBlock("blockquote");
+    else if (fullText === "```") swapBlock("pre");
+    else if (fullText === "[]" || fullText === "[ ]") swapChecklist();
     else if (fullText === "-" || fullText === "*") swapList("ul");
     else if (/^\d+\.$/.test(fullText)) swapList("ol");
   }, [upd]);
@@ -959,6 +1052,12 @@ function TextItem({ item, upd, collapsed, isFinished, canInput, extraContextItem
             }
             applyBlockTag(tag, Object.keys(inlineStyles).length ? inlineStyles : undefined);
           }}
+          onPreset={(id) => {
+            const p = TEXT_PRESETS.find((x) => x.id === id);
+            if (!p) return;
+            if (p.style.fontFamily) loadGoogleFont(p.style.fontFamily);
+            upd(p.style);
+          }}
           onFontFamily={(font) => { loadGoogleFont(font); if (!wrapSelInStyle({ fontFamily: font })) upd({ fontFamily: font }); }}
           onFontSize={(size) => { if (!applyFontSizeToSel(size)) applyFontSizeGlobal(size); }}
           onColor={(color) => {
@@ -1026,13 +1125,14 @@ const SIZE_PRESETS = [8,9,10,11,12,14,18,24,30,36,48,60,72,96];
 
 function RichSelToolbar({
   cx, top, selState,
-  onExecCmd, onParaStyle, onFontFamily, onFontSize, onColor, onHighlight, onInsertList,
+  onExecCmd, onParaStyle, onPreset, onFontFamily, onFontSize, onColor, onHighlight, onInsertList,
   onClearFormat, onLink, onLineSpacing, onInsertCheckbox, onDismiss, hideAlignment,
 }: {
   cx: number; top: number;
   selState: { bold: boolean; italic: boolean; underline: boolean; strikethrough?: boolean; fontSize?: number; fontFamily?: string };
   onExecCmd: (cmd: string) => void;
   onParaStyle: (styleId: string) => void;
+  onPreset?: (presetId: string) => void;
   onFontFamily: (font: string) => void;
   onFontSize: (size: number) => void;
   onColor: (color: string) => void;
@@ -1114,6 +1214,20 @@ function RichSelToolbar({
           <option value="" disabled>Style</option>
           {PARA_STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
+        {onPreset && (
+          <select
+            value=""
+            onChange={(e) => { onPreset(e.target.value); (e.target as HTMLSelectElement).value = ""; }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            className="ml-0.5 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-[11px] text-[var(--text-primary)] outline-none cursor-pointer"
+            style={{ maxWidth: 82 }}
+            title="Style preset"
+          >
+            <option value="" disabled>Preset</option>
+            {TEXT_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+        )}
         <Divider />
         {/* Font family */}
         <FontPicker compact value={selState.fontFamily ?? ""} onChange={onFontFamily} />
@@ -1204,14 +1318,14 @@ function RichSelToolbar({
         </>)}
         {/* Lists + checklist */}
         {onInsertList && (<>
-          <TBtn active={false} onClick={() => onInsertList("ul")} title="Bullet list"><span className="text-[10px] font-mono">•≡</span></TBtn>
-          <TBtn active={false} onClick={() => onInsertList("ol")} title="Numbered list"><span className="text-[10px] font-mono">1.</span></TBtn>
+          <TBtn active={false} onClick={() => onInsertList("ul")} title="Bullet list"><List size={13} /></TBtn>
+          <TBtn active={false} onClick={() => onInsertList("ol")} title="Numbered list"><ListOrdered size={13} /></TBtn>
         </>)}
-        {onInsertCheckbox && <TBtn active={false} onClick={onInsertCheckbox} title="Checklist"><span className="text-[10px]">☑</span></TBtn>}
+        {onInsertCheckbox && <TBtn active={false} onClick={onInsertCheckbox} title="Checklist"><CheckSquare size={13} /></TBtn>}
         <Divider />
         {/* Indent */}
-        <TBtn active={false} onClick={() => onExecCmd("outdent")} title="Decrease indent"><span className="text-[10px]">⇤</span></TBtn>
-        <TBtn active={false} onClick={() => onExecCmd("indent")} title="Increase indent"><span className="text-[10px]">⇥</span></TBtn>
+        <TBtn active={false} onClick={() => onExecCmd("outdent")} title="Decrease indent"><IndentDecrease size={13} /></TBtn>
+        <TBtn active={false} onClick={() => onExecCmd("indent")} title="Increase indent"><IndentIncrease size={13} /></TBtn>
         <Divider />
         {/* Link */}
         {onLink && (
@@ -1236,14 +1350,14 @@ function RichSelToolbar({
             </div>
           ) : (
             <TBtn active={false} onClick={() => { setLinkSelText(window.getSelection()?.toString() || ""); setLinkInput(""); }} title="Insert link">
-              <span className="text-[11px]">🔗</span>
+              <Link2 size={13} />
             </TBtn>
           )
         )}
-        {onLink && <TBtn active={false} onClick={() => onExecCmd("unlink")} title="Remove link"><span className="text-[10px] opacity-60 line-through">🔗</span></TBtn>}
+        {onLink && <TBtn active={false} onClick={() => onExecCmd("unlink")} title="Remove link"><Unlink size={13} /></TBtn>}
         <Divider />
-        <TBtn active={false} onClick={onClearFormat} title="Clear formatting"><span className="text-[10px]">T↩</span></TBtn>
-        <button onClick={onDismiss} className="ml-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] px-1 leading-none" title="Dismiss">✕</button>
+        <TBtn active={false} onClick={onClearFormat} title="Clear formatting"><RemoveFormatting size={13} /></TBtn>
+        <button onClick={onDismiss} className="ml-1 flex items-center text-[var(--text-muted)] hover:text-[var(--text-primary)] px-1" title="Dismiss"><XIcon size={13} /></button>
       </div>
 
       {/* Highlight color picker */}
@@ -1702,8 +1816,22 @@ function ChatToggleRow({ label, value, onChange }: { label: string; value: boole
   );
 }
 
-export function ChatStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+// Channels claimed by chat blocks on a board, excluding one item — used to keep
+// a channel unique to a single chat block per board.
+export function chatChannelsInUse(board: Board | undefined, excludeId: string): string[] {
+  const set = new Set<string>();
+  board?.boxes?.forEach((bx) => bx.items?.forEach((it) => { if (it.type === "chat" && it.id !== excludeId) set.add(it.chatChannelName ?? "general"); }));
+  board?.boardItems?.forEach((it) => { if (it.type === "chat" && it.id !== excludeId) set.add(it.chatChannelName ?? "general"); });
+  return [...set];
+}
+
+export function ChatStylePanel({ item, upd, usedChannels = [] }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; usedChannels?: string[] }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  // A channel may live on the board only once. `usedChannels` are the channels
+  // taken by *other* chat blocks; if the user types one, revert on blur + warn.
+  const lastValid = useRef(item.chatChannelName ?? "general");
+  const current = (item.chatChannelName ?? "general").trim().toLowerCase();
+  const collides = usedChannels.map((c) => c.trim().toLowerCase()).includes(current);
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1719,11 +1847,19 @@ export function ChatStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
       <div>
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Channel name</p>
         <input
-          className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] transition-colors"
+          className={cn(
+            "w-full rounded border bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] transition-colors",
+            collides ? "border-red-500/60 focus:border-red-500" : "border-[var(--border)] focus:border-[var(--accent)]"
+          )}
           placeholder="general"
           value={item.chatChannelName ?? ""}
+          onFocus={() => { if (!collides) lastValid.current = item.chatChannelName ?? "general"; }}
           onChange={(e) => upd({ chatChannelName: e.target.value || undefined })}
+          onBlur={() => { if (collides) upd({ chatChannelName: lastValid.current }); }}
         />
+        {collides && (
+          <p className="mt-1 text-[10px] text-red-400">#{current} is already on this board — a channel can only appear once.</p>
+        )}
       </div>
 
       {/* Background image */}
@@ -1813,10 +1949,22 @@ function ListItem({ item, upd, collapsed, isFinished, canInput, boardId, boxId, 
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
   const marker = item.listMarker ?? "checkbox";
   const hasBorder = (item.listBorderWidth ?? 0) > 0;
 
   const setEntries = (next: ListEntry[]) => upd({ listItems: next });
+
+  // Drag-to-reorder: move the dragged row to the drop target's position.
+  const reorderEntries = (fromId: string, toId: string) => {
+    const from = entries.findIndex((e) => e.id === fromId);
+    const to = entries.findIndex((e) => e.id === toId);
+    if (from < 0 || to < 0 || from === to) return;
+    const next = [...entries];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved!);
+    setEntries(next);
+  };
 
   const listContainerRef = useRef<HTMLDivElement>(null);
   const entryHTMLRef = useRef<Map<string, string>>(new Map());
@@ -1969,11 +2117,13 @@ function ListItem({ item, upd, collapsed, isFinished, canInput, boardId, boxId, 
 
         return (
           <div key={entry.id}
-            className="flex items-center gap-2 min-w-0 group/le transition-colors hover:bg-white/5 active:bg-white/10"
+            className={cn("flex items-center gap-2 min-w-0 group/le transition-colors hover:bg-white/5 active:bg-white/10", dragId === entry.id && "opacity-40")}
+            onDragOver={!isFinished && !collapsed ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } : undefined}
+            onDrop={!isFinished && !collapsed ? (e) => { e.preventDefault(); if (dragId) reorderEntries(dragId, entry.id); setDragId(null); } : undefined}
             style={{
               position: "relative", zIndex: 1,
               paddingTop: rowSpacing / 2, paddingBottom: rowSpacing / 2,
-              paddingLeft: 4, paddingRight: 4,
+              paddingLeft: 4 + (entry.depth ?? 0) * 20, paddingRight: 4, // nesting indent
               borderTop: dividerBorder,
             }}>
             {marker === "checkbox" && (
@@ -2039,14 +2189,34 @@ function ListItem({ item, upd, collapsed, isFinished, canInput, boardId, boxId, 
                 onKeyDown={(e) => {
                   if (isFinished && (locked || editingEntryId !== entry.id)) { e.preventDefault(); return; }
                   const el = e.currentTarget as HTMLDivElement;
-                  if (!isFinished && e.key === "Enter") {
+                  const isEmpty = el.innerHTML === "" || el.innerHTML === "<br>";
+                  if (!isFinished && e.key === " " && applyInlineMarkdownAtCursor()) {
+                    // Inline markdown (**bold**, *italic*, ~~strike~~, `code`) in a row.
+                    e.preventDefault();
+                    const html = el.innerHTML;
+                    entryHTMLRef.current.set(entry.id, html);
+                    setEntries(entries.map((x) => x.id === entry.id ? { ...x, text: html } : x));
+                  } else if (!isFinished && e.key === "Tab") {
+                    // Tab indents, Shift+Tab outdents — Notion-style nesting.
+                    e.preventDefault();
+                    const cur = entry.depth ?? 0;
+                    const prevDepth = i > 0 ? (entries[i - 1]!.depth ?? 0) : -1;
+                    const nextDepth = e.shiftKey
+                      ? Math.max(0, cur - 1)
+                      : Math.min(cur + 1, prevDepth + 1, 6); // can't indent deeper than the row above + 1
+                    if (nextDepth !== cur) setEntries(entries.map((x) => x.id === entry.id ? { ...x, depth: nextDepth } : x));
+                  } else if (!isFinished && e.key === "Enter") {
                     e.preventDefault();
                     const newId = nanoid();
                     pendingFocusId.current = newId;
                     const next = [...entries];
-                    next.splice(i + 1, 0, { id: newId, text: "", checked: false });
+                    next.splice(i + 1, 0, { id: newId, text: "", checked: false, depth: entry.depth ?? 0 });
                     setEntries(next);
-                  } else if (!isFinished && e.key === "Backspace" && (el.innerHTML === "" || el.innerHTML === "<br>") && entries.length > 1) {
+                  } else if (!isFinished && e.key === "Backspace" && isEmpty && (entry.depth ?? 0) > 0) {
+                    // Outdent an empty nested row before deleting it (Notion behaviour).
+                    e.preventDefault();
+                    setEntries(entries.map((x) => x.id === entry.id ? { ...x, depth: (x.depth ?? 0) - 1 } : x));
+                  } else if (!isFinished && e.key === "Backspace" && isEmpty && entries.length > 1) {
                     e.preventDefault();
                     const prevEntry = entries[i - 1];
                     if (prevEntry) {
@@ -2070,6 +2240,15 @@ function ListItem({ item, upd, collapsed, isFinished, canInput, boardId, boxId, 
             )}
             {!isFinished && !collapsed && (
               <div className="flex items-center gap-0.5 flex-shrink-0">
+                <span
+                  draggable
+                  onDragStart={(e) => { setDragId(entry.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", entry.id); }}
+                  onDragEnd={() => setDragId(null)}
+                  title="Drag to reorder"
+                  className="cursor-grab text-[var(--text-muted)] opacity-0 group-hover/le:opacity-100 hover:text-[var(--text-primary)] transition-colors rounded p-0.5 active:cursor-grabbing"
+                >
+                  <GripVertical size={11} />
+                </span>
                 <button onClick={() => setEntries(entries.filter((x) => x.id !== entry.id))} className="text-[var(--text-muted)] opacity-0 group-hover/le:opacity-100 hover:text-red-400 transition-colors rounded p-0.5">
                   <Trash2 size={11} />
                 </button>
@@ -2150,6 +2329,10 @@ function ListItem({ item, upd, collapsed, isFinished, canInput, boardId, boxId, 
           { label: locked ? "Unlock editing" : "Lock editing", icon: locked ? <LockOpen size={14} /> : <Lock size={14} />, onClick: () => setLocked(v => !v) },
           ...(!isFinished ? [
             "separator" as const,
+            { label: "Style preset", icon: <List size={14} />, children: LIST_PRESETS.map((p) => ({
+              label: p.label,
+              onClick: () => upd(p.style),
+            })) },
             { label: "Sort A → Z", icon: <ArrowUpDown size={14} />, onClick: () => setEntries([...entries].sort((a, b) => (a.text ?? "").replace(/<[^>]*>/g, "").localeCompare((b.text ?? "").replace(/<[^>]*>/g, "")))) },
             { label: "Sort Z → A", icon: <ArrowUpDown size={14} />, onClick: () => setEntries([...entries].sort((a, b) => (b.text ?? "").replace(/<[^>]*>/g, "").localeCompare((a.text ?? "").replace(/<[^>]*>/g, "")))) },
           ] : []),

@@ -19,7 +19,7 @@ import {
 import { useCanEditBoard, useServerBoard, useServerBoardData, roleAllowed } from "@/contexts/ServerBoardContext";
 import { ItemPermissionModal } from "./PermissionModal";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
-import { ItemRenderer, ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel, ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, KanbanStylePanel, ChatStylePanel } from "@/components/items/ItemRenderer";
+import { ItemRenderer, ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel, ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, KanbanStylePanel, ChatStylePanel, chatChannelsInUse } from "@/components/items/ItemRenderer";
 import { FontPicker } from "@/components/ui/FontPicker";
 import { loadGoogleFont } from "@/lib/fonts";
 import { ITEM_DEFINITIONS } from "./ItemPalette";
@@ -798,6 +798,10 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                 <ChatStylePanel
                   item={selectedItem}
                   upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
+                  usedChannels={chatChannelsInUse(
+                    useBoardStore.getState().boards.find((b) => b.id === boardId) ?? useBoardStore.getState().serverBoards[boardId],
+                    selectedItem.id,
+                  )}
                 />
               )}
               {selectedItem.type === "image" && (

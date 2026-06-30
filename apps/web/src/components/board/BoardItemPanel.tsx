@@ -5,7 +5,7 @@ import { useBoardStore, useActiveBoard, BoardLevelItem } from "@/store/boardStor
 import { useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
 import {
   ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel,
-  ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, ChatStylePanel,
+  ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, ChatStylePanel, chatChannelsInUse,
 } from "@/components/items/ItemRenderer";
 import { TextStylePanel } from "@/components/board/ExpandedBlock";
 import { EmbedCardStylePanel } from "@/components/items/EmbedCardItem";
@@ -92,7 +92,7 @@ export function BoardItemPanel() {
           <ExternalStylePanel item={item} upd={upd} />
         )}
         {item.type === "chat" && (
-          <ChatStylePanel item={item} upd={upd} />
+          <ChatStylePanel item={item} upd={upd} usedChannels={chatChannelsInUse(board, item.id)} />
         )}
         {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","external","chat"].includes(item.type) && (
           <div className="p-4 text-xs text-[var(--text-muted)]">No style options for this item type.</div>

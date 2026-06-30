@@ -77,9 +77,30 @@ body {
 .doc-editor ol { padding-left: 1.4em; margin: 0.2em 0; list-style-type: decimal; }
 .doc-editor li { margin-bottom: 0.15em; list-style: inherit; }
 .doc-editor blockquote { border-left: 3px solid var(--accent); padding-left: 0.75em; opacity: 0.8; margin: 0.3em 0; font-style: italic; }
+.doc-editor pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.9em; background: var(--surface-overlay); border: 1px solid var(--border); border-radius: 6px; padding: 0.5em 0.75em; margin: 0.3em 0; white-space: pre-wrap; overflow-x: auto; }
+.doc-editor code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.9em; background: var(--surface-overlay); border-radius: 3px; padding: 0 0.3em; }
+.doc-editor pre code { background: none; padding: 0; }
 .doc-editor a { color: var(--accent); text-decoration: underline; cursor: pointer; }
 .doc-editor a:hover { opacity: 0.8; }
 .doc-editor p { margin-bottom: 0.3em; }
 .doc-editor p:last-child { margin-bottom: 0; }
 .doc-editor hr { border: none; border-top: 1px solid var(--border); margin: 0.75em 0; }
 .doc-editor span[data-checked="true"] { color: var(--accent); }
+
+/* ── Mobile / touch ─────────────────────────────────────────────────────────
+   Foundation for touch screens. Components opt into mobile layouts via the
+   useIsMobile hook + Tailwind md: breakpoints; these are the global defaults. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+/* Safe-area helpers (notches / home indicator) — used by mobile sheets + bars. */
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.h-safe-bottom { height: env(safe-area-inset-bottom); }
+
+@media (hover: none) and (pointer: coarse) {
+  /* Hover-only action affordances (drag grips, row actions, reactions) can't be
+     reached on touch — opt them in with `touch-reveal` to stay visible. */
+  .touch-reveal { opacity: 1 !important; }
+  /* Comfortable minimum tap target for icon buttons that opt in. */
+  .tap-target { min-width: 40px; min-height: 40px; }
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { X, Hash, Plus, Search, Pin } from "lucide-react";
+import { X, Hash, Plus, Search, Pin, LocateFixed } from "lucide-react";
 import { useBoardStore } from "@/store/boardStore";
 import type { BlockItem } from "@/store/boardStore";
 import { supabase } from "@/lib/supabase";
@@ -61,6 +61,27 @@ export function ChatDrawer({ boardId, onClose }: { boardId: string; onClose: () 
     return [...set];
   }, [board]);
 
+  // Map of channel → the on-canvas element id (box id, or board-level item id) of
+  // its chat block, so the drawer can show which channels live on the board and
+  // jump straight to them. A channel is allowed on the board at most once.
+  const channelOnBoard = useMemo(() => {
+    const map = new Map<string, string>();
+    board?.boxes?.forEach((box) => box.items?.forEach((it) => {
+      if (it.type === "chat") { const ch = it.chatChannelName ?? "general"; if (!map.has(ch)) map.set(ch, box.id); }
+    }));
+    board?.boardItems?.forEach((it) => {
+      if (it.type === "chat") { const ch = it.chatChannelName ?? "general"; if (!map.has(ch)) map.set(ch, it.id); }
+    });
+    return map;
+  }, [board]);
+
+  const jumpToChannel = (ch: string) => {
+    const id = channelOnBoard.get(ch);
+    if (!id) return;
+    window.dispatchEvent(new CustomEvent("crecoard:focus-box", { detail: { boxId: id } }));
+    onClose();
+  };
+
   const activeChannel = channels.includes(active) ? active : channels[0] ?? "general";
   const syntheticItem = { id: `drawer-${activeChannel}`, type: "chat", showInCollapsed: false, chatChannelName: activeChannel } as BlockItem;
 
@@ -106,7 +127,7 @@ export function ChatDrawer({ boardId, onClose }: { boardId: string; onClose: () 
 
   return (
     <div
-      className="fixed right-0 top-0 z-[1100] flex h-full w-[360px] flex-col border-l border-[var(--border)] shadow-2xl"
+      className="fixed right-0 top-0 z-[1100] flex h-full w-full flex-col border-l border-[var(--border)] shadow-2xl md:w-[380px]"
       style={{ background: "var(--surface-raised)" }}
     >
       {/* Header */}
@@ -192,25 +213,37 @@ export function ChatDrawer({ boardId, onClose }: { boardId: string; onClose: () 
         <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Channels</p>
         {channels.map((ch) => {
           const count = unread[chatKeyFor(boardId, ch)] ?? 0;
+          const onBoard = channelOnBoard.has(ch);
           return (
-            <button
+            <div
               key={ch}
-              onClick={() => setActive(ch)}
               className={cn(
-                "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
+                "group/ch flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
                 ch === activeChannel
                   ? "bg-[var(--surface-overlay)] text-[var(--text-primary)]"
                   : "text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
               )}
             >
-              <Hash size={13} className="shrink-0 text-[var(--text-muted)]" />
-              <span className="flex-1 truncate">{ch}</span>
+              <button onClick={() => setActive(ch)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                <Hash size={13} className={cn("shrink-0", onBoard ? "text-[var(--accent)]" : "text-[var(--text-muted)]")} />
+                <span className={cn("flex-1 truncate", !onBoard && "text-[var(--text-muted)]")}>{ch}</span>
+                {!onBoard && <span className="shrink-0 rounded bg-[var(--surface-overlay)] px-1 text-[8px] uppercase tracking-wide text-[var(--text-muted)]">drawer</span>}
+              </button>
               {count > 0 && (
                 <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[9px] font-bold text-white">
                   {count > 99 ? "99+" : count}
                 </span>
               )}
-            </button>
+              {onBoard && (
+                <button
+                  onClick={() => jumpToChannel(ch)}
+                  title="Jump to this chat on the board"
+                  className="shrink-0 rounded p-0.5 text-[var(--text-muted)] opacity-0 transition-colors hover:text-[var(--accent)] group-hover/ch:opacity-100"
+                >
+                  <LocateFixed size={13} />
+                </button>
+              )}
+            </div>
           );
         })}
         <div className="mt-1 flex items-center gap-1.5 px-2">

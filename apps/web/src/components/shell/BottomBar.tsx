@@ -129,7 +129,7 @@ export function BottomBar({
       {showProfile && (
         <div
           className="fixed z-[999] rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden flex flex-col"
-          style={{ bottom: 60, left: 12, width: 400, background: "var(--surface-raised)" }}
+          style={{ bottom: 60, left: 12, width: "min(400px, calc(100vw - 24px))", background: "var(--surface-raised)" }}
         >
           {/* Banner */}
           <div
@@ -241,7 +241,6 @@ export function BottomBar({
       {showServerGrid && (
         <ServerGridModal
           realServers={realServers.map((s) => ({ id: s.id, name: s.name, icon: s.icon, online: s.onlineCount }))}
-          mockServers={supabaseReady ? [] : MOCK_SERVERS.map((s) => ({ id: s.id, name: s.name, icon: s.icon, online: s.onlineCount }))}
           onServerSelect={(id) => { setShowServerGrid(false); onServerSelect(id); }}
           onCreateServer={() => { setShowServerGrid(false); setShowCreateServer(true); }}
           onClose={() => setShowServerGrid(false)}
@@ -524,10 +523,9 @@ function ServerCard({ srv, onSelect }: { srv: SrvEntry; onSelect: () => void }) 
 }
 
 function ServerGridModal({
-  realServers, mockServers, onServerSelect, onCreateServer, onClose,
+  realServers, onServerSelect, onCreateServer, onClose,
 }: {
   realServers: SrvEntry[];
-  mockServers: SrvEntry[];
   onServerSelect: (id: string) => void;
   onCreateServer: () => void;
   onClose: () => void;
@@ -561,18 +559,10 @@ function ServerGridModal({
           </>
         )}
 
-        {/* Demo / community servers — hidden in production */}
-        {mockServers.length > 0 && (
-          <>
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-              {realServers.length > 0 ? "Demo Servers" : "Discover Servers"}
-            </p>
-            <div className="grid grid-cols-3 gap-3">
-              {mockServers.map((srv) => (
-                <ServerCard key={srv.id} srv={srv} onSelect={() => onServerSelect(srv.id)} />
-              ))}
-            </div>
-          </>
+        {realServers.length === 0 && (
+          <p className="mb-3 text-center text-xs text-[var(--text-muted)]">
+            You're not in any servers yet. Create one to get started.
+          </p>
         )}
 
         {/* Create server CTA */}

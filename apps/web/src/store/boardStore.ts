@@ -233,6 +233,7 @@ export interface ListEntry {
   id: string;
   text: string;
   checked: boolean;
+  depth?: number; // indentation level for nested sub-items (0 = top level)
 }
 export interface GraphPoint { label: string; [key: string]: string | number }
 

@@ -492,7 +492,11 @@ function AppShellInner() {
     setActiveView("server");
     const serverBoardVars = useBoardStore.getState().serverBoards[server.boardId]?.boardThemeVars;
     applyThemeVars(serverBoardVars ?? themeVars);
-    setTimeout(() => window.dispatchEvent(new CustomEvent("plancraft:fit-board")), 0);
+    // Only auto-fit the first time this server board is opened; afterwards the
+    // canvas restores the saved zoom/pan (preserve zoom across personal↔server).
+    if (!useBoardStore.getState().boardViews[server.boardId]) {
+      setTimeout(() => window.dispatchEvent(new CustomEvent("plancraft:fit-board")), 0);
+    }
   };
 
   const handleLeaveServer = () => {
