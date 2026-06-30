@@ -160,9 +160,10 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
 
             if (msg.authorId !== identity.userId) {
               const isMention = Boolean(
-                msg.content &&
-                identity.displayName &&
-                msg.content.toLowerCase().includes(`@${identity.displayName.toLowerCase()}`)
+                msg.content && (
+                  msg.content.includes(`<@${identity.userId}>`) ||
+                  (identity.displayName && msg.content.toLowerCase().includes(`@${identity.displayName.toLowerCase()}`))
+                )
               );
               playPing(isMention ? "mention" : "message");
               pushNotification({

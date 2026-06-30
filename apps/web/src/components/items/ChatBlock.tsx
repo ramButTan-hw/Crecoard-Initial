@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Send, Smile, ImageIcon, X } from "lucide-react";
 import type { BlockItem } from "@/store/boardStore";
 import { useBoardChatItem } from "@/contexts/BoardChatContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useUser } from "@/contexts/UserContext";
+import { useProfiles } from "@/contexts/ProfilesContext";
 import { uploadFile } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { EmojiPicker } from "@/components/messaging/EmojiPicker";
@@ -25,14 +26,38 @@ function formatDateDivider(ts: string): string {
   });
 }
 
-// Highlight @mentions; the current user's own mention is emphasized.
-function renderMessageContent(content: string, myName: string): React.ReactNode {
-  return content.split(/(@[A-Za-z0-9_.\-]+)/g).map((part, i) => {
-    if (part.startsWith("@") && part.length > 1) {
-      const isMe = !!myName && part.slice(1).toLowerCase() === myName.toLowerCase();
+const MENTION_TOKEN = /<@([0-9a-fA-F-]{36})>/g;
+
+/** Extract user ids referenced by <@id> mention tokens in a message. */
+function mentionIds(content: string): string[] {
+  return [...content.matchAll(MENTION_TOKEN)].map((m) => m[1]!);
+}
+
+// Render @mentions. Id tokens (<@uuid>) resolve to the user's *current* name;
+// plain @text is highlighted too. The current user's own mention is emphasized.
+function renderMessageContent(
+  content: string,
+  myUserId: string,
+  myName: string,
+  resolve: (id: string) => string | undefined,
+): React.ReactNode {
+  const parts = content.split(/(<@[0-9a-fA-F-]{36}>|@[A-Za-z0-9_.\-]+)/g);
+  return parts.map((part, i) => {
+    let name: string | null = null;
+    let isMe = false;
+    const token = part.match(/^<@([0-9a-fA-F-]{36})>$/);
+    if (token) {
+      const id = token[1]!;
+      name = resolve(id) ?? "user";
+      isMe = id === myUserId;
+    } else if (part.startsWith("@") && part.length > 1) {
+      name = part.slice(1);
+      isMe = !!myName && name.toLowerCase() === myName.toLowerCase();
+    }
+    if (name !== null) {
       return (
         <span key={i} className={isMe ? "rounded bg-[var(--accent)]/25 px-0.5 font-semibold text-[var(--accent)]" : "font-medium text-[var(--accent)]"}>
-          {part}
+          @{name}
         </span>
       );
     }
@@ -50,6 +75,7 @@ interface ChatBlockProps {
 
 export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const { identity } = useUser();
+  const profiles = useProfiles();
   const channelName = item.chatChannelName ?? "general";
   // Chat is one continuous stream per board. The server "live" view uses a
   // boardId of `<id>:live`, so strip it — draft and live share the same channel.
@@ -67,6 +93,17 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   };
   const { unread, registerActive, unregisterActive, markRead } = useNotifications();
   const unreadCount = unread[chatKey] ?? 0;
+
+  // Keep everyone's current profile (name + avatar) cached, so messages reflect
+  // live profile changes instead of the snapshot taken when each was sent.
+  useEffect(() => {
+    const ids = new Set<string>();
+    for (const m of messages) {
+      if (m.authorId && m.authorName !== "System") ids.add(m.authorId);
+      for (const id of mentionIds(m.content)) ids.add(id);
+    }
+    if (ids.size) profiles.ensure([...ids]);
+  }, [messages, profiles]);
 
   // Register this channel as "active" (visible) — suppresses toasts while open
   useEffect(() => {
@@ -86,6 +123,46 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── @mention autocomplete ─────────────────────────────────────────────────
+  // Selected mentions are encoded as <@id> on send so they reference a specific
+  // user (display names aren't unique).
+  const pendingMentions = useRef<{ id: string; name: string }[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const mentionStart = useRef(0);
+
+  const mentionCandidates = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; avatar?: string }>();
+    for (const m of messages) {
+      if (!m.authorId || m.authorName === "System" || m.authorId === identity.userId || map.has(m.authorId)) continue;
+      const p = profiles.get(m.authorId);
+      map.set(m.authorId, { id: m.authorId, name: p?.displayName ?? m.authorName, avatar: p?.avatarUrl });
+    }
+    const q = (mentionQuery ?? "").toLowerCase();
+    return [...map.values()].filter((c) => c.name.toLowerCase().includes(q)).slice(0, 6);
+  }, [messages, profiles, mentionQuery, identity.userId]);
+
+  const onInputChange = (value: string, cursor: number) => {
+    setInput(value);
+    const m = value.slice(0, cursor).match(/(?:^|\s)@([A-Za-z0-9_.\-]*)$/);
+    if (m) { setMentionQuery(m[1] ?? ""); mentionStart.current = cursor - (m[1]?.length ?? 0) - 1; }
+    else setMentionQuery(null);
+  };
+
+  const pickMention = (c: { id: string; name: string }) => {
+    const before = input.slice(0, mentionStart.current);
+    const after = input.slice(mentionStart.current).replace(/^@[A-Za-z0-9_.\-]*/, "");
+    setInput(`${before}@${c.name} ${after}`);
+    if (!pendingMentions.current.some((p) => p.id === c.id)) pendingMentions.current.push(c);
+    setMentionQuery(null);
+  };
+
+  // Replace selected @Name occurrences with <@id> tokens before sending.
+  const encodeMentions = (text: string): string => {
+    let out = text;
+    for (const men of pendingMentions.current) out = out.replace(`@${men.name}`, `<@${men.id}>`);
+    return out;
+  };
 
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -132,11 +209,13 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
       identity.userId,
       identity.displayName,
       authorAvatar,
-      text,
+      encodeMentions(text),
       pendingImage ? { imageUrl, fileName: pendingImage.name } : undefined
     );
     setInput("");
     setPendingImage(null);
+    setMentionQuery(null);
+    pendingMentions.current = [];
   };
 
   const sendGif = (gifUrl: string) => {
@@ -177,12 +256,12 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
           {latest ? (
             <>
               <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-[9px] font-bold text-white" style={{ background: accent }}>
-                {latest.authorAvatar?.startsWith("http")
-                  ? <img src={latest.authorAvatar} alt="" className="h-full w-full object-cover" />
-                  : latest.authorAvatar}
+                {(profiles.get(latest.authorId)?.avatarUrl ?? latest.authorAvatar)?.startsWith("http")
+                  ? <img src={profiles.get(latest.authorId)?.avatarUrl ?? latest.authorAvatar} alt="" className="h-full w-full object-cover" />
+                  : (profiles.get(latest.authorId)?.avatarUrl ?? latest.authorAvatar)}
               </span>
               <div className="min-w-0 flex-1">
-                <span className="text-[10px] font-semibold text-[var(--text-primary)]">{latest.authorName} </span>
+                <span className="text-[10px] font-semibold text-[var(--text-primary)]">{profiles.get(latest.authorId)?.displayName ?? latest.authorName} </span>
                 {latest.gif ? (
                   <span className="text-[10px] italic text-[var(--text-muted)]">sent a GIF</span>
                 ) : latest.image ? (
@@ -250,6 +329,8 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
             const isSystem = msg.authorName === "System";
             const consecutive = !!prev && !showDate && !isSystem && prev.authorId === msg.authorId && prev.authorName !== "System";
             const isYou = msg.authorId === identity.userId;
+            const liveAvatar = profiles.get(msg.authorId)?.avatarUrl ?? msg.authorAvatar;
+            const liveName = profiles.get(msg.authorId)?.displayName ?? msg.authorName;
             const dateDivider = showDate ? (
               <div className="my-2 flex items-center gap-2 px-1">
                 <div className="h-px flex-1 bg-[var(--border)]" />
@@ -283,9 +364,9 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                     className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white"
                     style={{ background: isYou ? "#16a34a" : accent }}
                   >
-                    {msg.authorAvatar?.startsWith("http")
-                      ? <img src={msg.authorAvatar} alt="" className="h-full w-full object-cover" />
-                      : msg.authorAvatar}
+                    {liveAvatar?.startsWith("http")
+                      ? <img src={liveAvatar} alt="" className="h-full w-full object-cover" />
+                      : liveAvatar}
                   </div>
                 ) : (
                   <div className="w-7 flex-shrink-0" />
@@ -294,7 +375,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                 <div className="min-w-0 flex-1">
                   {!consecutive && (
                     <div className="flex items-baseline gap-1.5">
-                      <span className="text-xs font-semibold text-[var(--text-primary)]">{msg.authorName}</span>
+                      <span className="text-xs font-semibold text-[var(--text-primary)]">{liveName}</span>
                       <span className="text-[10px] text-[var(--text-muted)]">
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </span>
@@ -310,7 +391,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                         background: bubbles ? (isYou ? accent : "var(--surface-overlay)") : undefined,
                       }}
                     >
-                      {renderMessageContent(msg.content, identity.displayName)}
+                      {renderMessageContent(msg.content, identity.userId, identity.displayName, (id) => profiles.get(id)?.displayName)}
                     </p>
                   )}
                   {msg.gif && (
@@ -359,6 +440,23 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
               <GifPicker onSelect={sendGif} onClose={() => setShowGif(false)} />
             </div>
           </>
+        )}
+
+        {mentionQuery !== null && mentionCandidates.length > 0 && (
+          <div className="absolute bottom-full left-2 right-2 z-[201] mb-1 overflow-hidden rounded-xl border border-[var(--border)] shadow-2xl" style={{ background: "var(--surface-raised)" }}>
+            {mentionCandidates.map((c) => (
+              <button
+                key={c.id}
+                onMouseDown={(e) => { e.preventDefault(); pickMention(c); }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
+              >
+                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)] text-[9px] font-bold text-white">
+                  {c.avatar ? <img src={c.avatar} alt="" className="h-full w-full object-cover" /> : c.name[0]?.toUpperCase()}
+                </span>
+                <span className="truncate">{c.name}</span>
+              </button>
+            ))}
+          </div>
         )}
 
         {pendingImage && (
@@ -418,7 +516,8 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
             className="min-w-0 flex-1 bg-transparent text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
             placeholder={`Message #${channelName}…`}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => onInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+            onBlur={() => setTimeout(() => setMentionQuery(null), 120)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
