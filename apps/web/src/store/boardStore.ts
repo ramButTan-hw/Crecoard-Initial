@@ -839,6 +839,8 @@ interface BoardState {
   zoom: number;
   minZoom: number;
   panOffset: { x: number; y: number };
+  /** Per-board saved view (zoom + pan) so switching boards preserves position. */
+  boardViews: Record<string, { zoom: number; panOffset: { x: number; y: number } }>;
 
   // App appearance
   themeVars: ThemeVarMap;
@@ -930,6 +932,8 @@ interface BoardState {
   setMinZoom: (v: number) => void;
   setPanOffset: (v: { x: number; y: number }) => void;
   zoomAtCanvasCenter: (newZoom: number) => void;
+  /** Snapshot the current zoom+pan as a board's remembered view. */
+  rememberBoardView: (boardId: string) => void;
 
   // Appearance actions
   setCurrentUserId: (uid: string | null) => void;
@@ -1018,6 +1022,7 @@ export const useBoardStore = create<BoardState>()(
     zoom: 1,
     minZoom: 0.05,
     panOffset: { x: 0, y: 0 },
+    boardViews: {},
     themeVars: getSavedThemeVars(),
     savedThemes: getSavedThemes(),
     appFont: getSavedFont(),
@@ -1606,6 +1611,9 @@ export const useBoardStore = create<BoardState>()(
     setZoom: (z) => set((s) => { s.zoom = Math.max(s.minZoom, Math.min(3,z)); }),
     setMinZoom: (v) => set((s) => { s.minZoom = v; if (s.zoom < v) s.zoom = v; }),
     setPanOffset: (v) => set((s) => { s.panOffset = v; }),
+    rememberBoardView: (boardId) => set((s) => {
+      if (boardId) s.boardViews[boardId] = { zoom: s.zoom, panOffset: s.panOffset };
+    }),
     zoomAtCanvasCenter: (newZoom) => set((s) => {
       const clamped = Math.max(s.minZoom, Math.min(3,newZoom));
       const cx = 1200; // CANVAS_WIDTH / 2

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Users, Shield, Crown, Eye, Edit3, X, CheckCircle2, Settings, ZoomIn, ZoomOut, Grid3X3, UserPlus, Copy, Check, Link2, Upload, RotateCcw } from "lucide-react";
 import { useServers } from "@/contexts/ServersContext";
+import { usePresence } from "@/contexts/PresenceContext";
 import { useBoardSync } from "@/contexts/BoardSyncContext";
 import { cn } from "@/lib/utils";
 import { useBoardStore } from "@/store/boardStore";
@@ -12,6 +13,11 @@ import type { MemberRole, ServerMember } from "@/types/server";
 import { ServerSettings } from "./ServerSettings";
 import { getSelfIdentity } from "@/lib/collaboration";
 import type { ViewableUser } from "@/components/shell/UserProfileModal";
+
+/** True when an avatar value is an image (URL or data URI) rather than an initial. */
+function isImageAvatar(a: string | undefined): a is string {
+  return !!a && (a.startsWith("http") || a.startsWith("data:"));
+}
 
 interface ServerBoardHeaderProps {
   serverId: string;
@@ -51,6 +57,7 @@ export function ServerBoardHeader({
   useEffect(() => { setIsDesktop(!!window.electron); }, []);
 
   const { leaveServer } = useServers();
+  const { myStatus, setMyStatus } = usePresence();
 
   const canEdit = viewerRole === "owner" || viewerRole === "admin";
   const canInviteMembers = useCanInviteMembers();
@@ -263,6 +270,29 @@ export function ServerBoardHeader({
                 <X size={13} />
               </button>
             </div>
+
+            {/* Your live status */}
+            <div className="flex items-center gap-1 border-b border-[var(--border)] px-2 py-2">
+              {([
+                ["online", "Online", "bg-green-500"],
+                ["dnd", "DND", "bg-red-500"],
+                ["offline", "Offline", "bg-[var(--text-muted)]"],
+              ] as const).map(([val, lbl, dot]) => (
+                <button
+                  key={val}
+                  onClick={() => setMyStatus(val)}
+                  className={cn(
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-1 py-1.5 text-[11px] font-medium transition-colors",
+                    myStatus === val
+                      ? "bg-[var(--surface-overlay)] text-[var(--text-primary)]"
+                      : "text-[var(--text-muted)] hover:bg-[var(--surface-overlay)]/60 hover:text-[var(--text-secondary)]"
+                  )}
+                >
+                  <span className={cn("h-2 w-2 rounded-full", dot)} />
+                  {lbl}
+                </button>
+              ))}
+            </div>
             <div className="max-h-[320px] overflow-y-auto p-2">
               {canInviteMembers && (
                 <button
@@ -435,7 +465,9 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
   onViewProfile?: (u: ViewableUser) => void;
 }) {
   const { updateMemberRole, kickMember, updateMemberRoleIds, serverRoles } = useServers();
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  // The manage menu is portalled to <body> and positioned from this anchor rect,
+  // so it can't be clipped by the members panel's own scroll overflow.
+  const [menuFor, setMenuFor] = useState<{ id: string; rect: DOMRect } | null>(null);
   const customRoles = (serverRoles[serverId] ?? []).filter((r) => !r.isDefault);
   if (members.length === 0) return null;
 
@@ -457,9 +489,14 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
         profileBoardBgImage: self.profileBoard?.bgImage,
       };
     }
+    // m.avatar holds either an image URL or a single initial. For URLs, surface
+    // it as avatarUrl so the profile modal renders the image instead of printing
+    // the raw link as the "avatar character".
+    const avatarIsImage = isImageAvatar(m.avatar);
     return {
       displayName: m.username,
-      avatarChar: m.avatar,
+      avatarChar: avatarIsImage ? (m.username[0]?.toUpperCase() ?? "?") : m.avatar,
+      avatarUrl: avatarIsImage ? m.avatar : undefined,
       color: "#d59ee8",
       online: m.online,
       status: m.status,
@@ -478,17 +515,19 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
           <div key={m.userId} className="relative">
             <button
               className="group w-full flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--surface-overlay)] transition-colors text-left"
-              onClick={() => canManage ? setMenuFor((id) => (id === m.userId ? null : m.userId)) : onViewProfile?.(buildViewableUser(m))}
+              onClick={(e) => canManage
+                ? setMenuFor((cur) => (cur?.id === m.userId ? null : { id: m.userId, rect: e.currentTarget.getBoundingClientRect() }))
+                : onViewProfile?.(buildViewableUser(m))}
             >
               <div className="relative flex-shrink-0">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white overflow-hidden">
-                  {m.avatar?.startsWith("http")
+                  {isImageAvatar(m.avatar)
                     ? <img src={m.avatar} alt="" className="h-full w-full object-cover" />
-                    : m.avatar}
+                    : (m.avatar || m.username[0]?.toUpperCase())}
                 </span>
                 <span className={cn(
                   "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--surface-raised)]",
-                  m.online ? "bg-green-500" : "bg-[var(--text-muted)]"
+                  m.presence === "dnd" ? "bg-red-500" : m.online ? "bg-green-500" : "bg-[var(--text-muted)]"
                 )} />
               </div>
               <div className="min-w-0 flex-1">
@@ -502,10 +541,18 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
               )}
             </button>
 
-            {canManage && menuFor === m.userId && (
+            {canManage && menuFor?.id === m.userId && createPortal((() => {
+              const rect = menuFor.rect;
+              const MENU_W = 176;
+              const left = Math.max(8, Math.min(rect.right - MENU_W, window.innerWidth - MENU_W - 8));
+              const openUp = rect.bottom > window.innerHeight - 260;
+              const pos = openUp
+                ? { left, bottom: window.innerHeight - rect.top + 4 }
+                : { left, top: rect.bottom + 4 };
+              return (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenuFor(null)} />
-                <div className="absolute right-2 top-full z-50 mt-1 w-44 rounded-lg border border-[var(--border)] p-1 shadow-2xl" style={{ background: "var(--surface-raised)" }}>
+                <div className="fixed inset-0 z-[1200]" onClick={() => setMenuFor(null)} />
+                <div className="fixed z-[1201] w-44 max-h-[70vh] overflow-y-auto rounded-lg border border-[var(--border)] p-1 shadow-2xl" style={{ background: "var(--surface-raised)", ...pos }}>
                   <button onClick={() => { onViewProfile?.(buildViewableUser(m)); setMenuFor(null); }} className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">View profile</button>
                   {m.role !== "admin" && (
                     <button onClick={() => { void updateMemberRole(serverId, m.userId, "admin"); setMenuFor(null); }} className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">Make admin</button>
@@ -542,7 +589,8 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
                   <button onClick={() => { void kickMember(serverId, m.userId); setMenuFor(null); }} className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs text-red-400 hover:bg-red-500/10 transition-colors">Kick from server</button>
                 </div>
               </>
-            )}
+              );
+            })(), document.body)}
           </div>
         );
       })}

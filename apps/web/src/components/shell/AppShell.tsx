@@ -35,6 +35,7 @@ import { getSelfIdentity } from "@/lib/collaboration";
 import { logServerAction } from "@/lib/serverAudit";
 import { ServerBoardContext } from "@/contexts/ServerBoardContext";
 import { UserProvider, useUser } from "@/contexts/UserContext";
+import { PresenceProvider, usePresence } from "@/contexts/PresenceContext";
 import { ServersProvider, useServers } from "@/contexts/ServersContext";
 import { BoardSyncProvider, useBoardSync } from "@/contexts/BoardSyncContext";
 import { MessagingProvider, useMessaging } from "@/contexts/MessagingContext";
@@ -92,6 +93,7 @@ function AppShellInner() {
 
   const { servers: realServers, serverMembers, serverRoles: savedServerRoles, loadMembers } = useServers();
   const { identity, loading: userLoading, isLoggedIn } = useUser();
+  const { online: presenceMap, myStatus } = usePresence();
   const { loadServerBoard, loadLiveBoard, publishServerBoard } = useBoardSync();
   const { openConversation } = useMessaging();
 
@@ -627,10 +629,13 @@ function AppShellInner() {
           const rawMembers = realServer
             ? (serverMembers[activeServerId] ?? [])
             : (MOCK_SERVER_MEMBERS[activeServerId] ?? []);
-          // Always show the current user as online
-          const members = rawMembers.map((m) =>
-            m.userId === identity.userId ? { ...m, online: true } : m
-          );
+          // Overlay live presence for real servers (mock servers keep demo flags).
+          const members = realServer
+            ? rawMembers.map((m) => {
+                const presence = m.userId === identity.userId ? myStatus : (presenceMap[m.userId] ?? "offline");
+                return { ...m, presence, online: presence !== "offline" };
+              })
+            : rawMembers;
           const onlineCount = members.filter((m) => m.online).length;
           const isRealServer = !!realServer;
           const canEdit = viewerRole === "owner" || viewerRole === "admin";
@@ -873,7 +878,8 @@ function AppShellInner() {
 export function AppShell() {
   return (
     <UserProvider>
-      <ServersProvider>
+      <PresenceProvider>
+       <ServersProvider>
         <BoardSyncProvider>
           <MessagingProvider>
             <NotificationProvider>
@@ -888,7 +894,8 @@ export function AppShell() {
             </NotificationProvider>
           </MessagingProvider>
         </BoardSyncProvider>
-      </ServersProvider>
+       </ServersProvider>
+      </PresenceProvider>
     </UserProvider>
   );
 }

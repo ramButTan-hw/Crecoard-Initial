@@ -270,10 +270,23 @@ export function BoardCanvas() {
     });
   }, [board, setZoom, setPanOffset]);
 
-  // Auto-fit content on first mount / board switch, and on explicit plancraft:fit-board event
+  // Restore this board's remembered view (zoom + pan) when switching boards, so
+  // moving in and out of boards preserves where you were. Only auto-fit the first
+  // time a board is opened; save the view on leave. (Also re-fit via the explicit
+  // plancraft:fit-board event below.)
   useEffect(() => {
-    const id = requestAnimationFrame(() => handleFitContent());
-    return () => cancelAnimationFrame(id);
+    const saved = useBoardStore.getState().boardViews[boardId];
+    let raf = 0;
+    if (saved) {
+      setZoom(saved.zoom);
+      setPanOffset(saved.panOffset);
+    } else {
+      raf = requestAnimationFrame(() => handleFitContent());
+    }
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      useBoardStore.getState().rememberBoardView(boardId);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId]);
 

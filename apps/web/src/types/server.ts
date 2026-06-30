@@ -1,5 +1,8 @@
 export type MemberRole = "owner" | "admin" | "member";
 
+/** Live presence state, broadcast over Realtime. "offline" = not present / appearing offline. */
+export type PresenceStatus = "online" | "dnd" | "offline";
+
 export interface Server {
   id: string;
   name: string;
@@ -21,6 +24,7 @@ export interface ServerMember {
   role: MemberRole;
   roleIds?: string[];    // custom ServerRole IDs assigned to this member
   online: boolean;
+  presence?: PresenceStatus; // live presence (overlaid from PresenceContext)
   status?: string;
 }
 
