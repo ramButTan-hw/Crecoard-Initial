@@ -426,8 +426,8 @@ function ServerBtn({
             : "text-[var(--text-secondary)] bg-[var(--surface-overlay)]"
         )}
       >
-        {iconUrl
-          ? <img src={iconUrl} alt="" className="h-full w-full object-cover" />
+        {iconUrl || (srv.icon ?? "").startsWith("http") || (srv.icon ?? "").startsWith("data:")
+          ? <img src={iconUrl || srv.icon} alt="" className="h-full w-full object-cover" />
           : <span className="text-xs font-bold leading-none select-none">{srv.icon}</span>
         }
       </button>
@@ -505,8 +505,10 @@ function ServerCard({ srv, onSelect }: { srv: SrvEntry; onSelect: () => void }) 
       className="flex flex-col overflow-hidden rounded-xl border border-[var(--border)] text-left transition-all hover:border-[var(--accent)] hover:scale-[1.02] active:scale-[0.99]"
       style={{ background: "var(--surface)" }}
     >
-      <div className="relative flex h-[90px] items-center justify-center" style={{ background: "var(--surface-overlay)" }}>
-        <span className="text-3xl select-none">{srv.icon}</span>
+      <div className="relative flex h-[90px] items-center justify-center overflow-hidden" style={{ background: "var(--surface-overlay)" }}>
+        {(srv.icon ?? "").startsWith("http") || (srv.icon ?? "").startsWith("data:")
+          ? <img src={srv.icon} alt="" className="h-full w-full object-cover" />
+          : <span className="text-3xl select-none">{srv.icon}</span>}
         {srv.online !== undefined && (
           <span className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-black/50 px-1.5 py-0.5 text-[10px] text-white">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400" />
