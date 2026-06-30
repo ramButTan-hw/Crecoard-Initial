@@ -50,7 +50,9 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length]);
 
-  const authorAvatar = identity.displayName.charAt(0).toUpperCase() || "?";
+  // Prefer the user's profile picture; fall back to their initial. Stored on the
+  // message so other viewers see it too (the renderer shows an <img> for URLs).
+  const authorAvatar = identity.avatarUrl || (identity.displayName.charAt(0).toUpperCase() || "?");
 
   // ── Appearance customization ──────────────────────────────────────────────
   const accent = item.chatAccentColor || "var(--accent)";
@@ -132,8 +134,10 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
         <div className="relative z-10 flex flex-1 items-start gap-1.5 overflow-hidden px-2 py-1.5">
           {latest ? (
             <>
-              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: accent }}>
-                {latest.authorAvatar}
+              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-[9px] font-bold text-white" style={{ background: accent }}>
+                {latest.authorAvatar?.startsWith("http")
+                  ? <img src={latest.authorAvatar} alt="" className="h-full w-full object-cover" />
+                  : latest.authorAvatar}
               </span>
               <div className="min-w-0 flex-1">
                 <span className="text-[10px] font-semibold text-[var(--text-primary)]">{latest.authorName} </span>
@@ -203,10 +207,12 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
               >
                 {!consecutive ? (
                   <div
-                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white"
                     style={{ background: isYou ? "#16a34a" : accent }}
                   >
-                    {msg.authorAvatar}
+                    {msg.authorAvatar?.startsWith("http")
+                      ? <img src={msg.authorAvatar} alt="" className="h-full w-full object-cover" />
+                      : msg.authorAvatar}
                   </div>
                 ) : (
                   <div className="w-7 flex-shrink-0" />

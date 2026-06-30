@@ -107,7 +107,9 @@ export function Sidebar({
             unread={(srv as { unread?: number }).unread}
             onClick={() => onServerSelect(srv.id)}
           >
-            <span className="text-sm font-bold">{srv.icon}</span>
+            {(srv.icon ?? "").startsWith("http") || (srv.icon ?? "").startsWith("data:")
+              ? <img src={srv.icon} alt="" className="h-full w-full object-cover" />
+              : <span className="text-sm font-bold">{srv.icon}</span>}
           </SidebarIcon>
         ))}
 
@@ -170,10 +172,12 @@ export function Sidebar({
                 {/* Server icon overlapping bottom of banner */}
                 <div className="absolute -bottom-4 left-3">
                   <div
-                    className="flex h-9 w-9 items-center justify-center rounded-xl text-base font-bold shadow border-2"
+                    className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl text-base font-bold shadow border-2"
                     style={{ background: "var(--surface-raised)", borderColor: "var(--sidebar)" }}
                   >
-                    {activeServer?.icon ?? "?"}
+                    {(activeServer?.icon ?? "").startsWith("http") || (activeServer?.icon ?? "").startsWith("data:")
+                      ? <img src={activeServer?.icon} alt="" className="h-full w-full object-cover" />
+                      : (activeServer?.icon ?? "?")}
                   </div>
                 </div>
               </div>
@@ -253,8 +257,10 @@ export function Sidebar({
                       key={srv.id}
                       className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--accent)]/50"
                     >
-                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[var(--surface-overlay)] text-lg">
-                        {srv.icon}
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[var(--surface-overlay)] text-lg">
+                        {(srv.icon ?? "").startsWith("http") || (srv.icon ?? "").startsWith("data:")
+                          ? <img src={srv.icon} alt="" className="h-full w-full object-cover" />
+                          : srv.icon}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">

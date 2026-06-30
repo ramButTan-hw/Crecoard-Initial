@@ -23,6 +23,8 @@ export type SaveStatus = "idle" | "saving" | "saved" | "error";
 interface BoardSyncContextValue {
   loadServerBoard: (boardId: string, serverId: string) => Promise<void>;
   saveServerBoard: (boardId: string, serverId: string) => Promise<void>;
+  /** Overwrite the working draft with the latest published (live) snapshot. */
+  revertDraftToLive: (boardId: string, serverId: string) => Promise<{ success: boolean; error?: string }>;
   /** Loads the latest published snapshot into serverBoards[boardId + ":live"]. Returns true if a publish exists. */
   loadLiveBoard: (boardId: string, serverId: string) => Promise<boolean>;
   /** Snapshots the current draft board and inserts it into server_publishes. */
@@ -401,6 +403,36 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
     if (error) console.error("[BoardSync] saveServerBoard failed:", error);
   }, []);
 
+  // Replace the working draft with a copy of the latest published (live) version,
+  // so editors can discard draft changes and start over from what's live.
+  const revertDraftToLive = useCallback(async (boardId: string, serverId: string): Promise<{ success: boolean; error?: string }> => {
+    if (!isSupabaseReady()) return { success: false, error: "Supabase not configured" };
+    const { data, error } = await supabase
+      .from("server_publishes")
+      .select("snapshot")
+      .eq("server_id", serverId)
+      .order("published_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) return { success: false, error: error.message };
+    if (!data) return { success: false, error: "No published live version to revert to yet." };
+
+    const snapshot = data.snapshot as Record<string, unknown>;
+    useBoardStore.setState((s) => ({
+      serverBoards: {
+        ...s.serverBoards,
+        [boardId]: {
+          ...snapshot,
+          id: boardId,
+          boxes: ((snapshot.boxes ?? []) as Record<string, unknown>[]).map((b) => ({ ...b })),
+          boardItems: ((snapshot.boardItems ?? []) as Record<string, unknown>[]).map((i) => ({ ...i })),
+        } as unknown as Board,
+      },
+    }));
+    await saveServerBoard(boardId, serverId);
+    return { success: true };
+  }, [saveServerBoard]);
+
   const loadLiveBoard = useCallback(async (boardId: string, serverId: string): Promise<boolean> => {
     if (!isSupabaseReady()) return false;
 
@@ -625,7 +657,7 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <BoardSyncContext.Provider value={{ loadServerBoard, saveServerBoard, loadLiveBoard, publishServerBoard, fetchPublishSnapshot, rollbackToPublish, fetchServerBackups, createBackup, restoreFromBackup, deleteBackup, saveStatus, saveError }}>
+    <BoardSyncContext.Provider value={{ loadServerBoard, saveServerBoard, revertDraftToLive, loadLiveBoard, publishServerBoard, fetchPublishSnapshot, rollbackToPublish, fetchServerBackups, createBackup, restoreFromBackup, deleteBackup, saveStatus, saveError }}>
       {children}
     </BoardSyncContext.Provider>
   );
