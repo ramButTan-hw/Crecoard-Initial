@@ -27,41 +27,35 @@ export default function InvitePage() {
   useEffect(() => {
     if (!code) return;
     (async () => {
-      // Fetch invite + server info in one query
-      const { data, error: fetchErr } = await supabase
-        .from("server_invites")
-        .select("code, expires_at, max_uses, uses_count, server_id, servers(name, icon, description, member_count, is_public)")
-        .eq("code", code)
-        .single();
+      // Resolve the invite by its exact code via a SECURITY DEFINER function.
+      // This avoids exposing the server_invites table (no enumeration).
+      const { data, error: fetchErr } = await supabase.rpc("get_invite", { invite_code: code });
+      const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
 
-      if (fetchErr || !data) { setNotFound(true); return; }
+      if (fetchErr || !row) { setNotFound(true); return; }
 
-      const server = (data.servers as unknown as Record<string, unknown> | null) ?? {};
-      const expired =
-        (data.expires_at && new Date(data.expires_at as string) < new Date()) ||
-        (data.max_uses && (data.uses_count as number) >= (data.max_uses as number));
-
-      // Check if already a member
+      // Check if already a member (RLS only lets you see memberships of servers
+      // you already belong to, so this returns false for servers you're not in).
       const { data: { user } } = await supabase.auth.getUser();
       let alreadyMember = false;
       if (user) {
         const { data: membership } = await supabase
           .from("server_members")
           .select("user_id")
-          .eq("server_id", data.server_id as string)
+          .eq("server_id", row.server_id as string)
           .eq("user_id", user.id)
           .maybeSingle();
         alreadyMember = !!membership;
       }
 
       setInfo({
-        code: data.code as string,
-        serverName: (server.name as string) || "Unknown Server",
-        serverIcon: (server.icon as string) || "🌐",
-        serverDescription: (server.description as string) || "",
-        memberCount: (server.member_count as number) || 0,
-        isPublic: (server.is_public as boolean) || false,
-        expired: !!expired,
+        code: row.code as string,
+        serverName: (row.server_name as string) || "Unknown Server",
+        serverIcon: (row.server_icon as string) || "🌐",
+        serverDescription: (row.server_description as string) || "",
+        memberCount: (row.member_count as number) || 0,
+        isPublic: (row.is_public as boolean) || false,
+        expired: !!row.expired,
         alreadyMember,
       });
     })();
@@ -78,30 +72,24 @@ export default function InvitePage() {
     setJoining(true);
     setError(null);
 
-    // Get the server_id from the invite
-    const { data: invite } = await supabase
-      .from("server_invites")
-      .select("server_id")
-      .eq("code", code)
-      .single();
+    // Validate the code and join atomically server-side: redeem_invite() checks
+    // expiry / max_uses, blocks guests, inserts the membership, and bumps
+    // uses_count in one transaction.
+    const { error: redeemErr } = await supabase.rpc("redeem_invite", { invite_code: code });
 
-    if (!invite) { setError("Invite not found."); setJoining(false); return; }
-
-    const { error: joinErr } = await supabase
-      .from("server_members")
-      .insert({ server_id: invite.server_id, user_id: user.id, role: "member" });
-
-    if (joinErr && !joinErr.message.includes("duplicate")) {
-      setError("Failed to join server. Please try again.");
+    if (redeemErr) {
+      const msg = redeemErr.message || "";
+      if (msg.includes("authentication required")) {
+        router.push(`/login?redirect=/invite/${code}`);
+        return;
+      }
+      if (msg.includes("expired")) setError("This invite has expired.");
+      else if (msg.includes("limit")) setError("This invite has reached its use limit.");
+      else if (msg.includes("invalid")) setError("Invite not found.");
+      else setError("Failed to join server. Please try again.");
       setJoining(false);
       return;
     }
-
-    // Increment uses_count
-    await supabase
-      .from("server_invites")
-      .update({ uses_count: (info.memberCount || 0) + 1 })
-      .eq("code", code);
 
     setJoined(true);
     setJoining(false);
