@@ -501,6 +501,20 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
     useBoardStore.setState((s) => ({
       serverBoards: { ...s.serverBoards, [liveBoardId]: liveBoard },
     }));
+
+    // Post an activity message into the board's #general channel. author_id must
+    // be the caller (RLS), but author_name="System" renders it as an event line.
+    if (userId) {
+      void supabase.from("board_chat_messages").insert({
+        item_id: "system",
+        board_id: boardId,
+        channel: "general",
+        author_id: userId,
+        author_name: "System",
+        author_avatar: "📣",
+        content: `${publisherName} published a new version${message ? `: ${message}` : ""}`,
+      });
+    }
     return { success: true };
   }, []);
 

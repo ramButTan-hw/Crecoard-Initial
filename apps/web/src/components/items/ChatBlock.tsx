@@ -25,6 +25,21 @@ function formatDateDivider(ts: string): string {
   });
 }
 
+// Highlight @mentions; the current user's own mention is emphasized.
+function renderMessageContent(content: string, myName: string): React.ReactNode {
+  return content.split(/(@[A-Za-z0-9_.\-]+)/g).map((part, i) => {
+    if (part.startsWith("@") && part.length > 1) {
+      const isMe = !!myName && part.slice(1).toLowerCase() === myName.toLowerCase();
+      return (
+        <span key={i} className={isMe ? "rounded bg-[var(--accent)]/25 px-0.5 font-semibold text-[var(--accent)]" : "font-medium text-[var(--accent)]"}>
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+}
+
 interface ChatBlockProps {
   item: BlockItem;
   boardId: string;
@@ -232,18 +247,31 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
             {messages.map((msg, i) => {
             const prev = messages[i - 1];
             const showDate = !prev || new Date(prev.timestamp).toDateString() !== new Date(msg.timestamp).toDateString();
-            const consecutive = !!prev && !showDate && prev.authorId === msg.authorId;
+            const isSystem = msg.authorName === "System";
+            const consecutive = !!prev && !showDate && !isSystem && prev.authorId === msg.authorId && prev.authorName !== "System";
             const isYou = msg.authorId === identity.userId;
+            const dateDivider = showDate ? (
+              <div className="my-2 flex items-center gap-2 px-1">
+                <div className="h-px flex-1 bg-[var(--border)]" />
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">{formatDateDivider(msg.timestamp)}</span>
+                <div className="h-px flex-1 bg-[var(--border)]" />
+              </div>
+            ) : null;
+
+            if (isSystem) {
+              return (
+                <Fragment key={msg.id}>
+                  {dateDivider}
+                  <div className="my-1.5 flex items-center justify-center px-3 text-center">
+                    <span className="text-[11px] text-[var(--text-muted)]">📣 {msg.content}</span>
+                  </div>
+                </Fragment>
+              );
+            }
 
             return (
               <Fragment key={msg.id}>
-                {showDate && (
-                  <div className="my-2 flex items-center gap-2 px-1">
-                    <div className="h-px flex-1 bg-[var(--border)]" />
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">{formatDateDivider(msg.timestamp)}</span>
-                    <div className="h-px flex-1 bg-[var(--border)]" />
-                  </div>
-                )}
+                {dateDivider}
                 <div
                   className={cn(
                     "group flex items-start gap-2 rounded px-1 py-0.5 transition-colors hover:bg-[var(--surface-overlay)]/40",
@@ -282,7 +310,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                         background: bubbles ? (isYou ? accent : "var(--surface-overlay)") : undefined,
                       }}
                     >
-                      {msg.content}
+                      {renderMessageContent(msg.content, identity.displayName)}
                     </p>
                   )}
                   {msg.gif && (
