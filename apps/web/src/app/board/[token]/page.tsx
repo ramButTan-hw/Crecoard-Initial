@@ -22,9 +22,11 @@ export default function RedeemSharePage() {
         setError("This share link is invalid or has been revoked.");
         return;
       }
-      // Tell the app to open this board once BoardSync has loaded it.
+      // Tell the app to open this board once BoardSync has loaded it. Use a full
+      // navigation (not router.replace) so BoardSyncProvider remounts and fetches
+      // the newly shared board instead of reusing its already-initialized state.
       sessionStorage.setItem("crecoard-open-board", data as string);
-      router.replace("/");
+      window.location.href = "/";
     })();
   }, [token, router]);
 
