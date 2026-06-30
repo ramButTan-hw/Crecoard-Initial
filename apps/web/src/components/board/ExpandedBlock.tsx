@@ -19,7 +19,7 @@ import {
 import { useCanEditBoard, useServerBoard, useServerBoardData, roleAllowed } from "@/contexts/ServerBoardContext";
 import { ItemPermissionModal } from "./PermissionModal";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
-import { ItemRenderer, ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel, ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, KanbanStylePanel } from "@/components/items/ItemRenderer";
+import { ItemRenderer, ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel, ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, KanbanStylePanel, ChatStylePanel } from "@/components/items/ItemRenderer";
 import { FontPicker } from "@/components/ui/FontPicker";
 import { loadGoogleFont } from "@/lib/fonts";
 import { ITEM_DEFINITIONS } from "./ItemPalette";
@@ -790,6 +790,12 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
               )}
               {selectedItem.type === "kanban" && (
                 <KanbanStylePanel
+                  item={selectedItem}
+                  upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
+                />
+              )}
+              {selectedItem.type === "chat" && (
+                <ChatStylePanel
                   item={selectedItem}
                   upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
                 />

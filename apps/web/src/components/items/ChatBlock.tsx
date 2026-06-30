@@ -52,6 +52,30 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
 
   const authorAvatar = identity.displayName.charAt(0).toUpperCase() || "?";
 
+  // ── Appearance customization ──────────────────────────────────────────────
+  const accent = item.chatAccentColor || "var(--accent)";
+  const msgColor = item.chatTextColor || "var(--text-secondary)";
+  const bubbles = item.chatBubbles ?? false;
+  const hideHeader = item.chatHideHeader ?? false;
+  const rootStyle: React.CSSProperties = {
+    minHeight: 0,
+    fontFamily: item.chatFontFamily || undefined,
+    background: item.chatBgColor || undefined,
+  };
+  const bgLayer = item.chatBgImage ? (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-0"
+      style={{
+        backgroundImage: `url(${item.chatBgImage})`,
+        backgroundSize: item.chatBgSize ?? "cover",
+        backgroundPosition: item.chatBgPosition ?? "center",
+        backgroundRepeat: "no-repeat",
+        opacity: item.chatBgOpacity ?? 1,
+      }}
+    />
+  ) : null;
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text && !pendingImage) return;
@@ -90,24 +114,25 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   if (!expanded) {
     const latest = messages[messages.length - 1];
     return (
-      <div className="flex h-full flex-col" style={{ minHeight: 0 }}>
-        <div className="flex flex-shrink-0 items-center gap-1 border-b border-[var(--border)] px-2 py-1.5">
+      <div className="relative flex h-full flex-col" style={rootStyle}>
+        {bgLayer}
+        <div className="relative z-10 flex flex-shrink-0 items-center gap-1 border-b border-[var(--border)] px-2 py-1.5">
           <span className="text-[11px] text-[var(--text-muted)]">#</span>
           <span className="text-[11px] font-semibold text-[var(--text-primary)]">{channelName}</span>
           <div className="ml-auto flex items-center gap-1.5">
             {unreadCount > 0 && (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
-                style={{ background: "var(--accent)" }}>
+                style={{ background: accent }}>
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
             <span className="text-[9px] text-[var(--text-muted)]">{messages.length} msg</span>
           </div>
         </div>
-        <div className="flex flex-1 items-start gap-1.5 overflow-hidden px-2 py-1.5">
+        <div className="relative z-10 flex flex-1 items-start gap-1.5 overflow-hidden px-2 py-1.5">
           {latest ? (
             <>
-              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[9px] font-bold text-white">
+              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: accent }}>
                 {latest.authorAvatar}
               </span>
               <div className="min-w-0 flex-1">
@@ -131,26 +156,29 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
 
   // ── Expanded view ────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full flex-col" style={{ minHeight: 0 }}>
+    <div className="relative flex h-full flex-col" style={rootStyle}>
+      {bgLayer}
       {/* Channel header */}
-      <div className="flex flex-shrink-0 items-center gap-1.5 border-b border-[var(--border)] px-3 py-2">
-        <span className="text-sm text-[var(--text-muted)]">#</span>
-        <span className="text-sm font-semibold text-[var(--text-primary)]">{channelName}</span>
-        <div className="ml-auto flex items-center gap-2">
-          {unreadCount > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
-              style={{ background: "var(--accent)" }}>
-              {unreadCount > 99 ? "99+" : unreadCount}
-            </span>
-          )}
-          <span className="text-[10px] text-[var(--text-muted)]">{messages.length} msg</span>
+      {!hideHeader && (
+        <div className="relative z-10 flex flex-shrink-0 items-center gap-1.5 border-b border-[var(--border)] px-3 py-2">
+          <span className="text-sm text-[var(--text-muted)]">#</span>
+          <span className="text-sm font-semibold text-[var(--text-primary)]">{channelName}</span>
+          <div className="ml-auto flex items-center gap-2">
+            {unreadCount > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
+                style={{ background: accent }}>
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+            <span className="text-[10px] text-[var(--text-muted)]">{messages.length} msg</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Message list */}
       <div
         ref={scrollContainerRef}
-        className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2"
+        className="relative z-10 flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2"
         style={{ minHeight: 0, scrollbarWidth: "thin" }}
       >
         {messages.length === 0 ? (
@@ -175,10 +203,8 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
               >
                 {!consecutive ? (
                   <div
-                    className={cn(
-                      "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white",
-                      isYou ? "bg-green-600" : "bg-[var(--accent)]"
-                    )}
+                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                    style={{ background: isYou ? "#16a34a" : accent }}
                   >
                     {msg.authorAvatar}
                   </div>
@@ -197,8 +223,13 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                   )}
                   {msg.content && (
                     <p
-                      className="break-words leading-relaxed text-sm"
-                      style={{ color: "var(--text-secondary)" }}
+                      className={cn("break-words leading-relaxed text-sm", bubbles && "mt-0.5 inline-block rounded-2xl px-3 py-1.5")}
+                      style={{
+                        color: bubbles && isYou ? "#fff" : msgColor,
+                        fontFamily: item.chatFontFamily || undefined,
+                        fontSize: item.chatFontSize ? `${item.chatFontSize}px` : undefined,
+                        background: bubbles ? (isYou ? accent : "var(--surface-overlay)") : undefined,
+                      }}
                     >
                       {msg.content}
                     </p>
@@ -225,7 +256,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
       </div>
 
       {/* Input area */}
-      <div className="relative flex-shrink-0 border-t border-[var(--border)] px-2 py-2">
+      <div className="relative z-10 flex-shrink-0 border-t border-[var(--border)] px-2 py-2">
         {showEmoji && (
           <>
             <div className="fixed inset-0 z-[200]" onClick={() => setShowEmoji(false)} />

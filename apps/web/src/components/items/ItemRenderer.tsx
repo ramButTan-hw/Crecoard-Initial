@@ -1673,6 +1673,124 @@ function IconUploadBtn({ onUpload }: { onUpload: (url: string) => void }) {
   );
 }
 
+function ChatColorRow({ label, value, fallback, onChange, onClear }: {
+  label: string; value?: string; fallback: string; onChange: (c: string) => void; onClear: () => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
+      <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: value ?? fallback }}>
+        <input type="color" value={value ?? fallback} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+      </span>
+      <span className="flex-1 text-[var(--text-secondary)]">{label}</span>
+      {value ? (
+        <button onClick={(e) => { e.preventDefault(); onClear(); }} className="font-mono text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">clear</button>
+      ) : (
+        <span className="font-mono text-[10px] text-[var(--text-muted)]">default</span>
+      )}
+    </label>
+  );
+}
+
+function ChatToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button onClick={() => onChange(!value)} className="flex items-center justify-between rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
+      <span className="text-[var(--text-secondary)]">{label}</span>
+      <span className={cn("relative h-4 w-7 rounded-full transition-colors", value ? "bg-[var(--accent)]" : "bg-[var(--border)]")}>
+        <span className={cn("absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform", value ? "translate-x-[14px]" : "translate-x-0.5")} />
+      </span>
+    </button>
+  );
+}
+
+export function ChatStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => upd({ chatBgImage: ev.target?.result as string });
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  return (
+    <div className="flex flex-col gap-4 p-3 text-xs">
+      {/* Channel */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Channel name</p>
+        <input
+          className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] transition-colors"
+          placeholder="general"
+          value={item.chatChannelName ?? ""}
+          onChange={(e) => upd({ chatChannelName: e.target.value || undefined })}
+        />
+      </div>
+
+      {/* Background image */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background image</p>
+        <input
+          className="mb-1.5 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+          placeholder="Paste image URL…"
+          value={item.chatBgImage?.startsWith("data:") ? "" : (item.chatBgImage ?? "")}
+          onChange={(e) => upd({ chatBgImage: e.target.value || undefined })}
+        />
+        <div className="flex gap-1.5 mb-2">
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded border border-dashed border-[var(--border)] py-1.5 text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+          >
+            <Upload size={11} /> Upload
+          </button>
+          {item.chatBgImage && (
+            <button onClick={() => upd({ chatBgImage: undefined })} className="rounded border border-[var(--border)] px-2.5 text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>
+          )}
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+        {item.chatBgImage && (
+          <WallpaperEditor
+            url={item.chatBgImage}
+            size={item.chatBgSize ?? "cover"}
+            position={item.chatBgPosition ?? "center"}
+            opacity={item.chatBgOpacity ?? 1}
+            onSizeChange={(v) => upd({ chatBgSize: v })}
+            onPositionChange={(v) => upd({ chatBgPosition: v })}
+            onOpacityChange={(v) => upd({ chatBgOpacity: v })}
+          />
+        )}
+      </div>
+
+      {/* Colors */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Colors</p>
+        <div className="flex flex-col gap-2">
+          <ChatColorRow label="Background" value={item.chatBgColor} fallback="#1a1b1e" onChange={(c) => upd({ chatBgColor: c })} onClear={() => upd({ chatBgColor: undefined })} />
+          <ChatColorRow label="Accent" value={item.chatAccentColor} fallback="#d59ee8" onChange={(c) => upd({ chatAccentColor: c })} onClear={() => upd({ chatAccentColor: undefined })} />
+          <ChatColorRow label="Text" value={item.chatTextColor} fallback="#f2f2f2" onChange={(c) => upd({ chatTextColor: c })} onClear={() => upd({ chatTextColor: undefined })} />
+        </div>
+      </div>
+
+      {/* Font */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
+        <div className="flex flex-col gap-2">
+          <FontPicker compact value={item.chatFontFamily ?? "Inter"} onChange={(font) => { loadGoogleFont(font); upd({ chatFontFamily: font }); }} />
+          <PanelSlider label="Size" value={item.chatFontSize ?? 14} min={10} max={22} onChange={(v) => upd({ chatFontSize: v })} />
+        </div>
+      </div>
+
+      {/* Options */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Options</p>
+        <div className="flex flex-col gap-2">
+          <ChatToggleRow label="Message bubbles" value={item.chatBubbles ?? false} onChange={(v) => upd({ chatBubbles: v })} />
+          <ChatToggleRow label="Hide channel header" value={item.chatHideHeader ?? false} onChange={(v) => upd({ chatHideHeader: v })} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PanelSlider({ label, value, min, max, step = 1, decimals = 0, onChange }: {
   label: string; value: number; min: number; max: number; step?: number; decimals?: number; onChange: (v: number) => void;
 }) {

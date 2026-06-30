@@ -5,7 +5,7 @@ import { useBoardStore, useActiveBoard, BoardLevelItem } from "@/store/boardStor
 import { useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
 import {
   ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel,
-  ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel,
+  ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, ChatStylePanel,
 } from "@/components/items/ItemRenderer";
 import { TextStylePanel } from "@/components/board/ExpandedBlock";
 import { EmbedCardStylePanel } from "@/components/items/EmbedCardItem";
@@ -91,7 +91,10 @@ export function BoardItemPanel() {
         {item.type === "external" && (
           <ExternalStylePanel item={item} upd={upd} />
         )}
-        {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","external"].includes(item.type) && (
+        {item.type === "chat" && (
+          <ChatStylePanel item={item} upd={upd} />
+        )}
+        {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","external","chat"].includes(item.type) && (
           <div className="p-4 text-xs text-[var(--text-muted)]">No style options for this item type.</div>
         )}
         {item.settingsLocked && (

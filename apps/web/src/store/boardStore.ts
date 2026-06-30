@@ -559,6 +559,18 @@ export interface BlockItem {
 
   // chat (server board chat block)
   chatChannelName?: string;
+  // chat appearance
+  chatBgColor?: string;
+  chatBgImage?: string;
+  chatBgSize?: string;
+  chatBgPosition?: string;
+  chatBgOpacity?: number;
+  chatAccentColor?: string;
+  chatTextColor?: string;
+  chatFontFamily?: string;
+  chatFontSize?: number;
+  chatBubbles?: boolean;
+  chatHideHeader?: boolean;
 
   // filebank (server board file storage block)
   fileBankTitle?: string;
