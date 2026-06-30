@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Send, Smile, ImageIcon, X } from "lucide-react";
 import type { BlockItem } from "@/store/boardStore";
 import { useBoardChatItem } from "@/contexts/BoardChatContext";
@@ -10,6 +10,20 @@ import { uploadFile } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { EmojiPicker } from "@/components/messaging/EmojiPicker";
 import { GifPicker } from "@/components/messaging/GifPicker";
+
+function formatDateDivider(ts: string): string {
+  const d = new Date(ts);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    year: d.getFullYear() === today.getFullYear() ? undefined : "numeric",
+  });
+}
 
 interface ChatBlockProps {
   item: BlockItem;
@@ -22,20 +36,20 @@ interface ChatBlockProps {
 export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const { identity } = useUser();
   const channelName = item.chatChannelName ?? "general";
-  const { messages, send } = useBoardChatItem(item.id, boardId, channelName);
+  const { messages, send, chatKey } = useBoardChatItem(item.id, boardId, channelName);
   const { unread, registerActive, unregisterActive, markRead } = useNotifications();
-  const unreadCount = unread[item.id] ?? 0;
+  const unreadCount = unread[chatKey] ?? 0;
 
-  // Register this chat as "active" (visible) — suppresses toasts while open
+  // Register this channel as "active" (visible) — suppresses toasts while open
   useEffect(() => {
-    registerActive(item.id);
-    return () => unregisterActive(item.id);
-  }, [item.id, registerActive, unregisterActive]);
+    registerActive(chatKey);
+    return () => unregisterActive(chatKey);
+  }, [chatKey, registerActive, unregisterActive]);
 
   // Mark read whenever expanded view opens
   useEffect(() => {
-    if (expanded) markRead(item.id);
-  }, [expanded, item.id, markRead]);
+    if (expanded) markRead(chatKey);
+  }, [expanded, chatKey, markRead]);
 
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -194,17 +208,25 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
         ) : (
           messages.map((msg, i) => {
             const prev = messages[i - 1];
-            const consecutive = !!prev && prev.authorId === msg.authorId;
+            const showDate = !prev || new Date(prev.timestamp).toDateString() !== new Date(msg.timestamp).toDateString();
+            const consecutive = !!prev && !showDate && prev.authorId === msg.authorId;
             const isYou = msg.authorId === identity.userId;
 
             return (
-              <div
-                key={msg.id}
-                className={cn(
-                  "group flex items-start gap-2 rounded px-1 py-0.5 transition-colors hover:bg-[var(--surface-overlay)]/40",
-                  consecutive ? "mt-0" : "mt-2.5"
+              <Fragment key={msg.id}>
+                {showDate && (
+                  <div className="my-2 flex items-center gap-2 px-1">
+                    <div className="h-px flex-1 bg-[var(--border)]" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">{formatDateDivider(msg.timestamp)}</span>
+                    <div className="h-px flex-1 bg-[var(--border)]" />
+                  </div>
                 )}
-              >
+                <div
+                  className={cn(
+                    "group flex items-start gap-2 rounded px-1 py-0.5 transition-colors hover:bg-[var(--surface-overlay)]/40",
+                    consecutive ? "mt-0" : "mt-2.5"
+                  )}
+                >
                 {!consecutive ? (
                   <div
                     className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white"
@@ -256,6 +278,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                   )}
                 </div>
               </div>
+              </Fragment>
             );
           })
         )}

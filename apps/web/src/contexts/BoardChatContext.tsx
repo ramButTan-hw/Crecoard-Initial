@@ -24,11 +24,12 @@ interface BoardChatContextValue {
    * Load messages for a chat item and subscribe to Realtime inserts.
    * Returns an unsubscribe function — call it when the ChatBlock unmounts.
    */
-  loadAndSubscribe: (itemId: string, boardId: string, channelName?: string) => () => void;
+  loadAndSubscribe: (itemId: string, boardId: string, channel: string) => () => void;
   /** Send a message (optimistic + Supabase insert). */
   sendMessage: (
     itemId: string,
     boardId: string,
+    channel: string,
     authorId: string,
     authorName: string,
     authorAvatar: string,
@@ -49,17 +50,24 @@ export function useBoardChat(): BoardChatContextValue {
 
 // ─── Convenience hook used by ChatBlock ───────────────────────────────────────
 
+/** Stable key for a conversation: a (board, channel) stream, not a single item. */
+export function chatKeyFor(boardId: string, channelName?: string) {
+  return `${boardId}::${channelName ?? "general"}`;
+}
+
 export function useBoardChatItem(itemId: string, boardId: string, channelName?: string) {
   const ctx = useBoardChat();
+  const channel = channelName ?? "general";
+  const chatKey = chatKeyFor(boardId, channel);
 
   useEffect(() => {
-    const unsub = ctx.loadAndSubscribe(itemId, boardId, channelName);
+    const unsub = ctx.loadAndSubscribe(itemId, boardId, channel);
     return unsub;
   // ctx functions are stable useCallbacks — not in deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemId, boardId]);
+  }, [chatKey]);
 
-  const messages = ctx.messagesByItem[itemId] ?? [];
+  const messages = ctx.messagesByItem[chatKey] ?? [];
 
   const send = useCallback(
     (
@@ -68,12 +76,12 @@ export function useBoardChatItem(itemId: string, boardId: string, channelName?: 
       authorAvatar: string,
       content: string,
       opts?: { gifUrl?: string; imageUrl?: string; fileName?: string }
-    ) => ctx.sendMessage(itemId, boardId, authorId, authorName, authorAvatar, content, opts),
+    ) => ctx.sendMessage(itemId, boardId, channel, authorId, authorName, authorAvatar, content, opts),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [itemId, boardId]
+    [chatKey]
   );
 
-  return { messages, send };
+  return { messages, send, chatKey };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -112,30 +120,33 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const loadAndSubscribe = useCallback((itemId: string, boardId: string, channelName?: string): () => void => {
+  const loadAndSubscribe = useCallback((itemId: string, boardId: string, channel: string): () => void => {
     if (!isSupabaseReady()) return () => {};
 
-    if (channelName) channelNames.current[itemId] = channelName;
+    const key = chatKeyFor(boardId, channel);
+    channelNames.current[key] = channel;
 
-    // Track how many ChatBlock instances are using this itemId
-    refCounts.current[itemId] = (refCounts.current[itemId] ?? 0) + 1;
+    // Reference-count subscribers per (board, channel) so boxes pinned to the
+    // same channel share one subscription and one message stream.
+    refCounts.current[key] = (refCounts.current[key] ?? 0) + 1;
 
-    // One channel per itemId — created on first subscriber
-    if (!channels.current[itemId]) {
-      const channel = supabase
-        .channel(`board-chat:${itemId}`)
+    if (!channels.current[key]) {
+      const ch = supabase
+        .channel(`board-chat:${key}`)
         .on(
           "postgres_changes",
           {
             event: "INSERT",
             schema: "public",
             table: "board_chat_messages",
-            filter: `item_id=eq.${itemId}`,
+            filter: `board_id=eq.${boardId}`,
           },
           (payload) => {
-            const msg = rowToMessage(payload.new as Record<string, unknown>);
+            const row = payload.new as Record<string, unknown>;
+            // postgres_changes only filters one column — match the channel here.
+            if (((row.channel as string) ?? "general") !== channel) return;
+            const msg = rowToMessage(row);
 
-            // Don't notify for own messages
             if (msg.authorId !== identity.userId) {
               const isMention = Boolean(
                 msg.content &&
@@ -144,8 +155,8 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
               );
               playPing(isMention ? "mention" : "message");
               pushNotification({
-                itemId,
-                channelName: channelNames.current[itemId] ?? "chat",
+                itemId: key,
+                channelName: channel,
                 authorName:   msg.authorName,
                 authorAvatar: msg.authorAvatar,
                 content:      msg.content ?? "",
@@ -154,7 +165,7 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
             }
 
             setMessagesByItem((prev) => {
-              const existing = prev[itemId] ?? [];
+              const existing = prev[key] ?? [];
               if (existing.some((m) => m.id === msg.id)) return prev;
               const optIdx = existing.findIndex(
                 (m) => m.id.startsWith("opt-") && m.authorId === msg.authorId
@@ -162,47 +173,45 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
               if (optIdx >= 0) {
                 const updated = [...existing];
                 updated[optIdx] = msg;
-                return { ...prev, [itemId]: updated };
+                return { ...prev, [key]: updated };
               }
-              return { ...prev, [itemId]: [...existing, msg] };
+              return { ...prev, [key]: [...existing, msg] };
             });
           }
         )
         .subscribe();
 
-      channels.current[itemId] = channel;
+      channels.current[key] = ch;
     }
 
-    // Load history once per session
-    if (!loaded.current.has(itemId)) {
-      loaded.current.add(itemId);
+    if (!loaded.current.has(key)) {
+      loaded.current.add(key);
       void supabase
         .from("board_chat_messages")
         .select("*")
-        .eq("item_id", itemId)
         .eq("board_id", boardId)
+        .eq("channel", channel)
         .order("created_at", { ascending: true })
         .limit(200)
         .then(({ data }) => {
           if (data) {
             setMessagesByItem((prev) => ({
               ...prev,
-              [itemId]: data.map(rowToMessage as (r: unknown) => ChatMessage),
+              [key]: data.map(rowToMessage as (r: unknown) => ChatMessage),
             }));
           }
         });
     }
 
     return () => {
-      refCounts.current[itemId] = (refCounts.current[itemId] ?? 1) - 1;
-      // Only tear down when the last subscriber unmounts
-      if (refCounts.current[itemId] <= 0) {
-        delete refCounts.current[itemId];
-        const ch = channels.current[itemId];
+      refCounts.current[key] = (refCounts.current[key] ?? 1) - 1;
+      if (refCounts.current[key] <= 0) {
+        delete refCounts.current[key];
+        const ch = channels.current[key];
         if (ch) {
           void supabase.removeChannel(ch);
-          delete channels.current[itemId];
-          loaded.current.delete(itemId); // allow fresh load on next mount
+          delete channels.current[key];
+          loaded.current.delete(key); // allow fresh load on next mount
         }
       }
     };
@@ -211,12 +220,14 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
   const sendMessage = useCallback(async (
     itemId: string,
     boardId: string,
+    channel: string,
     authorId: string,
     authorName: string,
     authorAvatar: string,
     content: string,
     opts: { gifUrl?: string; imageUrl?: string; fileName?: string } = {}
   ) => {
+    const key = chatKeyFor(boardId, channel);
     const optimisticId = `opt-${crypto.randomUUID()}`;
     const optimistic: ChatMessage = {
       id: optimisticId,
@@ -232,7 +243,7 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
 
     setMessagesByItem((prev) => ({
       ...prev,
-      [itemId]: [...(prev[itemId] ?? []), optimistic],
+      [key]: [...(prev[key] ?? []), optimistic],
     }));
 
     if (!isSupabaseReady()) return; // guest mode — keep optimistic only
@@ -242,6 +253,7 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
       .insert({
         item_id: itemId,
         board_id: boardId,
+        channel,
         author_id: authorId,
         author_name: authorName,
         author_avatar: authorAvatar,
@@ -254,19 +266,17 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
       .single();
 
     if (error || !data) {
-      // Rollback optimistic on failure
       setMessagesByItem((prev) => ({
         ...prev,
-        [itemId]: (prev[itemId] ?? []).filter((m) => m.id !== optimisticId),
+        [key]: (prev[key] ?? []).filter((m) => m.id !== optimisticId),
       }));
       return;
     }
 
-    // Replace optimistic with persisted row
     const real = rowToMessage(data as Record<string, unknown>);
     setMessagesByItem((prev) => ({
       ...prev,
-      [itemId]: (prev[itemId] ?? []).map((m) => (m.id === optimisticId ? real : m)),
+      [key]: (prev[key] ?? []).map((m) => (m.id === optimisticId ? real : m)),
     }));
   }, []);
 
