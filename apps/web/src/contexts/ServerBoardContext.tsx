@@ -94,7 +94,10 @@ export function useServerDraftData() {
  */
 export function useCanEditBoard() {
   const { viewerRole } = useServerBoardContext();
-  return viewerRole === null || viewerRole === "owner" || viewerRole === "admin";
+  // Personal board shared with this user as view-only → read-only.
+  const isReadonlyShared = useBoardStore((s) => s.readonlyBoardIds.includes(s.activeBoardId));
+  if (viewerRole === null) return !isReadonlyShared;
+  return viewerRole === "owner" || viewerRole === "admin";
 }
 
 // TODO: wire to file upload UI — no file upload button exists in ServerBoardHeader yet

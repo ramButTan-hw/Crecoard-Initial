@@ -810,6 +810,9 @@ interface BoardState {
   // Tracked separately (not persisted) so the sync layer saves them by data only
   // and never overwrites the owner's user_id.
   sharedBoardIds: string[];
+  // Subset of sharedBoardIds shared as view-only: editing is blocked and they
+  // are never written back.
+  readonlyBoardIds: string[];
   activeBoardId: string;
   selectedBoxId: string | null;
   expandedBoxId: string | null;
@@ -933,6 +936,7 @@ interface BoardState {
   persistBoards: () => void;
   hydrateBoards: (uid?: string) => void;
   setSharedBoardIds: (ids: string[]) => void;
+  setReadonlyBoardIds: (ids: string[]) => void;
 
   // Webhooks
   setWebhookToken: (boardId: string, token: string | undefined) => void;
@@ -984,6 +988,7 @@ export const useBoardStore = create<BoardState>()(
     boards: [initialBoard],
     serverBoards: {} as Record<string, Board>,
     sharedBoardIds: [],
+    readonlyBoardIds: [],
     activeBoardId: initialBoard.id,
     selectedBoxId: null,
     expandedBoxId: null,
@@ -1709,6 +1714,7 @@ export const useBoardStore = create<BoardState>()(
       }),
 
     setSharedBoardIds: (ids) => set((s) => { s.sharedBoardIds = ids; }),
+    setReadonlyBoardIds: (ids) => set((s) => { s.readonlyBoardIds = ids; }),
 
     persistBoards: () => {
       try {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  X, Link2, Check, Users, Globe,
+  X, Link2, Check, Users,
   Wifi, WifiOff, UserCircle2,
 } from "lucide-react";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
@@ -12,6 +12,12 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   onClose: () => void;
+}
+
+interface Collaborator {
+  userId: string;
+  name: string;
+  color: string;
 }
 
 function Avatar({ name, color, size = 28 }: { name: string; color: string; size?: number }) {
@@ -38,28 +44,77 @@ export function ShareModal({ onClose }: Props) {
   const [nameInput, setNameInput] = useState(self.displayName);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [linkError, setLinkError] = useState(false);
+  const [canEdit, setCanEdit] = useState(true);
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const nameRef = useRef<HTMLInputElement>(null);
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://crecoard.com";
 
   useEffect(() => {
     setNameInput(self.displayName);
   }, [self.displayName]);
 
-  // Create (or fetch) a real share link for boards we own. Opening it grants the
-  // visitor edit access, so we also switch on live collaboration.
+  const loadCollaborators = useCallback(async () => {
+    if (isSharedWithMe || !activeBoardId) return;
+    const { data: rows } = await supabase
+      .from("board_collaborators").select("user_id, can_edit").eq("board_id", activeBoardId);
+    const ids = (rows ?? []).map((r) => r.user_id as string);
+    if (ids.length === 0) { setCollaborators([]); return; }
+    const { data: profiles } = await supabase
+      .from("profiles").select("id, display_name, color").in("id", ids);
+    const pmap = new Map((profiles ?? []).map((p) => [p.id as string, p]));
+    setCollaborators((rows ?? []).map((r) => {
+      const p = pmap.get(r.user_id as string);
+      return {
+        userId: r.user_id as string,
+        name: (p?.display_name as string) || "Member",
+        color: (p?.color as string) || "#8b8d99",
+      };
+    }));
+  }, [activeBoardId, isSharedWithMe]);
+
+  // Load (or create) the share link + its current permission for boards we own.
+  // Opening the link grants access, so we also switch on live collaboration.
   useEffect(() => {
     if (!activeBoardId || isSharedWithMe) return;
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.rpc("create_board_share", { p_board_id: activeBoardId });
+      const { data: link } = await supabase
+        .from("board_share_links").select("token, can_edit").eq("board_id", activeBoardId).maybeSingle();
+      let token = link?.token as string | undefined;
+      let edit = (link?.can_edit ?? true) as boolean;
+      if (!token) {
+        const { data, error } = await supabase.rpc("create_board_share", { p_board_id: activeBoardId });
+        if (error || !data) { if (!cancelled) setLinkError(true); return; }
+        token = data as string;
+        edit = true;
+      }
       if (cancelled) return;
-      if (error || !data) { setLinkError(true); return; }
-      const origin = typeof window !== "undefined" ? window.location.origin : "https://crecoard.com";
-      setShareUrl(`${origin}/board/${data}`);
+      setShareUrl(`${origin}/board/${token}`);
+      setCanEdit(edit);
       if (!board?.collabEnabled) updateBoard(activeBoardId, { collabEnabled: true });
     })();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBoardId, isSharedWithMe]);
+
+  useEffect(() => { void loadCollaborators(); }, [loadCollaborators]);
+
+  const setPermission = async (edit: boolean) => {
+    setCanEdit(edit);
+    await supabase.rpc("set_board_share", { p_board_id: activeBoardId, p_can_edit: edit });
+    void loadCollaborators();
+  };
+
+  const resetLink = async () => {
+    const { data } = await supabase.rpc("reset_board_share", { p_board_id: activeBoardId });
+    if (data) { setShareUrl(`${origin}/board/${data as string}`); setCopied(false); }
+  };
+
+  const removeCollaborator = async (userId: string) => {
+    await supabase.from("board_collaborators").delete().eq("board_id", activeBoardId).eq("user_id", userId);
+    void loadCollaborators();
+  };
 
   const copyLink = async () => {
     if (!shareUrl) return;
@@ -113,9 +168,10 @@ export function ShareModal({ onClose }: Props) {
             <section className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Share link</span>
-                <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium bg-[var(--accent)]/10 text-[var(--accent)]">
-                  <Globe size={11} /> Anyone with link can edit
-                </span>
+                <div className="flex items-center rounded-full bg-[var(--surface-overlay)] p-0.5 text-[11px] font-medium">
+                  <button onClick={() => setPermission(true)} className={cn("rounded-full px-2.5 py-1 transition-colors", canEdit ? "bg-[var(--accent)] text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]")}>Can edit</button>
+                  <button onClick={() => setPermission(false)} className={cn("rounded-full px-2.5 py-1 transition-colors", !canEdit ? "bg-[var(--accent)] text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]")}>Can view</button>
+                </div>
               </div>
               <div className="flex gap-2">
                 <div className="flex-1 flex items-center gap-2 rounded-xl bg-[var(--surface-overlay)] border border-[var(--border)] px-3 py-2 min-w-0">
@@ -138,7 +194,35 @@ export function ShareModal({ onClose }: Props) {
                   {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
-              <p className="text-[10px] text-[var(--text-muted)]">Anyone signed in who opens this link can view and edit this board.</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] text-[var(--text-muted)]">
+                  {canEdit ? "Anyone signed in with this link can view and edit." : "Anyone signed in with this link can view only."}
+                </p>
+                {shareUrl && (
+                  <button onClick={resetLink} className="shrink-0 text-[10px] text-[var(--text-muted)] underline hover:text-[var(--text-primary)]">Reset link</button>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* People with access */}
+          {!isSharedWithMe && collaborators.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">People with access</span>
+              <div className="flex flex-col gap-1">
+                {collaborators.map((c) => (
+                  <div key={c.userId} className="group flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-[var(--surface-overlay)] transition-colors">
+                    <Avatar name={c.name} color={c.color} size={28} />
+                    <span className="flex-1 min-w-0 truncate text-sm text-[var(--text-primary)]">{c.name}</span>
+                    <button
+                      onClick={() => removeCollaborator(c.userId)}
+                      className="shrink-0 text-[11px] text-[var(--text-muted)] opacity-0 transition hover:text-red-400 group-hover:opacity-100"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
             </section>
           )}
 

@@ -147,9 +147,10 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
       // IDs so the save path updates them by data only (never reassigns ownership).
       const { data: collabRows } = await supabase
         .from("board_collaborators")
-        .select("board_id")
+        .select("board_id, can_edit")
         .eq("user_id", user.id);
       const sharedIds = (collabRows ?? []).map((r) => r.board_id as string);
+      const readonlyIds = (collabRows ?? []).filter((r) => !r.can_edit).map((r) => r.board_id as string);
       if (sharedIds.length > 0) {
         const { data: sharedData } = await supabase
           .from("boards")
@@ -164,6 +165,7 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
         useBoardStore.setState((s) => ({
           boards: [...s.boards.filter((b) => !loadedIds.includes(b.id)), ...sharedBoards],
           sharedBoardIds: loadedIds,
+          readonlyBoardIds: readonlyIds.filter((id) => loadedIds.includes(id)),
         }));
         skipNextChange.current = false;
       }
@@ -214,6 +216,7 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
     if (!user) { setSaveStatus("idle"); return; }
 
     const sharedIds = useBoardStore.getState().sharedBoardIds;
+    const readonlyIds = useBoardStore.getState().readonlyBoardIds;
 
     // Hard deletes first (owner-only; never delete a board shared *with* us).
     for (const id of Array.from(pendingHardDeletes.current)) {
@@ -230,12 +233,15 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
     }
 
     const toFlush = Array.from(pendingPersonal.current.values());
+    // View-only boards can't be written — drop them so they don't error or pile up.
+    for (const b of toFlush) if (readonlyIds.includes(b.id)) pendingPersonal.current.delete(b.id);
+    const writable = toFlush.filter((b) => !readonlyIds.includes(b.id));
     // Owned boards upsert with user_id; shared boards update data only so the
     // owner's user_id is preserved (and the ownership-guard trigger isn't tripped).
-    const ownedRows = toFlush
+    const ownedRows = writable
       .filter((b) => !sharedIds.includes(b.id))
       .map((board) => { const { id, ...rest } = board; return { id, user_id: user.id, data: rest }; });
-    const sharedToFlush = toFlush.filter((b) => sharedIds.includes(b.id));
+    const sharedToFlush = writable.filter((b) => sharedIds.includes(b.id));
 
     let failedMsg: string | null = null;
 
