@@ -51,6 +51,10 @@ interface BoardContributionsContextValue {
   removeOwn: (id: string, itemId: string) => Promise<void>;
   /** Edit the content of one of your own contributions (optimistic). */
   editOwn: (id: string, itemId: string, content: string) => Promise<void>;
+  /** Moderator: delete anyone's contribution via the security-definer RPC (optimistic). */
+  moderateRemove: (id: string, itemId: string) => Promise<void>;
+  /** Moderator: pin/unpin a contribution via the security-definer RPC (optimistic). */
+  togglePin: (id: string, itemId: string, pinned: boolean) => Promise<void>;
 }
 
 const BoardContributionsContext = createContext<BoardContributionsContextValue>({
@@ -59,6 +63,8 @@ const BoardContributionsContext = createContext<BoardContributionsContextValue>(
   addContribution: async () => {},
   removeOwn: async () => {},
   editOwn: async () => {},
+  moderateRemove: async () => {},
+  togglePin: async () => {},
 });
 
 export function useBoardContributions(): BoardContributionsContextValue {
@@ -97,7 +103,19 @@ export function useItemContributions(itemId: string, boardId: string) {
     [itemId]
   );
 
-  return { contributions, add, removeOwn, editOwn };
+  const moderateRemove = useCallback(
+    (id: string) => ctx.moderateRemove(id, itemId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [itemId]
+  );
+
+  const togglePin = useCallback(
+    (id: string, pinned: boolean) => ctx.togglePin(id, itemId, pinned),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [itemId]
+  );
+
+  return { contributions, add, removeOwn, editOwn, moderateRemove, togglePin };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -328,9 +346,44 @@ export function BoardContributionsProvider({ children }: { children: React.React
     if (error) setContributionsByItem((prev) => ({ ...prev, [itemId]: prevList })); // rollback
   }, [contributionsByItem]);
 
+  const moderateRemove = useCallback(async (id: string, itemId: string): Promise<void> => {
+    if (id.startsWith("opt-")) {
+      setContributionsByItem((prev) => ({
+        ...prev,
+        [itemId]: (prev[itemId] ?? []).filter((x) => x.id !== id),
+      }));
+      return;
+    }
+
+    const prevList = contributionsByItem[itemId] ?? [];
+    setContributionsByItem((prev) => ({
+      ...prev,
+      [itemId]: (prev[itemId] ?? []).filter((x) => x.id !== id),
+    }));
+
+    if (!isSupabaseReady()) return;
+
+    const { error } = await supabase.rpc("delete_contribution", { p_id: id });
+    if (error) setContributionsByItem((prev) => ({ ...prev, [itemId]: prevList })); // rollback
+  }, [contributionsByItem]);
+
+  const togglePin = useCallback(async (id: string, itemId: string, pinned: boolean): Promise<void> => {
+    if (id.startsWith("opt-")) return;
+    const prevList = contributionsByItem[itemId] ?? [];
+    setContributionsByItem((prev) => ({
+      ...prev,
+      [itemId]: (prev[itemId] ?? []).map((x) => (x.id === id ? { ...x, pinned } : x)),
+    }));
+
+    if (!isSupabaseReady()) return;
+
+    const { error } = await supabase.rpc("set_contribution_pinned", { p_id: id, p_pinned: pinned });
+    if (error) setContributionsByItem((prev) => ({ ...prev, [itemId]: prevList })); // rollback
+  }, [contributionsByItem]);
+
   return (
     <BoardContributionsContext.Provider
-      value={{ contributionsByItem, loadAndSubscribe, addContribution, removeOwn, editOwn }}
+      value={{ contributionsByItem, loadAndSubscribe, addContribution, removeOwn, editOwn, moderateRemove, togglePin }}
     >
       {children}
     </BoardContributionsContext.Provider>

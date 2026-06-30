@@ -9,7 +9,7 @@ import {
   Music, SkipBack, SkipForward, Repeat, Shuffle, Volume1, Volume2, VolumeX,
   Radio, Users, Lock, LockOpen, CheckSquare, Square, Copy, FileDown, CopyPlus,
   ArrowUpToLine, ArrowDownToLine, Maximize2, Eye, EyeOff, CalendarDays, Code2, Pencil,
-  List, ListOrdered, Link2, Unlink, IndentIncrease, IndentDecrease, RemoveFormatting, GripVertical,
+  List, ListOrdered, Link2, Unlink, IndentIncrease, IndentDecrease, RemoveFormatting, GripVertical, Pin,
 } from "lucide-react";
 import { WallpaperEditor } from "@/components/ui/WallpaperEditor";
 import {
@@ -40,6 +40,7 @@ import DOMPurify from "isomorphic-dompurify";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
 import { useItemContributions } from "@/contexts/BoardContributionsContext";
+import { useCanEditBoard } from "@/contexts/ServerBoardContext";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 
 const CHART_COLORS = ["#d59ee8", "#48cfa6", "#f2994a", "#eb5757", "#9b51e0", "#2d9cdb"];
@@ -1961,7 +1962,8 @@ function PanelSlider({ label, value, min, max, step = 1, decimals = 0, onChange 
  * Viewer-contributed list entries. These are NOT owner-authored rows in the board
  * JSONB — they live in board_item_contributions (RLS: read all, write own) and are
  * merged in below the owner's items. Each viewer can add/edit/delete only their own;
- * owner-moderation (delete-any / pin / approve) arrives with the security-definer RPC.
+ * a board moderator (useCanEditBoard) can additionally pin or remove anyone's entry
+ * through the security-definer RPCs (delete_contribution / set_contribution_pinned).
  */
 function ListContributions({
   itemId, boardId, collapsed, canContribute, marker, dividerBorder, rowSpacing, fontColor,
@@ -1976,14 +1978,22 @@ function ListContributions({
   fontColor?: string;
 }) {
   const { identity } = useUser();
-  const { contributions, add, removeOwn, editOwn } = useItemContributions(itemId, boardId);
+  const { contributions, add, removeOwn, editOwn, moderateRemove, togglePin } = useItemContributions(itemId, boardId);
+  const canModerate = useCanEditBoard();
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
 
   const muted = fontColor ? fontColor + "90" : "var(--text-muted)";
 
-  if (contributions.length === 0 && (collapsed || !canContribute)) return null;
+  // Non-moderators only see approved entries (matters once "require approval" boxes exist);
+  // pinned entries float to the top, otherwise oldest-first as loaded.
+  const visible = contributions
+    .filter((c) => c.approved || canModerate || c.authorId === identity.userId)
+    .slice()
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned));
+
+  if (visible.length === 0 && (collapsed || !canContribute)) return null;
 
   const submitAdd = () => {
     const text = draft.trim();
@@ -2000,18 +2010,21 @@ function ListContributions({
 
   return (
     <div style={{ position: "relative", zIndex: 1 }}>
-      {contributions.map((c) => {
+      {visible.map((c) => {
         const isOwn = c.authorId === identity.userId;
         const isEditing = editingId === c.id;
+        const canDelete = isOwn || canModerate;
         return (
           <div key={c.id}
-            className="flex items-center gap-2 min-w-0 group/contrib"
+            className={cn("flex items-center gap-2 min-w-0 group/contrib", !c.approved && "opacity-50")}
             style={{
               paddingTop: rowSpacing / 2, paddingBottom: rowSpacing / 2,
               paddingLeft: 4, paddingRight: 4,
               borderTop: dividerBorder,
             }}>
-            {marker !== "none" && (
+            {c.pinned ? (
+              <Pin size={11} className="w-4 flex-shrink-0" style={{ color: muted }} />
+            ) : marker !== "none" && (
               <span className="w-4 flex-shrink-0 text-center" style={{ color: muted }}>•</span>
             )}
             {isEditing ? (
@@ -2033,22 +2046,37 @@ function ListContributions({
                 <span className="ml-1.5 text-[10px] whitespace-nowrap" style={{ color: muted }}>— {c.authorName || "Anonymous"}</span>
               </span>
             )}
-            {isOwn && !collapsed && !isEditing && (
+            {!collapsed && !isEditing && (canDelete || canModerate) && (
               <div className="flex items-center gap-0.5 flex-shrink-0">
-                <button
-                  onClick={() => { setEditingId(c.id); setEditDraft(c.content); }}
-                  title="Edit your entry"
-                  className="text-[var(--text-muted)] opacity-0 group-hover/contrib:opacity-100 hover:text-[var(--text-primary)] transition-colors rounded p-0.5"
-                >
-                  <Pencil size={11} />
-                </button>
-                <button
-                  onClick={() => void removeOwn(c.id)}
-                  title="Delete your entry"
-                  className="text-[var(--text-muted)] opacity-0 group-hover/contrib:opacity-100 hover:text-red-400 transition-colors rounded p-0.5"
-                >
-                  <Trash2 size={11} />
-                </button>
+                {isOwn && (
+                  <button
+                    onClick={() => { setEditingId(c.id); setEditDraft(c.content); }}
+                    title="Edit your entry"
+                    className="text-[var(--text-muted)] opacity-0 group-hover/contrib:opacity-100 hover:text-[var(--text-primary)] transition-colors rounded p-0.5"
+                  >
+                    <Pencil size={11} />
+                  </button>
+                )}
+                {canModerate && (
+                  <button
+                    onClick={() => void togglePin(c.id, !c.pinned)}
+                    title={c.pinned ? "Unpin" : "Pin to top"}
+                    className={cn("transition-colors rounded p-0.5", c.pinned
+                      ? "text-[var(--accent)] hover:text-[var(--text-muted)]"
+                      : "text-[var(--text-muted)] opacity-0 group-hover/contrib:opacity-100 hover:text-[var(--text-primary)]")}
+                  >
+                    <Pin size={11} />
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={() => void (isOwn ? removeOwn(c.id) : moderateRemove(c.id))}
+                    title={isOwn ? "Delete your entry" : "Remove entry (moderator)"}
+                    className="text-[var(--text-muted)] opacity-0 group-hover/contrib:opacity-100 hover:text-red-400 transition-colors rounded p-0.5"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -2059,7 +2087,7 @@ function ListContributions({
           style={{
             paddingTop: rowSpacing / 2, paddingBottom: rowSpacing / 2,
             paddingLeft: 4, paddingRight: 4,
-            borderTop: contributions.length > 0 ? dividerBorder : undefined,
+            borderTop: visible.length > 0 ? dividerBorder : undefined,
           }}>
           <Plus size={11} className="flex-shrink-0" style={{ color: muted }} />
           <input
