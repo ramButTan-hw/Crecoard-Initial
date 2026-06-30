@@ -40,6 +40,7 @@ import { ServersProvider, useServers } from "@/contexts/ServersContext";
 import { BoardSyncProvider, useBoardSync } from "@/contexts/BoardSyncContext";
 import { MessagingProvider, useMessaging } from "@/contexts/MessagingContext";
 import { BoardChatProvider } from "@/contexts/BoardChatContext";
+import { BoardContributionsProvider } from "@/contexts/BoardContributionsContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ProfilesProvider } from "@/contexts/ProfilesContext";
 import { Toaster } from "@/components/notifications/Toaster";
@@ -889,10 +890,12 @@ export function AppShell() {
             <NotificationProvider>
               <ProfilesProvider>
                 <BoardChatProvider>
-                  <FriendsProvider>
-                    <AppShellInner />
-                    <Toaster />
-                  </FriendsProvider>
+                  <BoardContributionsProvider>
+                    <FriendsProvider>
+                      <AppShellInner />
+                      <Toaster />
+                    </FriendsProvider>
+                  </BoardContributionsProvider>
                 </BoardChatProvider>
               </ProfilesProvider>
             </NotificationProvider>

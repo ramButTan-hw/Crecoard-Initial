@@ -129,6 +129,9 @@ function ItemCard({
   const canInput = !isFinished &&
     roleAllowed(viewerRole, viewerRoleIds, box?.perms?.interact) &&
     roleAllowed(viewerRole, viewerRoleIds, item.perms?.input);
+  const canContribute = !isFinished && !!item.allowContributions &&
+    roleAllowed(viewerRole, viewerRoleIds, box?.perms?.interact) &&
+    roleAllowed(viewerRole, viewerRoleIds, item.perms?.contribute);
 
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: item.id,
@@ -263,7 +266,7 @@ function ItemCard({
           item={item} boardId={boardId} boxId={boxId} vars={vars}
           collapsed={false} isFinished={isFinished}
           containerW={displayW} containerH={displayH}
-          canInteract={canInteract} canInput={canInput}
+          canInteract={canInteract} canInput={canInput} canContribute={canContribute}
           extraContextItems={!isFinished ? ([
             { label: isFocused ? "Unfocus" : "Focus", icon: isFocused ? <EyeOff size={14} /> : <Eye size={14} />, onClick: onToggleFocus },
             { label: item.settingsLocked ? "Unlock settings" : "Lock settings", icon: item.settingsLocked ? <LockOpen size={14} /> : <Lock size={14} />, onClick: onToggleSettingsLock },

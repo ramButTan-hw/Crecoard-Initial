@@ -51,6 +51,7 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
 
   const canInteract = !isFinished && roleAllowed(viewerRole, viewerRoleIds, item.perms?.interact);
   const canInput = !isFinished && roleAllowed(viewerRole, viewerRoleIds, item.perms?.input);
+  const canContribute = !isFinished && !!item.allowContributions && roleAllowed(viewerRole, viewerRoleIds, item.perms?.contribute);
 
   const displayX = livePos?.x ?? item.boardX;
   const displayY = livePos?.y ?? item.boardY;
@@ -325,6 +326,7 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
             extraContextItems={extraContextItems}
             canInteract={canInteract}
             canInput={canInput}
+            canContribute={canContribute}
           />
         </div>
 

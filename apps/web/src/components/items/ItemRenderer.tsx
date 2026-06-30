@@ -38,6 +38,8 @@ import { ExternalItem } from "@/components/items/ExternalItem";
 import { nanoid } from "nanoid";
 import DOMPurify from "isomorphic-dompurify";
 import { cn } from "@/lib/utils";
+import { useUser } from "@/contexts/UserContext";
+import { useItemContributions } from "@/contexts/BoardContributionsContext";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 
 const CHART_COLORS = ["#d59ee8", "#48cfa6", "#f2994a", "#eb5757", "#9b51e0", "#2d9cdb"];
@@ -148,17 +150,19 @@ interface ItemRendererProps {
   canInteract?: boolean;
   /** If false, text inputs/textareas are read-only (viewer lacks input permission) */
   canInput?: boolean;
+  /** If true, the viewer may append their own entries (suggestion box / contributable list) */
+  canContribute?: boolean;
 }
 
 // ─── Main dispatcher ──────────────────────────────────────────────────────────
 
-export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished, containerW, containerH, onUpdate, extraContextItems, canInteract, canInput }: ItemRendererProps) {
+export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished, containerW, containerH, onUpdate, extraContextItems, canInteract, canInput, canContribute }: ItemRendererProps) {
   const upd = onUpdate ?? ((patch: Partial<BlockItem>) =>
     useBoardStore.getState().updateItem(boardId, boxId, item.id, patch));
 
   const rendered = (() => { switch (item.type) {
     case "text":     return <TextItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} canInput={canInput} extraContextItems={extraContextItems} />;
-    case "list":     return <ListItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} canInput={canInput} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
+    case "list":     return <ListItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} canInput={canInput} canContribute={canContribute} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
     case "embed":    return <EmbedItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "timer":    return <TimerItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} containerH={containerH} extraContextItems={extraContextItems} />;
     case "image":    return <ImageItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
@@ -1711,6 +1715,16 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
         )}
       </div>
 
+      {/* Contributions */}
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Contributions</p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={!!item.allowContributions} onChange={(e) => upd({ allowContributions: e.target.checked })} className="accent-[var(--accent)]" />
+          <span className="text-[var(--text-secondary)]">Let viewers add their own entries</span>
+        </label>
+        <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">Contributed entries are attributed to their author and only the author (or the board owner) can remove them.</p>
+      </div>
+
       {/* Checkbox */}
       {(item.listMarker ?? "checkbox") === "checkbox" && (
         <div>
@@ -1943,7 +1957,126 @@ function PanelSlider({ label, value, min, max, step = 1, decimals = 0, onChange 
   );
 }
 
-function ListItem({ item, upd, collapsed, isFinished, canInput, boardId, boxId, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; canInput?: boolean; boardId: string; boxId: string; extraContextItems?: ContextMenuEntry[] }) {
+/**
+ * Viewer-contributed list entries. These are NOT owner-authored rows in the board
+ * JSONB — they live in board_item_contributions (RLS: read all, write own) and are
+ * merged in below the owner's items. Each viewer can add/edit/delete only their own;
+ * owner-moderation (delete-any / pin / approve) arrives with the security-definer RPC.
+ */
+function ListContributions({
+  itemId, boardId, collapsed, canContribute, marker, dividerBorder, rowSpacing, fontColor,
+}: {
+  itemId: string;
+  boardId: string;
+  collapsed?: boolean;
+  canContribute: boolean;
+  marker: "checkbox" | "bullet" | "number" | "none";
+  dividerBorder?: string;
+  rowSpacing: number;
+  fontColor?: string;
+}) {
+  const { identity } = useUser();
+  const { contributions, add, removeOwn, editOwn } = useItemContributions(itemId, boardId);
+  const [draft, setDraft] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+
+  const muted = fontColor ? fontColor + "90" : "var(--text-muted)";
+
+  if (contributions.length === 0 && (collapsed || !canContribute)) return null;
+
+  const submitAdd = () => {
+    const text = draft.trim();
+    if (!text) return;
+    void add(text);
+    setDraft("");
+  };
+
+  const commitEdit = (id: string) => {
+    const text = editDraft.trim();
+    if (text) void editOwn(id, text);
+    setEditingId(null);
+  };
+
+  return (
+    <div style={{ position: "relative", zIndex: 1 }}>
+      {contributions.map((c) => {
+        const isOwn = c.authorId === identity.userId;
+        const isEditing = editingId === c.id;
+        return (
+          <div key={c.id}
+            className="flex items-center gap-2 min-w-0 group/contrib"
+            style={{
+              paddingTop: rowSpacing / 2, paddingBottom: rowSpacing / 2,
+              paddingLeft: 4, paddingRight: 4,
+              borderTop: dividerBorder,
+            }}>
+            {marker !== "none" && (
+              <span className="w-4 flex-shrink-0 text-center" style={{ color: muted }}>•</span>
+            )}
+            {isEditing ? (
+              <input
+                autoFocus
+                value={editDraft}
+                onChange={(e) => setEditDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); commitEdit(c.id); }
+                  else if (e.key === "Escape") setEditingId(null);
+                }}
+                onBlur={() => commitEdit(c.id)}
+                className="flex-1 min-w-0 bg-transparent outline-none border-b border-[var(--border)]"
+                style={{ fontSize: "inherit", fontFamily: "inherit", color: "inherit" }}
+              />
+            ) : (
+              <span className="flex-1 min-w-0" style={{ wordBreak: "break-word" }}>
+                <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(c.content) }} />
+                <span className="ml-1.5 text-[10px] whitespace-nowrap" style={{ color: muted }}>— {c.authorName || "Anonymous"}</span>
+              </span>
+            )}
+            {isOwn && !collapsed && !isEditing && (
+              <div className="flex items-center gap-0.5 flex-shrink-0">
+                <button
+                  onClick={() => { setEditingId(c.id); setEditDraft(c.content); }}
+                  title="Edit your entry"
+                  className="text-[var(--text-muted)] opacity-0 group-hover/contrib:opacity-100 hover:text-[var(--text-primary)] transition-colors rounded p-0.5"
+                >
+                  <Pencil size={11} />
+                </button>
+                <button
+                  onClick={() => void removeOwn(c.id)}
+                  title="Delete your entry"
+                  className="text-[var(--text-muted)] opacity-0 group-hover/contrib:opacity-100 hover:text-red-400 transition-colors rounded p-0.5"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {canContribute && !collapsed && (
+        <div className="flex items-center gap-2 min-w-0"
+          style={{
+            paddingTop: rowSpacing / 2, paddingBottom: rowSpacing / 2,
+            paddingLeft: 4, paddingRight: 4,
+            borderTop: contributions.length > 0 ? dividerBorder : undefined,
+          }}>
+          <Plus size={11} className="flex-shrink-0" style={{ color: muted }} />
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitAdd(); } }}
+            placeholder="Add your entry…"
+            className="flex-1 min-w-0 bg-transparent outline-none placeholder:text-[var(--text-muted)]"
+            style={{ fontSize: "inherit", fontFamily: "inherit", color: "inherit" }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ListItem({ item, upd, collapsed, isFinished, canInput, canContribute, boardId, boxId, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; canInput?: boolean; canContribute?: boolean; boardId: string; boxId: string; extraContextItems?: ContextMenuEntry[] }) {
   const entries = item.listItems ?? [];
   const shown = collapsed ? entries.slice(0, 4) : entries;
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
@@ -2273,6 +2406,21 @@ function ListItem({ item, upd, collapsed, isFinished, canInput, boardId, boxId, 
               : undefined }}>
           <Plus size={11} /> Add item
         </button>
+      )}
+      {/* Viewer contributions — entries live in board_item_contributions, not the board JSONB. */}
+      {item.allowContributions && (
+        <ListContributions
+          itemId={item.id}
+          boardId={boardId}
+          collapsed={collapsed}
+          canContribute={!!canContribute}
+          marker={marker}
+          dividerBorder={shown.length > 0 && (item.listDividerStyle ?? "solid") !== "none"
+            ? `${item.listDividerWidth ?? 1}px ${item.listDividerStyle ?? "solid"} ${item.listDividerColor ?? "#ffffff"}${Math.round(((item.listDividerOpacity ?? 20) / 100) * 255).toString(16).padStart(2, "0")}`
+            : undefined}
+          rowSpacing={rowSpacing}
+          fontColor={item.listFontColor}
+        />
       )}
       {listShowToolbar && listToolbarPos && !collapsed && !isFinished && createPortal(
         <RichSelToolbar

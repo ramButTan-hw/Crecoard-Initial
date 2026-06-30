@@ -15,9 +15,10 @@ import {
  * Empty array [] = owner-only.
  */
 export interface ItemPerms {
-  edit?: string[];     // ServerRole IDs that can change settings/style
-  input?: string[];    // ServerRole IDs that can type/enter text
-  interact?: string[]; // ServerRole IDs that can click/toggle/play
+  edit?: string[];       // ServerRole IDs that can change settings/style
+  input?: string[];      // ServerRole IDs that can type/enter text
+  interact?: string[];   // ServerRole IDs that can click/toggle/play
+  contribute?: string[]; // ServerRole IDs that can add their own entries (suggestion box, contributable list, …)
 }
 
 export interface BoxPerms {
@@ -317,6 +318,8 @@ export interface BlockItem {
   listProgressStyle?: "rounded" | "square";
   listProgressShowLabel?: boolean;
   listProgressPosition?: "top" | "bottom";
+  /** Opt-in: let permitted viewers append their own entries (stored in board_item_contributions, not here). */
+  allowContributions?: boolean;
 
   // external integrations (tracker-gg, steam, …)
   externalProvider?: "tracker-gg" | "steam";

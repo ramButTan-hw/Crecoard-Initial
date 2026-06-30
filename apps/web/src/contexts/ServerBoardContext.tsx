@@ -157,5 +157,6 @@ export function useItemPerms(perms?: ItemPerms) {
     canEdit: roleAllowed(viewerRole, viewerRoleIds, perms?.edit),
     canInput: roleAllowed(viewerRole, viewerRoleIds, perms?.input),
     canInteract: roleAllowed(viewerRole, viewerRoleIds, perms?.interact),
+    canContribute: roleAllowed(viewerRole, viewerRoleIds, perms?.contribute),
   };
 }
