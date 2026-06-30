@@ -5,6 +5,9 @@ import {
 } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { useUser } from "@/contexts/UserContext";
+import { useNotifications } from "@/contexts/NotificationContext";
+import { playPing } from "@/lib/sound";
 import type { ChatMessage } from "@/store/boardStore";
 
 function isSupabaseReady(): boolean {
@@ -21,7 +24,7 @@ interface BoardChatContextValue {
    * Load messages for a chat item and subscribe to Realtime inserts.
    * Returns an unsubscribe function — call it when the ChatBlock unmounts.
    */
-  loadAndSubscribe: (itemId: string, boardId: string) => () => void;
+  loadAndSubscribe: (itemId: string, boardId: string, channelName?: string) => () => void;
   /** Send a message (optimistic + Supabase insert). */
   sendMessage: (
     itemId: string,
@@ -46,11 +49,11 @@ export function useBoardChat(): BoardChatContextValue {
 
 // ─── Convenience hook used by ChatBlock ───────────────────────────────────────
 
-export function useBoardChatItem(itemId: string, boardId: string) {
+export function useBoardChatItem(itemId: string, boardId: string, channelName?: string) {
   const ctx = useBoardChat();
 
   useEffect(() => {
-    const unsub = ctx.loadAndSubscribe(itemId, boardId);
+    const unsub = ctx.loadAndSubscribe(itemId, boardId, channelName);
     return unsub;
   // ctx functions are stable useCallbacks — not in deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,11 +95,15 @@ function rowToMessage(row: Record<string, unknown>): ChatMessage {
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function BoardChatProvider({ children }: { children: React.ReactNode }) {
+  const { identity } = useUser();
+  const { push: pushNotification, isActive } = useNotifications();
   const [messagesByItem, setMessagesByItem] = useState<Record<string, ChatMessage[]>>({});
   const channels = useRef<Record<string, RealtimeChannel>>({});
   const loaded = useRef<Set<string>>(new Set());
   // Reference count: how many ChatBlock instances are subscribed to each itemId
   const refCounts = useRef<Record<string, number>>({});
+  // Store channel name per itemId so the Realtime handler can include it in the toast
+  const channelNames = useRef<Record<string, string>>({});
 
   useEffect(() => {
     const chans = channels.current;
@@ -105,8 +112,10 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const loadAndSubscribe = useCallback((itemId: string, boardId: string): () => void => {
+  const loadAndSubscribe = useCallback((itemId: string, boardId: string, channelName?: string): () => void => {
     if (!isSupabaseReady()) return () => {};
+
+    if (channelName) channelNames.current[itemId] = channelName;
 
     // Track how many ChatBlock instances are using this itemId
     refCounts.current[itemId] = (refCounts.current[itemId] ?? 0) + 1;
@@ -125,6 +134,25 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
           },
           (payload) => {
             const msg = rowToMessage(payload.new as Record<string, unknown>);
+
+            // Don't notify for own messages
+            if (msg.authorId !== identity.userId) {
+              const isMention = Boolean(
+                msg.content &&
+                identity.displayName &&
+                msg.content.toLowerCase().includes(`@${identity.displayName.toLowerCase()}`)
+              );
+              playPing(isMention ? "mention" : "message");
+              pushNotification({
+                itemId,
+                channelName: channelNames.current[itemId] ?? "chat",
+                authorName:   msg.authorName,
+                authorAvatar: msg.authorAvatar,
+                content:      msg.content ?? "",
+                isMention,
+              });
+            }
+
             setMessagesByItem((prev) => {
               const existing = prev[itemId] ?? [];
               if (existing.some((m) => m.id === msg.id)) return prev;

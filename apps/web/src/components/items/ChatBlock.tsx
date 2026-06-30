@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Send, Smile, ImageIcon, X } from "lucide-react";
 import type { BlockItem } from "@/store/boardStore";
 import { useBoardChatItem } from "@/contexts/BoardChatContext";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { useUser } from "@/contexts/UserContext";
 import { uploadFile } from "@/lib/storage";
 import { cn } from "@/lib/utils";
@@ -20,8 +21,21 @@ interface ChatBlockProps {
 
 export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const { identity } = useUser();
-  const { messages, send } = useBoardChatItem(item.id, boardId);
   const channelName = item.chatChannelName ?? "general";
+  const { messages, send } = useBoardChatItem(item.id, boardId, channelName);
+  const { unread, registerActive, unregisterActive, markRead } = useNotifications();
+  const unreadCount = unread[item.id] ?? 0;
+
+  // Register this chat as "active" (visible) — suppresses toasts while open
+  useEffect(() => {
+    registerActive(item.id);
+    return () => unregisterActive(item.id);
+  }, [item.id, registerActive, unregisterActive]);
+
+  // Mark read whenever expanded view opens
+  useEffect(() => {
+    if (expanded) markRead(item.id);
+  }, [expanded, item.id, markRead]);
 
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -80,7 +94,15 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
         <div className="flex flex-shrink-0 items-center gap-1 border-b border-[var(--border)] px-2 py-1.5">
           <span className="text-[11px] text-[var(--text-muted)]">#</span>
           <span className="text-[11px] font-semibold text-[var(--text-primary)]">{channelName}</span>
-          <span className="ml-auto text-[9px] text-[var(--text-muted)]">{messages.length} msg</span>
+          <div className="ml-auto flex items-center gap-1.5">
+            {unreadCount > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
+                style={{ background: "var(--accent)" }}>
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+            <span className="text-[9px] text-[var(--text-muted)]">{messages.length} msg</span>
+          </div>
         </div>
         <div className="flex flex-1 items-start gap-1.5 overflow-hidden px-2 py-1.5">
           {latest ? (
@@ -114,7 +136,15 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
       <div className="flex flex-shrink-0 items-center gap-1.5 border-b border-[var(--border)] px-3 py-2">
         <span className="text-sm text-[var(--text-muted)]">#</span>
         <span className="text-sm font-semibold text-[var(--text-primary)]">{channelName}</span>
-        <span className="ml-auto text-[10px] text-[var(--text-muted)]">{messages.length} msg</span>
+        <div className="ml-auto flex items-center gap-2">
+          {unreadCount > 0 && (
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
+              style={{ background: "var(--accent)" }}>
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+          <span className="text-[10px] text-[var(--text-muted)]">{messages.length} msg</span>
+        </div>
       </div>
 
       {/* Message list */}

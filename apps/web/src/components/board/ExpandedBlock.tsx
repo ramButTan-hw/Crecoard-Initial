@@ -49,8 +49,8 @@ const DEFAULT_SIZES: Record<ItemType, { w: number; h: number }> = {
   kanban:   { w: 700, h: 460 },
   chat:     { w: 380, h: 440 },
   filebank:     { w: 360, h: 340 },
-  "embed-card":  { w: 320, h: 220 },
-  "tracker-gg":  { w: 300, h: 260 },
+  "embed-card": { w: 320, h: 220 },
+  "external":   { w: 300, h: 300 },
 };
 
 function getDefaultLayout(item: BlockItem, idx: number) {

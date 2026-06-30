@@ -137,7 +137,7 @@ export const ITEM_DEFINITIONS: {
     icon: <MessageSquare size={15} />,
     description: "Discord-style chat block",
     serverOnly: true,
-    defaultItem: () => ({ type: "chat", chatChannelName: "general", chatMessages: [] }),
+    defaultItem: () => ({ type: "chat", chatChannelName: "general" }),
   },
   {
     type: "filebank",
@@ -145,14 +145,14 @@ export const ITEM_DEFINITIONS: {
     icon: <FolderOpen size={15} />,
     description: "Shared file storage block",
     serverOnly: true,
-    defaultItem: () => ({ type: "filebank", fileBankTitle: "Files", fileBankFiles: [] }),
+    defaultItem: () => ({ type: "filebank", fileBankTitle: "Files" }),
   },
   {
-    type: "tracker-gg",
-    label: "Tracker.gg",
+    type: "external",
+    label: "Live Stats",
     icon: <Gamepad2 size={15} />,
-    description: "Live player stats — Valorant, Apex & more",
-    defaultItem: () => ({ type: "tracker-gg" }),
+    description: "Tracker.gg · Steam — live player data",
+    defaultItem: () => ({ type: "external" }),
   },
   {
     type: "embed-card",

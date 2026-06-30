@@ -77,14 +77,6 @@ const designTeamBoard: Board = {
       type: "chat",
       showInCollapsed: true,
       chatChannelName: "general",
-      chatMessages: [
-        { id: "m1", authorId: "u-alex", authorName: "alex_dev", authorAvatar: "A", content: "Hey team! Just pushed the new component library 🎉", timestamp: minsAgo(42) },
-        { id: "m2", authorId: "u-sarah", authorName: "sarah.m", authorAvatar: "S", content: "Looks amazing! The design tokens are so clean", timestamp: minsAgo(40) },
-        { id: "m3", authorId: "u-alex", authorName: "alex_dev", authorAvatar: "A", content: "Thanks! I used the new variable system for all the spacing", timestamp: minsAgo(39) },
-        { id: "m4", authorId: "u-jordan", authorName: "jordan", authorAvatar: "J", content: "Can we schedule a review for Thursday?", timestamp: minsAgo(18) },
-        { id: "m5", authorId: "u-sarah", authorName: "sarah.m", authorAvatar: "S", content: "Thursday works for me, 2pm?", timestamp: minsAgo(15) },
-        { id: "m6", authorId: "u-jordan", authorName: "jordan", authorAvatar: "J", content: "Perfect, I'll set the calendar event now", timestamp: minsAgo(14) },
-      ],
     }], 1),
 
     // #feedback chat block
@@ -92,11 +84,6 @@ const designTeamBoard: Board = {
       type: "chat",
       showInCollapsed: true,
       chatChannelName: "design-feedback",
-      chatMessages: [
-        { id: "f1", authorId: "u-riley", authorName: "riley_k", authorAvatar: "R", content: "The new onboarding flow feels too long — step 4 could be skipped", timestamp: minsAgo(120) },
-        { id: "f2", authorId: "u-sarah", authorName: "sarah.m", authorAvatar: "S", content: "Good point, I'll cut it. The data shows 60% drop-off there anyway", timestamp: minsAgo(105) },
-        { id: "f3", authorId: "u-alex", authorName: "alex_dev", authorAvatar: "A", content: "Agreed. Let's A/B test skipping step 4 this sprint", timestamp: minsAgo(98) },
-      ],
     }], 2),
 
     // Sprint tasks table (admin-configured, members add their own rows)
@@ -143,12 +130,6 @@ const designTeamBoard: Board = {
       type: "filebank",
       showInCollapsed: true,
       fileBankTitle: "Design Assets",
-      fileBankFiles: [
-        { id: "fb1", name: "brand-v3.fig", sizeBytes: 4_200_000, mimeType: "application/figma", uploadedBy: "alex_dev", uploadedAt: minsAgo(2880) },
-        { id: "fb2", name: "component-library.fig", sizeBytes: 8_100_000, mimeType: "application/figma", uploadedBy: "sarah.m", uploadedAt: minsAgo(1440) },
-        { id: "fb3", name: "onboarding-mockups.pdf", sizeBytes: 2_300_000, mimeType: "application/pdf", uploadedBy: "riley_k", uploadedAt: minsAgo(720) },
-        { id: "fb4", name: "icon-set-v2.zip", sizeBytes: 960_000, mimeType: "application/zip", uploadedBy: "alex_dev", uploadedAt: minsAgo(300) },
-      ],
     }], 5),
   ],
 };
@@ -171,23 +152,12 @@ const startupHubBoard: Board = {
       type: "chat",
       showInCollapsed: true,
       chatChannelName: "general",
-      chatMessages: [
-        { id: "s1", authorId: "u-alex", authorName: "alex_dev", authorAvatar: "A", content: "Just closed our first paying customer 🚀", timestamp: minsAgo(200) },
-        { id: "s2", authorId: "u-mia", authorName: "mia.dev", authorAvatar: "M", content: "LET'S GO!! What's the MRR now?", timestamp: minsAgo(195) },
-        { id: "s3", authorId: "u-alex", authorName: "alex_dev", authorAvatar: "A", content: "$200/mo — small but it's real revenue", timestamp: minsAgo(193) },
-        { id: "s4", authorId: "u-jordan", authorName: "jordan", authorAvatar: "J", content: "That's huge congrats!! The product roadmap board is updated btw", timestamp: minsAgo(180) },
-      ],
     }], 1),
 
     makeBox("sh-filebank-pitch", STARTUP_BOARD_ID, 420, 20, 380, 280, "Pitch Materials", [{
       type: "filebank",
       showInCollapsed: true,
       fileBankTitle: "Pitch Materials",
-      fileBankFiles: [
-        { id: "pf1", name: "pitch-deck-v4.pdf", sizeBytes: 5_500_000, mimeType: "application/pdf", uploadedBy: "alex_dev", uploadedAt: minsAgo(4320) },
-        { id: "pf2", name: "financial-model.xlsx", sizeBytes: 340_000, mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", uploadedBy: "alex_dev", uploadedAt: minsAgo(2880) },
-        { id: "pf3", name: "demo-video.mp4", sizeBytes: 48_000_000, mimeType: "video/mp4", uploadedBy: "mia.dev", uploadedAt: minsAgo(1440) },
-      ],
     }], 2),
 
     makeBox("sh-table-investors", STARTUP_BOARD_ID, 420, 320, 380, 280, "Investor Pipeline", [{
@@ -213,11 +183,6 @@ const startupHubBoard: Board = {
       type: "chat",
       showInCollapsed: true,
       chatChannelName: "ideas",
-      chatMessages: [
-        { id: "i1", authorId: "u-mia", authorName: "mia.dev", authorAvatar: "M", content: "What if we added an AI assistant that helps you fill in the board blocks automatically?", timestamp: minsAgo(500) },
-        { id: "i2", authorId: "u-jordan", authorName: "jordan", authorAvatar: "J", content: "That's been on my list! Natural language → timer/table/graph blocks", timestamp: minsAgo(480) },
-        { id: "i3", authorId: "u-alex", authorName: "alex_dev", authorAvatar: "A", content: "Post-launch feature for sure. Adding it to the roadmap board", timestamp: minsAgo(475) },
-      ],
     }], 4),
   ],
 };
@@ -240,27 +205,12 @@ const devCommunityBoard: Board = {
       type: "chat",
       showInCollapsed: true,
       chatChannelName: "general",
-      chatMessages: [
-        { id: "dc1", authorId: "u-alex", authorName: "alex_dev", authorAvatar: "A", content: "PlanCraft v0.3 just shipped! Board-level items are now a thing 🎉", timestamp: minsAgo(300) },
-        { id: "dc2", authorId: "u-riley", authorName: "riley_k", authorAvatar: "R", content: "The variable system + formula mode is incredible for budgets", timestamp: minsAgo(280) },
-        { id: "dc3", authorId: "u-mia", authorName: "mia.dev", authorAvatar: "M", content: "Does anyone have a template for tracking open source contributions?", timestamp: minsAgo(240) },
-        { id: "dc4", authorId: "u-jordan", authorName: "jordan", authorAvatar: "J", content: "I made one! Sharing it in the templates channel shortly", timestamp: minsAgo(235) },
-        { id: "dc5", authorId: "u-riley", authorName: "riley_k", authorAvatar: "R", content: "Also — the chat blocks in server boards are a game changer. Finally not switching between tools", timestamp: minsAgo(90) },
-        { id: "dc6", authorId: "u-alex", authorName: "alex_dev", authorAvatar: "A", content: "That was the whole idea — your planning board IS your team space", timestamp: minsAgo(85) },
-      ],
     }], 1),
 
     makeBox("dc-chat-help", DEV_BOARD_ID, 440, 20, 400, 380, "#help", [{
       type: "chat",
       showInCollapsed: true,
       chatChannelName: "help",
-      chatMessages: [
-        { id: "h1", authorId: "u-mia", authorName: "mia.dev", authorAvatar: "M", content: "How do I link a table to a calendar? I see the option but nothing shows up", timestamp: minsAgo(600) },
-        { id: "h2", authorId: "u-alex", authorName: "alex_dev", authorAvatar: "A", content: "You need a column of type 'date' in the table. Then in the calendar settings, click Link Table", timestamp: minsAgo(590) },
-        { id: "h3", authorId: "u-mia", authorName: "mia.dev", authorAvatar: "M", content: "Oh! I had it as 'text' type. Fixed now, works perfectly!", timestamp: minsAgo(580) },
-        { id: "h4", authorId: "u-riley", authorName: "riley_k", authorAvatar: "R", content: "Anyone know how to use the formula mode for a running total?", timestamp: minsAgo(120) },
-        { id: "h5", authorId: "u-jordan", authorName: "jordan", authorAvatar: "J", content: "Use =SUM([variable_name]) — the variable item needs to be in the same block though", timestamp: minsAgo(110) },
-      ],
     }], 2),
 
     makeBox("dc-kanban", DEV_BOARD_ID, 20, 420, 820, 320, "Community Projects", [{

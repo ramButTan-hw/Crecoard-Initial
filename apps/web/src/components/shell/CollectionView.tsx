@@ -31,8 +31,8 @@ function ItemTypeIcon({ type }: { type: ItemType }) {
     case "filebank": return <FolderOpen {...props} />;
     case "widget": return <LayoutGrid {...props} />;
     case "divider": return <Minus {...props} />;
-    case "embed-card":  return <Zap {...props} />;
-    case "tracker-gg":  return <Gamepad2 {...props} />;
+    case "embed-card": return <Zap {...props} />;
+    case "external":   return <Gamepad2 {...props} />;
     default: return <FileText {...props} />;
   }
 }
@@ -42,8 +42,8 @@ const TYPE_LABEL: Record<ItemType, string> = {
   calendar: "Calendar", timer: "Timer", embed: "Embed", api: "API",
   graph: "Graph", playlist: "Playlist", kanban: "Kanban",
   chat: "Chat", filebank: "Files", widget: "Widget", divider: "Divider",
-  "embed-card":  "Integration Card",
-  "tracker-gg":  "Tracker.gg",
+  "embed-card": "Integration Card",
+  "external":   "Live Stats",
 };
 
 function itemPreview(item: { type: ItemType; text?: string; title?: string }): string {

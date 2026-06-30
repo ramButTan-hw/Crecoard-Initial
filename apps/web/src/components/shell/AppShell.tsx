@@ -35,6 +35,8 @@ import { ServersProvider, useServers } from "@/contexts/ServersContext";
 import { BoardSyncProvider, useBoardSync } from "@/contexts/BoardSyncContext";
 import { MessagingProvider, useMessaging } from "@/contexts/MessagingContext";
 import { BoardChatProvider } from "@/contexts/BoardChatContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
+import { Toaster } from "@/components/notifications/Toaster";
 import { FriendsProvider } from "@/contexts/FriendsContext";
 import { MOCK_SERVERS, MOCK_SERVER_MEMBERS, MOCK_SERVER_BOARDS } from "@/lib/mockServerData";
 import type { MemberRole } from "@/types/server";
@@ -818,11 +820,14 @@ export function AppShell() {
       <ServersProvider>
         <BoardSyncProvider>
           <MessagingProvider>
-            <BoardChatProvider>
-              <FriendsProvider>
-                <AppShellInner />
-              </FriendsProvider>
-            </BoardChatProvider>
+            <NotificationProvider>
+              <BoardChatProvider>
+                <FriendsProvider>
+                  <AppShellInner />
+                  <Toaster />
+                </FriendsProvider>
+              </BoardChatProvider>
+            </NotificationProvider>
           </MessagingProvider>
         </BoardSyncProvider>
       </ServersProvider>

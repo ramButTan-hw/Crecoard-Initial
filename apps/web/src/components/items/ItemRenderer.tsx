@@ -33,7 +33,7 @@ import { FontPicker } from "@/components/ui/FontPicker";
 import { loadGoogleFont } from "@/lib/fonts";
 import { DEFAULT_WIDGET_CODE } from "@/lib/defaultWidgetCode";
 import { EmbedCardItem } from "@/components/items/EmbedCardItem";
-import { TrackerGGItem } from "@/components/items/TrackerGGItem";
+import { ExternalItem } from "@/components/items/ExternalItem";
 import { nanoid } from "nanoid";
 import DOMPurify from "isomorphic-dompurify";
 import { cn } from "@/lib/utils";
@@ -112,7 +112,7 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     case "chat":     return <ChatBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} />;
     case "filebank":    return <FileBankBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} />;
     case "embed-card":  return <EmbedCardItem item={item} collapsed={collapsed} />;
-    case "tracker-gg":  return <TrackerGGItem item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} onUpdate={onUpdate} />;
+    case "external":    return <ExternalItem item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} onUpdate={onUpdate} />;
     default:            return null;
   }})();
 
@@ -7489,19 +7489,6 @@ function resolveEmbed(raw: string, autoplay: boolean): EmbedResult {
       url: `https://www.youtube.com/embed/${m[1]}?autoplay=${autoplay ? 1 : 0}&rel=0&enablejsapi=1`,
       platform: "YouTube",
       aspectRatio: "16/9",
-    };
-  }
-
-  // Spotify (track / album / playlist / episode / show / artist)
-  const spMatch = url.match(/open\.spotify\.com\/(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]+)/);
-  if (spMatch) {
-    const isTrack = spMatch[1] === "track" || spMatch[1] === "episode";
-    return {
-      kind: "iframe",
-      url: `https://open.spotify.com/embed/${spMatch[1]}/${spMatch[2]}?utm_source=generator${autoplay ? "&autoplay=1" : ""}`,
-      platform: "Spotify",
-      fixedHeight: isTrack ? 152 : 380,
-      isPlaylist: !isTrack,
     };
   }
 

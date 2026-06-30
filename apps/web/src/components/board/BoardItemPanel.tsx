@@ -9,7 +9,7 @@ import {
 } from "@/components/items/ItemRenderer";
 import { TextStylePanel } from "@/components/board/ExpandedBlock";
 import { EmbedCardStylePanel } from "@/components/items/EmbedCardItem";
-import { TrackerGGStylePanel } from "@/components/items/TrackerGGItem";
+import { ExternalStylePanel } from "@/components/items/ExternalItem";
 import { ITEM_DEFINITIONS } from "./ItemPalette";
 
 export function BoardItemPanel() {
@@ -88,10 +88,10 @@ export function BoardItemPanel() {
         {item.type === "embed-card" && (
           <EmbedCardStylePanel item={item} upd={upd} />
         )}
-        {item.type === "tracker-gg" && (
-          <TrackerGGStylePanel item={item} upd={upd} />
+        {item.type === "external" && (
+          <ExternalStylePanel item={item} upd={upd} />
         )}
-        {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","tracker-gg"].includes(item.type) && (
+        {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","external"].includes(item.type) && (
           <div className="p-4 text-xs text-[var(--text-muted)]">No style options for this item type.</div>
         )}
         {item.settingsLocked && (

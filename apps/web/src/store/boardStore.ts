@@ -33,7 +33,7 @@ export type ItemType =
   | "playlist" | "kanban"
   | "chat" | "filebank"
   | "embed-card"
-  | "tracker-gg";
+  | "external";
 
 // ─── Tracker.gg integration ───────────────────────────────────────────────────
 export type TrackerGGGame =
@@ -65,6 +65,42 @@ export interface TrackerGGData {
   stats: TrackerGGStat[];
   fetchedAt: number; // ms timestamp — used to decide if stale
   error?: string;
+}
+
+// ─── External item style overrides ───────────────────────────────────────────
+export interface ExternalItemStyle {
+  accentColor?: string;   // overrides the provider default
+  bgColor?: string;       // card background (default: var(--surface-raised))
+  borderRadius?: number;  // 0–16 px (default: 6)
+  compact?: boolean;      // hide stats/recent-games grid (default: false)
+  hideHeader?: boolean;   // hide the top label bar (default: false)
+  hideFooter?: boolean;   // hide the "updated at" timestamp (default: false)
+}
+
+// ─── Steam integration ────────────────────────────────────────────────────────
+export interface SteamConfig {
+  identifier: string; // vanity URL, full profile URL, or SteamID64
+}
+
+export interface SteamGame {
+  appId: number;
+  name: string;
+  playtime2weeks?: number; // minutes
+  playtimeForever: number; // minutes
+  iconUrl?: string;
+}
+
+export type SteamStatus = "online" | "offline" | "away" | "busy" | "ingame";
+
+export interface SteamData {
+  steamId: string;
+  username: string;
+  avatarUrl?: string;
+  profileUrl: string;
+  status: SteamStatus;
+  currentGame?: string;
+  recentGames: SteamGame[];
+  fetchedAt: number;
 }
 
 // ─── Embed card (webhook / integration display) ───────────────────────────────
@@ -278,9 +314,13 @@ export interface BlockItem {
   listProgressShowLabel?: boolean;
   listProgressPosition?: "top" | "bottom";
 
-  // tracker-gg integration
+  // external integrations (tracker-gg, steam, …)
+  externalProvider?: "tracker-gg" | "steam";
+  externalStyle?: ExternalItemStyle;
   trackerGG?: TrackerGGConfig;
   trackerGGData?: TrackerGGData;
+  steam?: SteamConfig;
+  steamData?: SteamData;
 
   // embed-card (webhook / integration display)
   embedCard?: EmbedCardData;
@@ -519,11 +559,9 @@ export interface BlockItem {
 
   // chat (server board chat block)
   chatChannelName?: string;
-  chatMessages?: ChatMessage[];
 
   // filebank (server board file storage block)
   fileBankTitle?: string;
-  fileBankFiles?: FileBankEntry[];
 
   // table — per-member private rows (keyed by userId, only that member sees them)
   tableMemberRows?: Record<string, TableRow[]>;
@@ -818,8 +856,6 @@ interface BoardState {
   disbandDeck: (boardId: string, deckId: string) => void;
 
   // Server board actions
-  addChatMessage: (boardId: string, boxId: string, itemId: string, msg: Omit<ChatMessage, "id">) => void;
-  addFileBankEntry: (boardId: string, boxId: string, itemId: string, entry: Omit<FileBankEntry, "id">) => void;
   addMemberTableRow: (boardId: string, boxId: string, itemId: string, userId: string, row: Omit<TableRow, "id">) => void;
   injectServerBoards: (boards: Board[]) => void;
 
@@ -1049,26 +1085,6 @@ export const useBoardStore = create<BoardState>()(
             s.serverBoards[b.id].name = b.name;
           }
         }
-      }),
-
-    addChatMessage: (boardId, boxId, itemId, msg) =>
-      set((s) => {
-        const item = findBoardAny(s, boardId)
-          ?.boxes.find((bx) => bx.id === boxId)
-          ?.items.find((it) => it.id === itemId);
-        if (!item) return;
-        if (!item.chatMessages) item.chatMessages = [];
-        item.chatMessages.push({ ...msg, id: crypto.randomUUID() });
-      }),
-
-    addFileBankEntry: (boardId, boxId, itemId, entry) =>
-      set((s) => {
-        const item = findBoardAny(s, boardId)
-          ?.boxes.find((bx) => bx.id === boxId)
-          ?.items.find((it) => it.id === itemId);
-        if (!item) return;
-        if (!item.fileBankFiles) item.fileBankFiles = [];
-        item.fileBankFiles.push({ ...entry, id: crypto.randomUUID() });
       }),
 
     addMemberTableRow: (boardId, boxId, itemId, userId, row) =>

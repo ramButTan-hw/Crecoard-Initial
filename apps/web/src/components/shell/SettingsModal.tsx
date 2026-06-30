@@ -9,6 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getSelfIdentity, updateSelfIdentity } from "@/lib/collaboration";
 import { useBoardStore } from "@/store/boardStore";
+import { setSoundEnabled } from "@/lib/sound";
 import { PRESET_THEMES, APP_FONTS, BG_FILTERS, ThemeVarMap } from "@/lib/appThemes";
 
 // ── Local-storage settings key ─────────────────────────────────────────────
@@ -154,8 +155,10 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
   // Persist prefs on change
   useEffect(() => { savePrefs(prefs); }, [prefs]);
 
-  const patchPref = <K extends keyof UserPrefs>(key: K, value: UserPrefs[K]) =>
+  const patchPref = <K extends keyof UserPrefs>(key: K, value: UserPrefs[K]) => {
+    if (key === "notifySounds") setSoundEnabled(value as boolean);
     setPrefs((p) => ({ ...p, [key]: value }));
+  };
 
   const handleBgFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -741,10 +744,10 @@ function IntegrationsSection() {
     },
     {
       name: "Steam",
-      desc: "Game hours, achievements, recent activity",
+      desc: "Profile, status & recently played games",
       color: "#1b2838",
-      icon: null,
-      available: false,
+      icon: <Monitor size={16} className="text-[#66c0f4]" />,
+      available: true,
     },
   ];
 
