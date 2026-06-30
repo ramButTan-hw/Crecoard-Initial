@@ -806,6 +806,10 @@ function findBox(s: AnyBoardState, boardId: string, boxId: string) {
 interface BoardState {
   boards: Board[];
   serverBoards: Record<string, Board>;
+  // IDs of personal boards the current user collaborates on but does not own.
+  // Tracked separately (not persisted) so the sync layer saves them by data only
+  // and never overwrites the owner's user_id.
+  sharedBoardIds: string[];
   activeBoardId: string;
   selectedBoxId: string | null;
   expandedBoxId: string | null;
@@ -928,6 +932,7 @@ interface BoardState {
   // Board persistence
   persistBoards: () => void;
   hydrateBoards: (uid?: string) => void;
+  setSharedBoardIds: (ids: string[]) => void;
 
   // Webhooks
   setWebhookToken: (boardId: string, token: string | undefined) => void;
@@ -978,6 +983,7 @@ export const useBoardStore = create<BoardState>()(
   immer((set, get) => ({
     boards: [initialBoard],
     serverBoards: {} as Record<string, Board>,
+    sharedBoardIds: [],
     activeBoardId: initialBoard.id,
     selectedBoxId: null,
     expandedBoxId: null,
@@ -1701,6 +1707,8 @@ export const useBoardStore = create<BoardState>()(
           } as BoardLevelItem);
         });
       }),
+
+    setSharedBoardIds: (ids) => set((s) => { s.sharedBoardIds = ids; }),
 
     persistBoards: () => {
       try {

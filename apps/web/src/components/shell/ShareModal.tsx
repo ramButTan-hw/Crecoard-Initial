@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  X, Link2, Check, Users, Mail, Globe, Lock,
+  X, Link2, Check, Users, Globe,
   Wifi, WifiOff, UserCircle2,
 } from "lucide-react";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
 import { useCollab } from "@/lib/useCollabSession";
+import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -26,26 +27,42 @@ function Avatar({ name, color, size = 28 }: { name: string; color: string; size?
 }
 
 export function ShareModal({ onClose }: Props) {
-  const { activeBoardId, updateBoard } = useBoardStore();
+  const { activeBoardId, updateBoard, sharedBoardIds } = useBoardStore();
   const board = useActiveBoard();
   const { members, self, isConnected, updateDisplayName } = useCollab();
 
+  // A board shared *with* us (we're a collaborator, not the owner) can't be re-shared.
+  const isSharedWithMe = sharedBoardIds.includes(activeBoardId);
+
   const [copied, setCopied] = useState(false);
   const [nameInput, setNameInput] = useState(self.displayName);
-  const [emailInput, setEmailInput] = useState("");
-  const [inviteSent, setInviteSent] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [linkError, setLinkError] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setNameInput(self.displayName);
   }, [self.displayName]);
 
-  const shareUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/?board=${activeBoardId}`
-      : `crecoard.com/?board=${activeBoardId}`;
+  // Create (or fetch) a real share link for boards we own. Opening it grants the
+  // visitor edit access, so we also switch on live collaboration.
+  useEffect(() => {
+    if (!activeBoardId || isSharedWithMe) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.rpc("create_board_share", { p_board_id: activeBoardId });
+      if (cancelled) return;
+      if (error || !data) { setLinkError(true); return; }
+      const origin = typeof window !== "undefined" ? window.location.origin : "https://crecoard.com";
+      setShareUrl(`${origin}/board/${data}`);
+      if (!board?.collabEnabled) updateBoard(activeBoardId, { collabEnabled: true });
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBoardId, isSharedWithMe]);
 
   const copyLink = async () => {
+    if (!shareUrl) return;
     await navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -55,12 +72,6 @@ export function ShareModal({ onClose }: Props) {
     const name = nameInput.trim();
     if (name) updateDisplayName(name);
     nameRef.current?.blur();
-  };
-
-  const sendInvite = () => {
-    // TODO: real invite via Supabase Edge Function / email provider
-    setInviteSent(true);
-    setTimeout(() => { setEmailInput(""); setInviteSent(false); }, 2000);
   };
 
   const allMembers = [
@@ -94,41 +105,42 @@ export function ShareModal({ onClose }: Props) {
         <div className="flex flex-col gap-5 p-5 max-h-[70vh] overflow-y-auto">
 
           {/* Share link */}
-          <section className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Share link</span>
-              <button
-                onClick={() => updateBoard(activeBoardId, { isPublic: !board?.isPublic })}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
-                  board?.isPublic
-                    ? "bg-green-500/10 text-green-400 hover:bg-green-500/20"
-                    : "bg-[var(--surface-overlay)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
-                )}
-              >
-                {board?.isPublic ? <Globe size={11} /> : <Lock size={11} />}
-                {board?.isPublic ? "Anyone with link" : "Private"}
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <div className="flex-1 flex items-center gap-2 rounded-xl bg-[var(--surface-overlay)] border border-[var(--border)] px-3 py-2 min-w-0">
-                <Link2 size={13} className="text-[var(--text-muted)] shrink-0" />
-                <span className="text-xs text-[var(--text-secondary)] truncate font-mono">{shareUrl}</span>
+          {isSharedWithMe ? (
+            <section className="rounded-xl border border-[var(--border)] p-4 text-center" style={{ background: "var(--surface)" }}>
+              <p className="text-sm text-[var(--text-secondary)]">This board was shared with you. Only its owner can manage the share link.</p>
+            </section>
+          ) : (
+            <section className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Share link</span>
+                <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium bg-[var(--accent)]/10 text-[var(--accent)]">
+                  <Globe size={11} /> Anyone with link can edit
+                </span>
               </div>
-              <button
-                onClick={copyLink}
-                className={cn(
-                  "shrink-0 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all",
-                  copied
-                    ? "bg-green-500/10 text-green-400"
-                    : "bg-[var(--accent)] text-white hover:opacity-90"
-                )}
-              >
-                {copied ? <Check size={13} /> : <Link2 size={13} />}
-                {copied ? "Copied!" : "Copy"}
-              </button>
-            </div>
-          </section>
+              <div className="flex gap-2">
+                <div className="flex-1 flex items-center gap-2 rounded-xl bg-[var(--surface-overlay)] border border-[var(--border)] px-3 py-2 min-w-0">
+                  <Link2 size={13} className="text-[var(--text-muted)] shrink-0" />
+                  <span className="text-xs text-[var(--text-secondary)] truncate font-mono">
+                    {linkError ? "Couldn't create a link" : shareUrl ?? "Generating link…"}
+                  </span>
+                </div>
+                <button
+                  onClick={copyLink}
+                  disabled={!shareUrl}
+                  className={cn(
+                    "shrink-0 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all",
+                    copied
+                      ? "bg-green-500/10 text-green-400"
+                      : "bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                  )}
+                >
+                  {copied ? <Check size={13} /> : <Link2 size={13} />}
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className="text-[10px] text-[var(--text-muted)]">Anyone signed in who opens this link can view and edit this board.</p>
+            </section>
+          )}
 
           {/* Live collab toggle */}
           <section className="flex flex-col gap-2 rounded-xl border border-[var(--border)] p-4" style={{ background: "var(--surface)" }}>
@@ -156,7 +168,7 @@ export function ShareModal({ onClose }: Props) {
               </button>
             </div>
             <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              Sync cursors, timers, and table rows in real time. Connect Supabase to enable live sessions.
+              Sync cursors and edits in real time with everyone who has the link.
             </p>
             {board?.collabEnabled && (
               <div className="flex items-center gap-1.5 mt-0.5">
@@ -219,37 +231,6 @@ export function ShareModal({ onClose }: Props) {
               </button>
             </div>
             <p className="text-[10px] text-[var(--text-muted)]">Shown to collaborators when Live collaboration is on.</p>
-          </section>
-
-          {/* Email invite */}
-          <section className="flex flex-col gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Invite by email</span>
-            <div className="flex gap-2">
-              <div className="flex-1 flex items-center gap-2 rounded-xl bg-[var(--surface-overlay)] border border-[var(--border)] px-3 py-2">
-                <Mail size={13} className="text-[var(--text-muted)] shrink-0" />
-                <input
-                  value={emailInput}
-                  onChange={e => setEmailInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && emailInput.trim()) sendInvite(); }}
-                  placeholder="email@example.com"
-                  type="email"
-                  className="flex-1 bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
-                />
-              </div>
-              <button
-                onClick={sendInvite}
-                disabled={!emailInput.trim()}
-                className={cn(
-                  "shrink-0 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all",
-                  inviteSent
-                    ? "bg-green-500/10 text-green-400"
-                    : "bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-                )}
-              >
-                {inviteSent ? <><Check size={12} /> Sent!</> : "Invite"}
-              </button>
-            </div>
-            <p className="text-[10px] text-[var(--text-muted)]">Connect Supabase to enable email invites.</p>
           </section>
 
         </div>

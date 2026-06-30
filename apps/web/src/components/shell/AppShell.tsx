@@ -106,7 +106,9 @@ function AppShellInner() {
     : activeBoardId ?? null;
   useWebhookItems(webhookBoardId);
 
-  const collabSession = useCollabSessionSetup(activeBoardId, board?.collabEnabled ?? false);
+  // Boards shared with this user are always live so their edits sync back.
+  const isSharedBoard = useBoardStore((s) => s.sharedBoardIds.includes(activeBoardId));
+  const collabSession = useCollabSessionSetup(activeBoardId, (board?.collabEnabled ?? false) || isSharedBoard);
   const collabRef = useRef(collabSession);
   useEffect(() => { collabRef.current = collabSession; }, [collabSession]);
 

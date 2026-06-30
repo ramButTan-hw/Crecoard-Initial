@@ -141,6 +141,44 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
         skipNextChange.current = false;
       }
 
+      // ── Shared boards (collaborator access) ───────────────────────────────
+      // Boards shared with this user via a link are owned by someone else, so the
+      // user_id query above never returns them. Fetch them separately and tag their
+      // IDs so the save path updates them by data only (never reassigns ownership).
+      const { data: collabRows } = await supabase
+        .from("board_collaborators")
+        .select("board_id")
+        .eq("user_id", user.id);
+      const sharedIds = (collabRows ?? []).map((r) => r.board_id as string);
+      if (sharedIds.length > 0) {
+        const { data: sharedData } = await supabase
+          .from("boards")
+          .select("id, data")
+          .in("id", sharedIds);
+        const sharedBoards: Board[] = (sharedData ?? []).map((row) => ({
+          ...(row.data as Record<string, unknown>),
+          id: row.id as string,
+        } as Board));
+        const loadedIds = sharedBoards.map((b) => b.id);
+        skipNextChange.current = true;
+        useBoardStore.setState((s) => ({
+          boards: [...s.boards.filter((b) => !loadedIds.includes(b.id)), ...sharedBoards],
+          sharedBoardIds: loadedIds,
+        }));
+        skipNextChange.current = false;
+      }
+
+      // Open a board the user just redeemed from a share link.
+      if (typeof window !== "undefined") {
+        const openId = sessionStorage.getItem("crecoard-open-board");
+        if (openId) {
+          sessionStorage.removeItem("crecoard-open-board");
+          if (useBoardStore.getState().boards.some((b) => b.id === openId)) {
+            useBoardStore.setState({ activeBoardId: openId });
+          }
+        }
+      }
+
       // ── Theme (from profiles table) ───────────────────────────────────────
       // Supabase profile is the authoritative source — overwrites localStorage cache.
       const { data: profile } = await supabase
@@ -175,8 +213,11 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSaveStatus("idle"); return; }
 
-    // Hard deletes first (permanent removal from DB)
+    const sharedIds = useBoardStore.getState().sharedBoardIds;
+
+    // Hard deletes first (owner-only; never delete a board shared *with* us).
     for (const id of Array.from(pendingHardDeletes.current)) {
+      if (sharedIds.includes(id)) { pendingHardDeletes.current.delete(id); continue; }
       const { error } = await supabase.from("boards").delete().eq("id", id).eq("user_id", user.id);
       if (!error) pendingHardDeletes.current.delete(id);
     }
@@ -189,16 +230,28 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
     }
 
     const toFlush = Array.from(pendingPersonal.current.values());
-    const rows = toFlush.map((board) => {
-      const { id, ...rest } = board;
-      return { id, user_id: user.id, data: rest };
-    });
+    // Owned boards upsert with user_id; shared boards update data only so the
+    // owner's user_id is preserved (and the ownership-guard trigger isn't tripped).
+    const ownedRows = toFlush
+      .filter((b) => !sharedIds.includes(b.id))
+      .map((board) => { const { id, ...rest } = board; return { id, user_id: user.id, data: rest }; });
+    const sharedToFlush = toFlush.filter((b) => sharedIds.includes(b.id));
 
-    const { error } = await supabase.from("boards").upsert(rows, { onConflict: "id" });
-    if (error) {
-      const msg = error.message ?? "Unknown error";
-      console.error("[BoardSync] board save failed:", msg);
-      setSaveError(msg);
+    let failedMsg: string | null = null;
+
+    if (ownedRows.length > 0) {
+      const { error } = await supabase.from("boards").upsert(ownedRows, { onConflict: "id" });
+      if (error) failedMsg = error.message ?? "Unknown error";
+    }
+    for (const board of sharedToFlush) {
+      const { id, ...rest } = board;
+      const { error } = await supabase.from("boards").update({ data: rest }).eq("id", id);
+      if (error) failedMsg = error.message ?? "Unknown error";
+    }
+
+    if (failedMsg) {
+      console.error("[BoardSync] board save failed:", failedMsg);
+      setSaveError(failedMsg);
       setSaveStatus("error");
       debounceTimer.current = setTimeout(() => flushRef.current(), 8000);
     } else {
