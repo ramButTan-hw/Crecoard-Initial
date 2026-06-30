@@ -710,6 +710,13 @@ function getLastUserId(): string | null {
   return localStorage.getItem("plancraft-last-user-id");
 }
 
+// Personal boards are cached in localStorage scoped to the signed-in user, so two
+// accounts sharing a browser never read or overwrite each other's boards. Guests
+// (no uid) use the legacy unscoped key.
+function boardsStorageKey(uid: string | null): string {
+  return uid ? `plancraft-boards-v1-${uid}` : "plancraft-boards-v1";
+}
+
 function getSavedThemeVars(): ThemeVarMap {
   if (typeof window === "undefined") return DEFAULT_THEME_VARS;
   if (isSupabaseMode()) {
@@ -920,7 +927,7 @@ interface BoardState {
 
   // Board persistence
   persistBoards: () => void;
-  hydrateBoards: () => void;
+  hydrateBoards: (uid?: string) => void;
 
   // Webhooks
   setWebhookToken: (boardId: string, token: string | undefined) => void;
@@ -1697,8 +1704,9 @@ export const useBoardStore = create<BoardState>()(
 
     persistBoards: () => {
       try {
-        const { boards, activeBoardId, serverBoards } = get();
-        localStorage.setItem("plancraft-boards-v1", JSON.stringify({ boards, activeBoardId }));
+        const { boards, activeBoardId, serverBoards, currentUserId } = get();
+        const uid = currentUserId ?? getLastUserId();
+        localStorage.setItem(boardsStorageKey(uid), JSON.stringify({ boards, activeBoardId }));
         localStorage.setItem("plancraft-server-boards-v1", JSON.stringify(serverBoards));
       } catch {
         if (typeof window !== "undefined")
@@ -1706,12 +1714,16 @@ export const useBoardStore = create<BoardState>()(
       }
     },
 
-    hydrateBoards: () => {
+    hydrateBoards: (uid?: string) => {
+      // Read this user's own scoped cache. Falls back to the store's known user
+      // (or last-known) so a stray call without an explicit uid still stays scoped.
+      const resolvedUid = uid ?? get().currentUserId ?? getLastUserId();
+      const key = boardsStorageKey(resolvedUid);
       // M11: separate try/catch per key so one failure doesn't delete the other
       let personalBoards: Board[] | null = null;
       let safeId: string | null = null;
       try {
-        const raw = localStorage.getItem("plancraft-boards-v1");
+        const raw = localStorage.getItem(key);
         if (raw) {
           const { boards, activeBoardId } = JSON.parse(raw) as { boards: Board[]; activeBoardId: string };
           const filtered = (Array.isArray(boards) ? boards : []).filter((b) => !b.serverId);
@@ -1722,7 +1734,7 @@ export const useBoardStore = create<BoardState>()(
         }
       } catch (err) {
         console.error("[Crecoard] Failed to load personal boards — data may be corrupt. Starting fresh.", err);
-        localStorage.removeItem("plancraft-boards-v1");
+        localStorage.removeItem(key);
       }
 
       // M10: do NOT read plancraft-server-boards-v1 — serverBoards is populated

@@ -84,6 +84,10 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Scope all localStorage board caching to this account before any persist
+      // fires, so two accounts on one browser never share the unscoped key.
+      useBoardStore.getState().setCurrentUserId(user.id);
+
       // ── Boards ────────────────────────────────────────────────────────────
       const { data: boardData, error: boardError } = await supabase
         .from("boards")
@@ -100,13 +104,13 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
         // localStorage so the user doesn't lose their work.
         console.error("[BoardSync] failed to load boards:", boardError.message);
         skipNextChange.current = true;
-        useBoardStore.getState().hydrateBoards();
+        useBoardStore.getState().hydrateBoards(user.id);
         skipNextChange.current = false;
       } else if (supabaseBoards.length === 0) {
         // Table exists but no boards saved yet — migrate whatever's in localStorage
         // to Supabase so the user's existing work isn't discarded.
         skipNextChange.current = true;
-        useBoardStore.getState().hydrateBoards();
+        useBoardStore.getState().hydrateBoards(user.id);
         skipNextChange.current = false;
         const localBoards = useBoardStore.getState().boards;
         for (const board of localBoards) pendingPersonal.current.set(board.id, board);
