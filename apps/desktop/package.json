@@ -10,12 +10,13 @@
     "pack": "electron-builder --dir"
   },
   "dependencies": {
-    "electron-is-dev": "^3.0.0"
+    "electron-is-dev": "^3.0.0",
+    "next": "^16.2.9"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
-    "electron": "^33.4.0",
-    "electron-builder": "^25.1.8",
+    "electron": "^42.5.1",
+    "electron-builder": "^26.15.3",
     "wait-on": "^8.0.1"
   },
   "build": {
@@ -24,18 +25,28 @@
     "directories": {
       "output": "dist"
     },
-    "files": ["src/**/*"],
+    "files": [
+      "src/**/*"
+    ],
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "assets/icon.ico"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "assets/icon.icns",
       "category": "public.app-category.productivity"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "assets/icon.png",
       "category": "Utility"
     }
