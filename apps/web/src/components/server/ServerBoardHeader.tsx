@@ -80,8 +80,10 @@ export function ServerBoardHeader({
       >
         {/* Server identity */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--surface-overlay)] text-sm font-bold select-none">
-            {serverIcon}
+          <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-lg bg-[var(--surface-overlay)] text-sm font-bold select-none">
+            {(serverIcon ?? "").startsWith("http") || (serverIcon ?? "").startsWith("data:")
+              ? <img src={serverIcon} alt="" className="h-full w-full object-cover" />
+              : serverIcon}
           </span>
           <span className="text-sm font-semibold text-[var(--text-primary)]">{serverName}</span>
         </div>

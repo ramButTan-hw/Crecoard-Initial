@@ -686,7 +686,7 @@ function AppShellInner() {
             style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
           >
             <FriendsView
-              onDmSelect={(id) => { handleDmSelect(id); setShowFriends(false); }}
+              onDmSelect={(id, username, online) => { handleDmSelect(id, username, online); setShowFriends(false); }}
               onClose={() => setShowFriends(false)}
               onViewProfile={(u) => setViewingUser(u)}
             />

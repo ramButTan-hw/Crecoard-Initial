@@ -36,7 +36,10 @@ interface ChatBlockProps {
 export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const { identity } = useUser();
   const channelName = item.chatChannelName ?? "general";
-  const { messages, send, chatKey } = useBoardChatItem(item.id, boardId, channelName);
+  // Chat is one continuous stream per board. The server "live" view uses a
+  // boardId of `<id>:live`, so strip it — draft and live share the same channel.
+  const chatBoardId = boardId.replace(/:live$/, "");
+  const { messages, send, chatKey } = useBoardChatItem(item.id, chatBoardId, channelName);
   const { unread, registerActive, unregisterActive, markRead } = useNotifications();
   const unreadCount = unread[chatKey] ?? 0;
 
