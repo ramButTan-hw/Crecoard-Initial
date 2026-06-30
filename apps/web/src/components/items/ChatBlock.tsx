@@ -3,6 +3,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Send, Smile, ImageIcon, X } from "lucide-react";
 import type { BlockItem } from "@/store/boardStore";
+import { useBoardStore } from "@/store/boardStore";
+import { useServers } from "@/contexts/ServersContext";
 import { useBoardChatItem } from "@/contexts/BoardChatContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useUser } from "@/contexts/UserContext";
@@ -41,8 +43,15 @@ function renderMessageContent(
   myName: string,
   resolve: (id: string) => string | undefined,
 ): React.ReactNode {
-  const parts = content.split(/(<@[0-9a-fA-F-]{36}>|@[A-Za-z0-9_.\-]+)/g);
+  const parts = content.split(/(<@[0-9a-fA-F-]{36}>|@[A-Za-z0-9_.\-]+|https?:\/\/[^\s]+)/g);
   return parts.map((part, i) => {
+    if (/^https?:\/\//.test(part)) {
+      return (
+        <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="break-all text-[var(--accent)] underline hover:opacity-80">
+          {part}
+        </a>
+      );
+    }
     let name: string | null = null;
     let isMe = false;
     const token = part.match(/^<@([0-9a-fA-F-]{36})>$/);
@@ -80,6 +89,11 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   // Chat is one continuous stream per board. The server "live" view uses a
   // boardId of `<id>:live`, so strip it — draft and live share the same channel.
   const chatBoardId = boardId.replace(/:live$/, "");
+  // Server roster (if this board belongs to a server) — lets you @mention any
+  // member, not just people who've already chatted.
+  const serverId = useBoardStore((s) => (s.serverBoards[chatBoardId] ?? s.boards.find((b) => b.id === chatBoardId))?.serverId);
+  const { serverMembers } = useServers();
+  const roster = serverId ? (serverMembers[serverId] ?? []) : [];
   const { messages, send, chatKey, loadOlder } = useBoardChatItem(item.id, chatBoardId, channelName);
   const [allLoaded, setAllLoaded] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -102,8 +116,9 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
       if (m.authorId && m.authorName !== "System") ids.add(m.authorId);
       for (const id of mentionIds(m.content)) ids.add(id);
     }
+    for (const m of roster) if (m.userId) ids.add(m.userId);
     if (ids.size) profiles.ensure([...ids]);
-  }, [messages, profiles]);
+  }, [messages, roster, profiles]);
 
   // Register this channel as "active" (visible) — suppresses toasts while open
   useEffect(() => {
@@ -133,14 +148,18 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
 
   const mentionCandidates = useMemo(() => {
     const map = new Map<string, { id: string; name: string; avatar?: string }>();
+    const add = (id: string, fallbackName: string, fallbackAvatar?: string) => {
+      if (!id || id === identity.userId || map.has(id)) return;
+      const p = profiles.get(id);
+      map.set(id, { id, name: p?.displayName ?? fallbackName, avatar: p?.avatarUrl ?? fallbackAvatar });
+    };
+    for (const m of roster) add(m.userId, m.username, m.avatar?.startsWith("http") ? m.avatar : undefined);
     for (const m of messages) {
-      if (!m.authorId || m.authorName === "System" || m.authorId === identity.userId || map.has(m.authorId)) continue;
-      const p = profiles.get(m.authorId);
-      map.set(m.authorId, { id: m.authorId, name: p?.displayName ?? m.authorName, avatar: p?.avatarUrl });
+      if (m.authorName !== "System") add(m.authorId, m.authorName, m.authorAvatar?.startsWith("http") ? m.authorAvatar : undefined);
     }
     const q = (mentionQuery ?? "").toLowerCase();
     return [...map.values()].filter((c) => c.name.toLowerCase().includes(q)).slice(0, 6);
-  }, [messages, profiles, mentionQuery, identity.userId]);
+  }, [roster, messages, profiles, mentionQuery, identity.userId]);
 
   const onInputChange = (value: string, cursor: number) => {
     setInput(value);
