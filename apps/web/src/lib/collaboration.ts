@@ -79,6 +79,7 @@ export interface ProfileBlock {
 export interface SelfIdentity {
   userId: string;
   displayName: string;
+  username?: string;
   color: string;
   avatarUrl?: string;
   bannerUrl?: string;

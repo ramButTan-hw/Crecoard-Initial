@@ -18,6 +18,7 @@ import { StylePanel } from "../box/StylePanel";
 import { ServerBoardHeader } from "../server/ServerBoardHeader";
 import { DmPopout } from "./DmPopout";
 import { ChatDrawer } from "./ChatDrawer";
+import { UsernameSetupModal } from "./UsernameSetupModal";
 import { MessageSquare } from "lucide-react";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { SettingsPanel } from "./SettingsPanel";
@@ -699,6 +700,9 @@ function AppShellInner() {
           </div>
         </>
       )}
+
+      {/* Required username gate (logged-in users without a handle) */}
+      {isLoggedIn && !userLoading && !identity.username && <UsernameSetupModal />}
 
       {/* Chat drawer + edge toggle (per-board channels) */}
       {(() => {

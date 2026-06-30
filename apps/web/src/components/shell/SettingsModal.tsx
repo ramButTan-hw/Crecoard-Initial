@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getSelfIdentity, updateSelfIdentity } from "@/lib/collaboration";
+import { useUser } from "@/contexts/UserContext";
+import { UsernameSetupModal } from "./UsernameSetupModal";
 import { useBoardStore } from "@/store/boardStore";
 import { setSoundEnabled } from "@/lib/sound";
 import { PRESET_THEMES, APP_FONTS, BG_FILTERS, ThemeVarMap } from "@/lib/appThemes";
@@ -145,6 +147,8 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
   } = useBoardStore();
 
   const [confirmHardDelete, setConfirmHardDelete] = useState<string | null>(null);
+  const [editUsername, setEditUsername] = useState(false);
+  const { identity: userIdentity } = useUser();
 
   const trashedBoards = boards
     .filter((b) => !b.serverId && b.deletedAt)
@@ -269,9 +273,19 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
 
                   <SGroup label="Account Info">
                     <InfoRow label="User ID" value={identity.userId.slice(0, 16) + "…"} mono />
+                    <div className="flex items-center justify-between rounded-xl border border-[var(--border)] px-4 py-3" style={{ background: "var(--surface)" }}>
+                      <span className="text-sm text-[var(--text-muted)]">Username</span>
+                      <button onClick={() => setEditUsername(true)} className="text-sm font-medium text-[var(--text-primary)] transition-colors hover:text-[var(--accent)]">
+                        {userIdentity.username ? `@${userIdentity.username}` : <span className="text-[var(--accent)]">Set username</span>}
+                      </button>
+                    </div>
                     <InfoRow label="Display Name" value={identity.displayName} />
                     {identity.bio && <InfoRow label="Bio" value={identity.bio} />}
                   </SGroup>
+
+                  {editUsername && (
+                    <UsernameSetupModal current={userIdentity.username} onClose={() => setEditUsername(false)} />
+                  )}
 
                   <SGroup label="Danger Zone">
                     <button

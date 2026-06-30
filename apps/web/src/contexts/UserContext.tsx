@@ -20,6 +20,7 @@ function rowToIdentity(row: ProfileRow, base: SelfIdentity): SelfIdentity {
     ...base,
     userId: (row.id as string) || base.userId,
     displayName: (row.display_name as string) || base.displayName,
+    username: (row.username as string | undefined) ?? base.username,
     avatarUrl: (row.avatar_url as string | undefined) ?? base.avatarUrl,
     bannerUrl: (row.banner_url as string | undefined) ?? base.bannerUrl,
     color: (row.color as string) || base.color,
@@ -41,6 +42,8 @@ interface UserContextValue {
   isLoggedIn: boolean;
   /** Persists profile changes: Supabase when available, always localStorage */
   updateProfile: (patch: Partial<Omit<SelfIdentity, "userId">>) => Promise<void>;
+  /** Set the unique username (handle). Returns an error key on failure. */
+  setUsername: (username: string) => Promise<{ ok: boolean; error?: string }>;
   /** Signs out of Supabase and redirects to /login */
   signOut: () => Promise<void>;
 }
@@ -151,6 +154,21 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     await supabase.from("profiles").upsert(row, { onConflict: "id" });
   }, [supabaseUserId]);
 
+  const setUsername = useCallback(async (username: string): Promise<{ ok: boolean; error?: string }> => {
+    if (!isSupabaseReady()) return { ok: false, error: "offline" };
+    const { data, error } = await supabase.rpc("set_username", { p_username: username });
+    if (error) {
+      const msg = error.message || "";
+      if (msg.includes("taken")) return { ok: false, error: "taken" };
+      if (msg.includes("invalid")) return { ok: false, error: "invalid" };
+      return { ok: false, error: "failed" };
+    }
+    const clean = (data as string) ?? username;
+    setIdentity((prev) => ({ ...prev, username: clean }));
+    updateSelfIdentity({ username: clean }); // keep the local identity in sync
+    return { ok: true };
+  }, []);
+
   const signOut = useCallback(async () => {
     if (isSupabaseReady()) await supabase.auth.signOut();
     // Clear the last-user cache so the next user gets a clean theme slate
@@ -159,7 +177,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <UserContext.Provider value={{ identity, loading, isLoggedIn, updateProfile, signOut }}>
+    <UserContext.Provider value={{ identity, loading, isLoggedIn, updateProfile, setUsername, signOut }}>
       {children}
     </UserContext.Provider>
   );
