@@ -186,7 +186,7 @@ export function Sidebar({
           ) : (
             <div className="flex h-12 items-center justify-between border-b border-[var(--border)] px-3">
               <span className="text-sm font-semibold text-[var(--text-primary)]">
-                {activeView === "board" ? "PlanCraft" : "Direct Messages"}
+                {activeView === "board" ? "Crecoard" : "Direct Messages"}
               </span>
               <button
                 onClick={onToggle}

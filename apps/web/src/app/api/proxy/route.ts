@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
   // ── 5. Build outbound headers ────────────────────────────────────────────────
   // Only forward explicitly supplied headers — never echo Cookie, Host, etc.
   const outHeaders: Record<string, string> = {
-    "User-Agent": "PlanCraft-Proxy/1.0",
+    "User-Agent": "Crecoard-Proxy/1.0",
   };
 
   if (forwardHeaders && typeof forwardHeaders === "object" && !Array.isArray(forwardHeaders)) {

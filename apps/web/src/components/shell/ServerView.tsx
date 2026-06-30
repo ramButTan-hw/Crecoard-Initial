@@ -54,7 +54,7 @@ const DEMO_CHANNELS: Record<string, { name: string; messages: Message[] }> = {
   announcements: {
     name: "announcements",
     messages: [
-      { id: "7", author: "alex_dev", avatar: "A", content: "PlanCraft v0.2 is live! Blocks can now be expanded into full mini-boards with free-form grids.", timestamp: "Today at 8:00 AM", online: true },
+      { id: "7", author: "alex_dev", avatar: "A", content: "Crecoard v0.2 is live! Blocks can now be expanded into full mini-boards with free-form grids.", timestamp: "Today at 8:00 AM", online: true },
     ],
   },
   feedback: {

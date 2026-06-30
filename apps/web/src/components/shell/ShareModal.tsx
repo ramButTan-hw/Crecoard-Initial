@@ -43,7 +43,7 @@ export function ShareModal({ onClose }: Props) {
   const shareUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/?board=${activeBoardId}`
-      : `plancraft.app/?board=${activeBoardId}`;
+      : `crecoard.com/?board=${activeBoardId}`;
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(shareUrl);

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PlanCraft",
+  title: "Crecoard",
   description: "Modular sandbox planner with community servers",
 };
 

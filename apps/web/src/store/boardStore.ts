@@ -1721,7 +1721,7 @@ export const useBoardStore = create<BoardState>()(
           }
         }
       } catch (err) {
-        console.error("[PlanCraft] Failed to load personal boards — data may be corrupt. Starting fresh.", err);
+        console.error("[Crecoard] Failed to load personal boards — data may be corrupt. Starting fresh.", err);
         localStorage.removeItem("plancraft-boards-v1");
       }
 

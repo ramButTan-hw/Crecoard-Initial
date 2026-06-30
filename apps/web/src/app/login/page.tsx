@@ -738,7 +738,7 @@ export default function LoginPage() {
                       onChange={(e) => setTermsAgreed(e.target.checked)}
                     />
                     <span className={`auth-checkbox-label ${fieldErrors.terms ? "" : ""}`} style={{ color: fieldErrors.terms ? "#ed4245" : "#b5bac1" }}>
-                      I agree to PlanCraft&rsquo;s{" "}
+                      I agree to Crecoard&rsquo;s{" "}
                       <span style={{ color: "var(--accent, #d59ee8)" }}>Terms of Service</span>
                       {" "}and{" "}
                       <span style={{ color: "var(--accent, #d59ee8)" }}>Privacy Policy</span>.
@@ -829,7 +829,7 @@ export default function LoginPage() {
               <p className="auth-sub">
                 {useBackup
                   ? "Enter one of your backup codes to access your account."
-                  : "Open your authenticator app and enter the 6-digit code for PlanCraft."}
+                  : "Open your authenticator app and enter the 6-digit code for Crecoard."}
               </p>
 
               {error && <div className="auth-error" role="alert">{error}</div>}

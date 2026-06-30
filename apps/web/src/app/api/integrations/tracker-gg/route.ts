@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing game, platform, or username." }, { status: 400 });
   }
 
-  // PlanCraft's own key — stored server-side, never exposed to clients
+  // Crecoard's own key — stored server-side, never exposed to clients
   const apiKey = process.env.TRACKER_GG_API_KEY ?? "";
   if (!apiKey) {
     return NextResponse.json(

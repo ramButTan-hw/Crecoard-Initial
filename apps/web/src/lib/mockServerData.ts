@@ -222,7 +222,7 @@ const devCommunityBoard: Board = {
         { id: "k-col3", title: "Shipped", color: "#10b981" },
       ],
       kanbanCards: [
-        { id: "kc1", columnId: "k-col2", text: "PlanCraft template library", description: "Community-contributed templates", order: 0 },
+        { id: "kc1", columnId: "k-col2", text: "Crecoard template library", description: "Community-contributed templates", order: 0 },
         { id: "kc2", columnId: "k-col2", text: "Mobile PWA wrapper", description: "Responsive board view for phones", order: 1 },
         { id: "kc3", columnId: "k-col1", text: "Zapier integration", description: "Trigger board actions from external apps", order: 0 },
         { id: "kc4", columnId: "k-col1", text: "AI block suggestions", description: "Natural language → block type + config", order: 1 },
@@ -298,7 +298,7 @@ export const MOCK_SERVERS: Server[] = [
     id: "s3",
     name: "Dev Community",
     icon: "⚡",
-    description: "Open community for PlanCraft power users and developers.",
+    description: "Open community for Crecoard power users and developers.",
     ownerId: "u-alex",
     boardId: SERVER_BOARD_IDS.s3,
     isPublic: true,

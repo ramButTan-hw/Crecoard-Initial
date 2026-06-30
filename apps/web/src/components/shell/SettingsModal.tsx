@@ -650,7 +650,7 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
               {/* ── KEYBINDINGS ───────────────────────────────────── */}
               {active === "keybindings" && (
                 <div className="flex flex-col gap-4">
-                  <p className="text-sm text-[var(--text-muted)]">Keyboard shortcuts available in PlanCraft.</p>
+                  <p className="text-sm text-[var(--text-muted)]">Keyboard shortcuts available in Crecoard.</p>
                   <div className="rounded-xl border border-[var(--border)] overflow-hidden" style={{ background: "var(--surface)" }}>
                     {KEYBINDINGS.map((kb, i) => (
                       <div
@@ -684,7 +684,7 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
                       📋
                     </div>
                     <div>
-                      <p className="text-lg font-bold text-[var(--text-primary)]">PlanCraft</p>
+                      <p className="text-lg font-bold text-[var(--text-primary)]">Crecoard</p>
                       <p className="text-sm text-[var(--text-muted)]">Version 0.1.0-alpha</p>
                       <p className="text-xs text-[var(--text-muted)]">Built with Next.js · Supabase · dnd-kit</p>
                     </div>

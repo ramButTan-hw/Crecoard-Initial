@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     const upstream = await fetch(parsed.toString(), {
       headers: {
         // Some iCal servers require a recognisable User-Agent.
-        "User-Agent": "PlanCraft/1.0 iCal-Proxy (+https://plancraft.app)",
+        "User-Agent": "Crecoard/1.0 iCal-Proxy (+https://crecoard.com)",
         "Accept": "text/calendar, text/plain;q=0.9, */*;q=0.8",
       },
       // fetch in Node 18+ follows redirects by default (mode: "follow").

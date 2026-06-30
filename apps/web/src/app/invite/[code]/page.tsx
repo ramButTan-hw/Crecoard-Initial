@@ -148,7 +148,7 @@ export default function InvitePage() {
               textDecoration: "none",
             }}
           >
-            Go to PlanCraft
+            Go to Crecoard
           </a>
         </div>
       </div>
@@ -228,7 +228,7 @@ export default function InvitePage() {
                 fontWeight: 700, textDecoration: "none", cursor: "pointer",
               }}
             >
-              Open PlanCraft
+              Open Crecoard
             </a>
           ) : (
             <button
