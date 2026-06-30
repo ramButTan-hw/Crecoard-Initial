@@ -147,19 +147,28 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const mentionStart = useRef(0);
 
   const mentionCandidates = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; avatar?: string }>();
+    const map = new Map<string, { id: string; name: string; handle?: string; avatar?: string }>();
     const add = (id: string, fallbackName: string, fallbackAvatar?: string) => {
       if (!id || id === identity.userId || map.has(id)) return;
       const p = profiles.get(id);
-      map.set(id, { id, name: p?.displayName ?? fallbackName, avatar: p?.avatarUrl ?? fallbackAvatar });
+      map.set(id, { id, name: p?.displayName ?? fallbackName, handle: p?.username, avatar: p?.avatarUrl ?? fallbackAvatar });
     };
     for (const m of roster) add(m.userId, m.username, m.avatar?.startsWith("http") ? m.avatar : undefined);
     for (const m of messages) {
       if (m.authorName !== "System") add(m.authorId, m.authorName, m.authorAvatar?.startsWith("http") ? m.authorAvatar : undefined);
     }
     const q = (mentionQuery ?? "").toLowerCase();
-    return [...map.values()].filter((c) => c.name.toLowerCase().includes(q)).slice(0, 6);
+    return [...map.values()].filter((c) => c.name.toLowerCase().includes(q) || (c.handle?.toLowerCase().includes(q) ?? false)).slice(0, 6);
   }, [roster, messages, profiles, mentionQuery, identity.userId]);
+
+  // Map of @handle (lowercased) → user id, for resolving typed mentions on send.
+  const handleToId = useMemo(() => {
+    const map = new Map<string, string>();
+    const addId = (id: string) => { const u = profiles.get(id)?.username; if (u) map.set(u.toLowerCase(), id); };
+    for (const m of roster) addId(m.userId);
+    for (const m of messages) addId(m.authorId);
+    return map;
+  }, [roster, messages, profiles]);
 
   const onInputChange = (value: string, cursor: number) => {
     setInput(value);
@@ -168,18 +177,25 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
     else setMentionQuery(null);
   };
 
-  const pickMention = (c: { id: string; name: string }) => {
+  const pickMention = (c: { id: string; name: string; handle?: string }) => {
+    const handle = c.handle ?? c.name;
     const before = input.slice(0, mentionStart.current);
     const after = input.slice(mentionStart.current).replace(/^@[A-Za-z0-9_.\-]*/, "");
-    setInput(`${before}@${c.name} ${after}`);
-    if (!pendingMentions.current.some((p) => p.id === c.id)) pendingMentions.current.push(c);
+    setInput(`${before}@${handle} ${after}`);
+    if (!pendingMentions.current.some((p) => p.id === c.id)) pendingMentions.current.push({ id: c.id, name: handle });
     setMentionQuery(null);
   };
 
-  // Replace selected @Name occurrences with <@id> tokens before sending.
+  // Encode mentions to <@id> tokens before sending: picker selections first,
+  // then any typed @handle that matches a known user — without touching tokens.
   const encodeMentions = (text: string): string => {
     let out = text;
     for (const men of pendingMentions.current) out = out.replace(`@${men.name}`, `<@${men.id}>`);
+    out = out.replace(/<@[0-9a-fA-F-]{36}>|@([A-Za-z0-9_]+)/g, (full, h) => {
+      if (full.startsWith("<@")) return full;
+      const id = handleToId.get((h as string).toLowerCase());
+      return id ? `<@${id}>` : full;
+    });
     return out;
   };
 
@@ -472,7 +488,10 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                 <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)] text-[9px] font-bold text-white">
                   {c.avatar ? <img src={c.avatar} alt="" className="h-full w-full object-cover" /> : c.name[0]?.toUpperCase()}
                 </span>
-                <span className="truncate">{c.name}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="text-[var(--text-primary)]">{c.handle ? `@${c.handle}` : c.name}</span>
+                  {c.handle && <span className="ml-1.5 text-[var(--text-muted)]">{c.name}</span>}
+                </span>
               </button>
             ))}
           </div>

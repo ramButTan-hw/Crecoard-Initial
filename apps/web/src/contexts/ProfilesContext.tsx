@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 export interface CachedProfile {
   id: string;
   displayName: string;
+  username?: string;
   avatarUrl?: string;
   color?: string;
 }
@@ -48,7 +49,7 @@ export function ProfilesProvider({ children }: { children: React.ReactNode }) {
     if (!ids.length || !isSupabaseReady()) return;
     const { data } = await supabase
       .from("profiles")
-      .select("id, display_name, avatar_url, color")
+      .select("id, display_name, username, avatar_url, color")
       .in("id", ids);
     if (data) {
       setProfiles((prev) => {
@@ -57,6 +58,7 @@ export function ProfilesProvider({ children }: { children: React.ReactNode }) {
           next[p.id as string] = {
             id: p.id as string,
             displayName: (p.display_name as string) || "Unknown",
+            username: (p.username as string | null) ?? undefined,
             avatarUrl: (p.avatar_url as string | null) ?? undefined,
             color: (p.color as string | null) ?? undefined,
           };
