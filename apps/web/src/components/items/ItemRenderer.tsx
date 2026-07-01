@@ -43,6 +43,8 @@ import { cn } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
 import { useItemContributions } from "@/contexts/BoardContributionsContext";
 import { useCanEditBoard } from "@/contexts/ServerBoardContext";
+import { supabase } from "@/lib/supabase";
+import { buildIcs } from "@/lib/ics";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 
 const CHART_COLORS = ["#d59ee8", "#48cfa6", "#f2994a", "#eb5757", "#9b51e0", "#2d9cdb"];
@@ -4976,51 +4978,8 @@ function fmtRelativeTime(ms: number): string {
 }
 
 // ─── ICS export ────────────────────────────────────────────────────────────────
-// Build a standards-compliant .ics from board-authored events so a streamer's
-// schedule can be imported into Google/Apple/Outlook. Standards-only, no library.
+// buildIcs lives in @/lib/ics (shared with the subscription feed route).
 
-function icsEscape(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
-}
-/** Fold long content lines to 75 octets per RFC 5545. */
-function icsFold(line: string): string {
-  if (line.length <= 75) return line;
-  const chunks: string[] = [];
-  let rest = line;
-  chunks.push(rest.slice(0, 75));
-  rest = rest.slice(75);
-  while (rest.length) { chunks.push(" " + rest.slice(0, 74)); rest = rest.slice(74); }
-  return chunks.join("\r\n");
-}
-function buildIcs(events: CalendarEvent[], calName: string): string {
-  const lines: string[] = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Crecoard//Calendar//EN",
-    "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
-    `X-WR-CALNAME:${icsEscape(calName)}`,
-  ];
-  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-  for (const e of events) {
-    const ymd = e.date.replace(/-/g, "");
-    lines.push("BEGIN:VEVENT");
-    lines.push(`UID:${e.id}@crecoard`);
-    lines.push(`DTSTAMP:${stamp}`);
-    if (e.allDay || !e.startTime) {
-      lines.push(`DTSTART;VALUE=DATE:${ymd}`);
-    } else {
-      lines.push(`DTSTART:${ymd}T${e.startTime.replace(":", "")}00`);
-      if (e.endTime) lines.push(`DTEND:${ymd}T${e.endTime.replace(":", "")}00`);
-    }
-    lines.push(icsFold(`SUMMARY:${icsEscape(e.title)}`));
-    if (e.description) lines.push(icsFold(`DESCRIPTION:${icsEscape(e.description)}`));
-    if (e.location) lines.push(icsFold(`LOCATION:${icsEscape(e.location)}`));
-    lines.push("END:VEVENT");
-  }
-  lines.push("END:VCALENDAR");
-  return lines.join("\r\n");
-}
 function downloadIcs(events: CalendarEvent[], calName: string): void {
   const blob = new Blob([buildIcs(events, calName)], { type: "text/calendar;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -5050,6 +5009,24 @@ function icsDateParts(raw: string): { y: number; m: number; d: number } | null {
 }
 function ymdKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** The date of the nth (1-based; negative = from end) `dow` weekday in a month, or null if it doesn't exist. */
+function nthWeekdayOfMonth(year: number, month0: number, dow: number, ord: number): Date | null {
+  if (ord > 0) {
+    const first = new Date(year, month0, 1, 12);
+    const offset = (dow - first.getDay() + 7) % 7;
+    const day = 1 + offset + (ord - 1) * 7;
+    const d = new Date(year, month0, day, 12);
+    return d.getMonth() === month0 ? d : null; // ord larger than available weeks
+  }
+  if (ord < 0) {
+    const last = new Date(year, month0 + 1, 0, 12); // last day of month
+    const offset = (last.getDay() - dow + 7) % 7;
+    const day = last.getDate() - offset - (Math.abs(ord) - 1) * 7;
+    return day >= 1 ? new Date(year, month0, day, 12) : null;
+  }
+  return null;
 }
 
 /** All EXDATE date-keys declared in a VEVENT block. */
@@ -5085,7 +5062,15 @@ function expandRrule(rrule: string, start: { y: number; m: number; d: number }, 
   const count = parts.COUNT ? parseInt(parts.COUNT, 10) : undefined;
   const untilP = parts.UNTIL ? icsDateParts(parts.UNTIL) : null;
   const untilMs = untilP ? new Date(untilP.y, untilP.m - 1, untilP.d, 23, 59, 59).getTime() : undefined;
-  const byDay = parts.BYDAY ? parts.BYDAY.toUpperCase().split(",").map((s) => s.slice(-2)) : [];
+  // BYDAY entries may carry an ordinal prefix (e.g. "3TU" = 3rd Tue, "-1FR" = last Fri).
+  const bydayParsed = (parts.BYDAY ? parts.BYDAY.toUpperCase().split(",") : [])
+    .map((tok) => {
+      const dow = ICS_WEEKDAYS.indexOf(tok.slice(-2));
+      const ordStr = tok.slice(0, -2);
+      const ord = ordStr ? parseInt(ordStr, 10) : NaN;
+      return dow >= 0 ? { dow, ord: Number.isFinite(ord) ? ord : null } : null;
+    })
+    .filter((x): x is { dow: number; ord: number | null } => x !== null);
   const byMonthDay = parts.BYMONTHDAY ? parts.BYMONTHDAY.split(",").map((n) => parseInt(n, 10)).filter(Number.isFinite) : [];
 
   const now = Date.now();
@@ -5111,8 +5096,8 @@ function expandRrule(rrule: string, start: { y: number; m: number; d: number }, 
   };
 
   if (freq === "WEEKLY") {
-    const targetDows = byDay.length
-      ? byDay.map((c) => ICS_WEEKDAYS.indexOf(c)).filter((i) => i >= 0).sort((a, b) => a - b)
+    const targetDows = bydayParsed.length
+      ? [...new Set(bydayParsed.map((s) => s.dow))].sort((a, b) => a - b)
       : [startDate.getDay()];
     // Start from the Sunday of the start week; step INTERVAL weeks at a time.
     const weekCursor = new Date(startDate);
@@ -5129,16 +5114,45 @@ function expandRrule(rrule: string, start: { y: number; m: number; d: number }, 
       weekCursor.setDate(weekCursor.getDate() + 7 * interval);
       if (weekCursor.getTime() > winEnd && (untilMs === undefined || weekCursor.getTime() > untilMs)) break;
     }
+  } else if (freq === "MONTHLY" && (bydayParsed.length || byMonthDay.length)) {
+    // Positioned days each month: ordinal weekdays (3TU / -1FR), every matching
+    // weekday (FR), or fixed month-days (BYMONTHDAY). Candidates per month are
+    // sorted so emission stays chronological (COUNT/UNTIL honoured in order).
+    let y = start.y;
+    let mo = start.m - 1;
+    while (guard++ < GUARD_MAX) {
+      const cands: Date[] = [];
+      if (bydayParsed.length) {
+        for (const spec of bydayParsed) {
+          if (spec.ord != null) {
+            const d = nthWeekdayOfMonth(y, mo, spec.dow, spec.ord);
+            if (d) cands.push(d);
+          } else {
+            const first = new Date(y, mo, 1, 12);
+            const off = (spec.dow - first.getDay() + 7) % 7;
+            for (let day = 1 + off; new Date(y, mo, day, 12).getMonth() === mo; day += 7) cands.push(new Date(y, mo, day, 12));
+          }
+        }
+      } else {
+        for (const dnum of byMonthDay) {
+          const d = new Date(y, mo, dnum, 12);
+          if (d.getMonth() === mo) cands.push(d);
+        }
+      }
+      const ordered = cands.filter((d) => d.getTime() >= startDate.getTime()).sort((a, b) => a.getTime() - b.getTime());
+      let stop = false;
+      for (const d of ordered) { if (!emit(d)) { stop = true; break; } }
+      if (stop) break;
+      mo += interval;
+      while (mo > 11) { mo -= 12; y++; }
+      const monthStart = new Date(y, mo, 1, 12).getTime();
+      if (monthStart > winEnd && (untilMs === undefined || monthStart > untilMs)) break;
+    }
   } else {
+    // DAILY, YEARLY, and plain MONTHLY (same day-of-month as the start).
     const cursor = new Date(startDate);
     while (guard++ < GUARD_MAX) {
-      let occ: Date;
-      if (freq === "MONTHLY" && byMonthDay.length) {
-        occ = new Date(cursor.getFullYear(), cursor.getMonth(), byMonthDay[0], 12);
-      } else {
-        occ = new Date(cursor);
-      }
-      if (!emit(occ)) break;
+      if (!emit(new Date(cursor))) break;
       if (freq === "DAILY") cursor.setDate(cursor.getDate() + interval);
       else if (freq === "MONTHLY") cursor.setMonth(cursor.getMonth() + interval);
       else cursor.setFullYear(cursor.getFullYear() + interval); // YEARLY
@@ -5831,6 +5845,89 @@ function useCalendarFeedSync(item: BlockItem, upd: (p: Partial<BlockItem>) => vo
   return { syncing, errors, syncFeed };
 }
 
+/**
+ * Manage a public ICS subscription URL for this calendar (board → .ics). Owners
+ * enable a random-token feed external calendar apps can subscribe to; the token
+ * is created/revoked via RLS-guarded rows in calendar_subscriptions.
+ */
+function CalendarSubscribeSection({ boardId, itemId }: { boardId: string; itemId: string }) {
+  const { identity } = useUser();
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void supabase.from("calendar_subscriptions").select("token").eq("board_id", boardId).eq("item_id", itemId).maybeSingle()
+      .then(({ data }) => { if (active) { setToken((data?.token as string) ?? null); setLoading(false); } });
+    return () => { active = false; };
+  }, [boardId, itemId]);
+
+  const enable = async () => {
+    setBusy(true);
+    const { data } = await supabase.from("calendar_subscriptions")
+      .insert({ board_id: boardId, item_id: itemId, created_by: identity.userId }).select("token").single();
+    if (data?.token) setToken(data.token as string);
+    setBusy(false);
+  };
+  const revoke = async () => {
+    setBusy(true);
+    await supabase.from("calendar_subscriptions").delete().eq("board_id", boardId).eq("item_id", itemId);
+    setToken(null);
+    setBusy(false);
+  };
+  const regenerate = async () => {
+    setBusy(true);
+    await supabase.from("calendar_subscriptions").delete().eq("board_id", boardId).eq("item_id", itemId);
+    const { data } = await supabase.from("calendar_subscriptions")
+      .insert({ board_id: boardId, item_id: itemId, created_by: identity.userId }).select("token").single();
+    setToken((data?.token as string) ?? null);
+    setBusy(false);
+  };
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const httpsUrl = token ? `${origin}/api/calendar/${token}.ics` : "";
+  const webcalUrl = httpsUrl.replace(/^https?:/, "webcal:");
+
+  const copy = () => {
+    void navigator.clipboard?.writeText(httpsUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <section>
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Subscribe</p>
+      <p className="mb-2 text-[9px] text-[var(--text-muted)]">A live feed URL that stays in sync — add it in Google/Apple/Outlook to see this board&apos;s events on your phone.</p>
+      {loading ? (
+        <p className="text-[9px] text-[var(--text-muted)]">…</p>
+      ) : token ? (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-1.5">
+            <input readOnly value={httpsUrl} onFocus={(e) => e.currentTarget.select()}
+              className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[10px] text-[var(--text-secondary)] outline-none" />
+            <button onClick={copy} className="shrink-0 rounded border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">{copied ? "Copied" : "Copy"}</button>
+          </div>
+          <div className="flex items-center gap-2">
+            <a href={webcalUrl} className="text-[10px] font-medium text-[var(--accent)] hover:underline">Subscribe in calendar app</a>
+            <span className="ml-auto flex gap-2">
+              <button onClick={regenerate} disabled={busy} className="text-[9px] text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-40">Regenerate</button>
+              <button onClick={revoke} disabled={busy} className="text-[9px] text-[var(--text-muted)] hover:text-red-400 disabled:opacity-40">Revoke</button>
+            </span>
+          </div>
+          <p className="text-[9px] text-orange-400/80">Anyone with this link can view the board&apos;s events. Regenerate to invalidate the old URL.</p>
+        </div>
+      ) : (
+        <button onClick={enable} disabled={busy}
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-[var(--border)] py-1.5 text-[10px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-40">
+          <Link2 size={12} /> Enable subscription URL
+        </button>
+      )}
+    </section>
+  );
+}
+
 export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId?: string; boxId?: string }) {
   const events: CalendarEvent[] = item.calendarEvents ?? [];
   const feeds: CalendarFeed[] = item.calendarFeeds ?? [];
@@ -6037,6 +6134,9 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
           <FileDown size={12} /> Export .ics{events.length > 0 ? ` (${events.length})` : ""}
         </button>
       </section>
+
+      {/* Subscribe (live feed URL) */}
+      {boardId && <CalendarSubscribeSection boardId={boardId} itemId={item.id} />}
 
       {/* Display */}
       <section>
