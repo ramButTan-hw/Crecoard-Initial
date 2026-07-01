@@ -94,13 +94,28 @@ export function PlayerHost() {
           const offscreen = r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw || r.width < 8 || r.height < 8;
           if (!offscreen) {
             pinned = true;
+            // Sit just above the slot's outermost stacking ancestor (the board
+            // item/box root carries an unbounded bring-to-front z-index that
+            // competes at root level — a static z would end up underneath and
+            // the item's transparent layers would eat every click). Capped
+            // below modals/menus (z 300+).
+            let rootZ: number | null = null;
+            let cur: HTMLElement | null = slot.el;
+            while (cur && cur !== document.body) {
+              const zi = getComputedStyle(cur).zIndex;
+              if (zi !== "auto") {
+                const n = parseInt(zi, 10);
+                if (!Number.isNaN(n)) rootZ = n;
+              }
+              cur = cur.parentElement;
+            }
             el.style.left = `${r.left}px`;
             el.style.top = `${r.top}px`;
             el.style.width = `${r.width}px`;
             el.style.height = `${r.height}px`;
             el.style.right = "auto";
             el.style.bottom = "auto";
-            el.style.zIndex = "25";
+            el.style.zIndex = String(rootZ !== null ? Math.min(rootZ + 1, 299) : 25);
             el.style.borderRadius = "8px";
             el.style.pointerEvents = slot.interactive ? "auto" : "none";
           }
