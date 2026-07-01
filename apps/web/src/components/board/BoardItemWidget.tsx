@@ -260,7 +260,7 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
   return (
     <>
       <div
-        className={cn("absolute group/biw", isSelected && "ring-2 ring-[var(--accent)] ring-offset-1 ring-offset-transparent")}
+        className={cn("board-item-widget absolute group/biw", isSelected && "ring-2 ring-[var(--accent)] ring-offset-1 ring-offset-transparent")}
         style={{
           left: displayX,
           top: displayY,
@@ -282,6 +282,19 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
             bringBoardItemToFront(boardId, item.id);
           }
         }}
+        onPointerDown={(e) => {
+          // Header-drag: item chrome tagged [data-item-drag] moves the whole item,
+          // so users can grab e.g. a chat channel's title bar instead of hunting
+          // for the thin top handle. Interactive elements inside headers still win.
+          if (e.button !== 0 || isFinished || !canEditBoard || item.locked) return;
+          const el = e.target as HTMLElement;
+          if (el.closest('button,a,input,textarea,select,[contenteditable="true"],[data-nodrag]')) return;
+          if (el.closest("[data-item-drag]")) {
+            selectBoardItem(item.id);
+            bringBoardItemToFront(boardId, item.id);
+            handleDragStart(e);
+          }
+        }}
         onContextMenuCapture={(e) => {
           if (isFinished || !canEditBoard) return;
           e.preventDefault();
@@ -290,18 +303,21 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
         }}
         onContextMenu={handleContextMenu}
       >
-        {/* Drag handle — thin strip at top; visible on hover, or when selected (touch) */}
+        {/* Drag handle — strip at top; visible on hover, or when selected (touch).
+            Sits ABOVE the n-resize edge (z-30 > z-25) so the whole strip actually
+            moves the item; inset from the corners so nw/ne resize stays reachable. */}
         {!isFinished && canEditBoard && (
           <div
             className={cn(
-              "absolute left-0 right-0 z-20 flex items-center justify-center transition-opacity",
+              "absolute z-30 flex items-center justify-center transition-opacity",
               isSelected ? "opacity-100" : "opacity-0 group-hover/biw:opacity-100"
             )}
             style={{
-              top: 0, height: isMobile ? 16 : 10,
+              top: 0, left: 12, right: 12, height: isMobile ? 22 : 16,
               cursor: "grab",
               background: "rgba(88,101,242,0.55)",
               backdropFilter: "blur(2px)",
+              borderRadius: "0 0 6px 6px",
             }}
             onPointerDown={handleDragStart}
           >

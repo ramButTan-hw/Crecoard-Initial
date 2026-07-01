@@ -104,3 +104,10 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   /* Comfortable minimum tap target for icon buttons that opt in. */
   .tap-target { min-width: 40px; min-height: 40px; }
 }
+
+/* ── Board-level item drag ──────────────────────────────────────────────────
+   Item chrome tagged with data-item-drag (chat/community/twitch headers) moves
+   the whole item when it's rendered directly on the board canvas. Scoped to
+   .board-item-widget so the same headers inside boxes keep normal cursors. */
+.board-item-widget [data-item-drag] { cursor: grab; user-select: none; -webkit-user-select: none; }
+.board-item-widget [data-item-drag]:active { cursor: grabbing; }

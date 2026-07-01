@@ -430,9 +430,9 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   return (
     <div className="relative flex h-full flex-col" style={rootStyle}>
       {bgLayer}
-      {/* Channel header */}
+      {/* Channel header — data-item-drag: grabbing it moves the item on the board canvas */}
       {!hideHeader && (
-        <div className="relative z-10 flex flex-shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+        <div data-item-drag className="relative z-10 flex flex-shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
           <span
             className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-sm font-bold leading-none text-white"
             style={{ background: accent }}

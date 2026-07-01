@@ -161,8 +161,8 @@ export function TwitchItem({ item, boardId, boxId, collapsed, isFinished, onUpda
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-md border border-[var(--border)]" style={{ background: "var(--surface-raised)", ...container }}>
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2 flex-shrink-0" style={{ borderLeftWidth: 3, borderLeftColor: purple }}>
+      {/* Header — data-item-drag: grabbing it moves the item on the board canvas */}
+      <div data-item-drag className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2 flex-shrink-0" style={{ borderLeftWidth: 3, borderLeftColor: purple }}>
         <Twitch size={13} style={{ color: purple }} className="flex-shrink-0" />
         <span className="flex-1 truncate text-xs font-bold">{data?.displayName ?? channel}</span>
         {data?.isLive ? (

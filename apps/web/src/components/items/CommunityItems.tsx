@@ -97,7 +97,7 @@ export function SuggestionItem({ item, boardId, collapsed, canContribute }: Rend
 
   return (
     <div className="flex h-full w-full flex-col gap-1.5 overflow-hidden text-sm" style={container}>
-      <div className="flex items-center gap-1.5 shrink-0 text-[var(--text-secondary)]">
+      <div data-item-drag className="flex items-center gap-1.5 shrink-0 text-[var(--text-secondary)]">
         <Lightbulb size={14} style={{ color: accent }} />
         <span className="font-semibold truncate">{item.suggestionTitle || "Suggestions"}</span>
         <span className="ml-auto text-[11px] text-[var(--text-muted)]">{suggestions.length}</span>
@@ -196,7 +196,7 @@ export function GuestbookItem({ item, boardId, collapsed, canContribute }: Rende
 
   return (
     <div className="flex h-full w-full flex-col gap-1.5 overflow-hidden text-sm" style={container}>
-      <div className="flex items-center gap-1.5 shrink-0 text-[var(--text-secondary)]">
+      <div data-item-drag className="flex items-center gap-1.5 shrink-0 text-[var(--text-secondary)]">
         <PenLine size={14} style={{ color: accent }} />
         <span className="font-semibold truncate">{item.guestbookTitle || "Guestbook"}</span>
         <span className="ml-auto text-[11px] text-[var(--text-muted)]">{entries.length}</span>
@@ -278,7 +278,7 @@ export function PollItem({ item, boardId, collapsed, isFinished, canContribute }
 
   return (
     <div className="flex h-full w-full flex-col gap-1.5 overflow-hidden text-sm" style={container}>
-      <div className="flex items-center gap-1.5 shrink-0 text-[var(--text-secondary)]">
+      <div data-item-drag className="flex items-center gap-1.5 shrink-0 text-[var(--text-secondary)]">
         <Vote size={14} style={{ color: accent }} />
         <span className="font-semibold truncate">{item.pollQuestion || "Poll"}</span>
       </div>
