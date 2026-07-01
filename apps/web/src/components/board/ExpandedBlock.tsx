@@ -446,9 +446,10 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
     setSelectedItemId((prev) => {
       if (prev === itemId) { setRightTab("items"); return null; }
       setRightTab("item");
-      if (isMobile) setMobilePanelOpen(true); // surface item settings as a sheet
       return itemId;
     });
+    // Settings are opened explicitly via the Editor button, not on select — so
+    // tapping/dragging an item to move or resize it doesn't pop the sheet.
   };
 
   return (

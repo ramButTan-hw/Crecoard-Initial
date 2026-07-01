@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CopyPlus, Trash2, ArrowUpToLine, ArrowDownToLine, Lock, Unlock, LockOpen, Eye, EyeOff, ShieldCheck,
+  CopyPlus, Trash2, ArrowUpToLine, ArrowDownToLine, Lock, Unlock, LockOpen, Eye, EyeOff, ShieldCheck, SlidersHorizontal,
 } from "lucide-react";
 import { BoardLevelItem, useBoardStore, isContributableType } from "@/store/boardStore";
 import { useCanEditBoard, useServerBoard, roleAllowed } from "@/contexts/ServerBoardContext";
@@ -310,6 +310,9 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
         {/* Mobile: delete/duplicate when selected */}
         {!isFinished && canEditBoard && isMobile && isSelected && (
           <div className="absolute top-2 right-1 z-30 flex items-center gap-1">
+            <button onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("crecoard:open-item-settings")); }} title="Settings" className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--surface-overlay)] text-[var(--text-secondary)] shadow">
+              <SlidersHorizontal size={14} />
+            </button>
             <button onClick={(e) => { e.stopPropagation(); duplicateBoardItem(boardId, item.id); }} title="Duplicate" className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--surface-overlay)] text-[var(--text-secondary)] shadow">
               <CopyPlus size={14} />
             </button>

@@ -22,12 +22,14 @@ interface BottomBarProps {
   onSettingsOpen: () => void;
   onTemplatesOpen: () => void;
   onProfileOpen: () => void;
+  /** Notifies the parent when a bottom-bar overlay (profile popup / server grid) is open. */
+  onMenuStateChange?: (open: boolean) => void;
 }
 
 export function BottomBar({
   activeView, activeServerId, showFriends,
   onViewChange, onFriendsToggle, onServerSelect,
-  onSettingsOpen, onTemplatesOpen, onProfileOpen,
+  onSettingsOpen, onTemplatesOpen, onProfileOpen, onMenuStateChange,
 }: BottomBarProps) {
   const [mounted, setMounted] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -37,6 +39,9 @@ export function BottomBar({
   const { identity, signOut } = useUser();
 
   useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    onMenuStateChange?.(showProfile || showServerGrid || showCreateServer);
+  }, [showProfile, showServerGrid, showCreateServer, onMenuStateChange]);
   const { servers: realServers } = useServers();
   const supabaseReady = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&

@@ -264,6 +264,17 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
 
   const handleCtxMenuClose = useCallback(() => setCtxMenu(null), []);
 
+  // Suppress the tap-to-expand click that fires after a drag (touch especially),
+  // so "hold to move" doesn't also expand the box / open its editor.
+  const draggedRef = useRef(false);
+  useEffect(() => {
+    if (isDragging) { draggedRef.current = true; return; }
+    if (draggedRef.current) {
+      const t = setTimeout(() => { draggedRef.current = false; }, 60);
+      return () => clearTimeout(t);
+    }
+  }, [isDragging]);
+
   const commitRename = useCallback(() => {
     const title = renameInput.trim();
     if (title) {
@@ -444,6 +455,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
         }}
         onClick={(e) => {
           e.stopPropagation();
+          if (draggedRef.current) { draggedRef.current = false; return; } // ignore click after a drag
           if (!isFinished) {
             selectBox(box.id);
             bringToFront(boardId, box.id);

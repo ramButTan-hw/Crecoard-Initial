@@ -757,7 +757,7 @@ export function BoardCanvas() {
       <button
         onClick={handleFitContent}
         title="Fit content to view"
-        className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-muted)] shadow-lg hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors"
+        className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-muted)] shadow-lg transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] md:left-auto md:right-3"
       >
         <ScanSearch size={12} />
         Fit

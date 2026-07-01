@@ -133,6 +133,16 @@ function AppShellInner() {
   // ── Mobile shell: side panels become bottom sheets; palette opens from a FAB ──
   const isMobile = useIsMobile();
   const [mobilePaletteOpen, setMobilePaletteOpen] = useState(false);
+  const [bottomMenuOpen, setBottomMenuOpen] = useState(false); // BottomBar profile popup / server grid
+  // Mobile: board-item settings sheet opens via an explicit gear (event), not on
+  // selection — so moving/resizing an item doesn't pop its settings.
+  const [mobileItemSettingsOpen, setMobileItemSettingsOpen] = useState(false);
+  useEffect(() => {
+    const open = () => setMobileItemSettingsOpen(true);
+    window.addEventListener("crecoard:open-item-settings", open);
+    return () => window.removeEventListener("crecoard:open-item-settings", open);
+  }, []);
+  useEffect(() => { if (!selectedBoardItemId) setMobileItemSettingsOpen(false); }, [selectedBoardItemId]);
   // Whether the canvas accepts edits in the current view (gates palette/panels).
   const canvasEditable = activeView === "board"
     ? !isFinished
@@ -821,8 +831,8 @@ function AppShellInner() {
             {selectedBoxId && <StylePanel boxId={selectedBoxId} />}
           </MobileSheet>
           <MobileSheet
-            open={!!selectedBoardItemId}
-            onClose={() => useBoardStore.getState().selectBoardItem(null)}
+            open={!!selectedBoardItemId && mobileItemSettingsOpen}
+            onClose={() => setMobileItemSettingsOpen(false)}
             title="Item settings"
           >
             <BoardItemPanel />
@@ -830,7 +840,7 @@ function AppShellInner() {
           <MobileSheet open={mobilePaletteOpen} onClose={() => setMobilePaletteOpen(false)} title="Add item">
             <ItemPalette onPick={addItemAtCenter} />
           </MobileSheet>
-          {!selectedBoxId && !selectedBoardItemId && !mobilePaletteOpen && (
+          {!selectedBoxId && !selectedBoardItemId && !mobilePaletteOpen && !bottomMenuOpen && (
             <button
               onClick={() => setMobilePaletteOpen(true)}
               aria-label="Add item"
@@ -855,6 +865,7 @@ function AppShellInner() {
           onSettingsOpen={() => setShowUserSettings(true)}
           onTemplatesOpen={() => setShowTemplates(true)}
           onProfileOpen={() => setShowProfile(true)}
+          onMenuStateChange={setBottomMenuOpen}
         />
       </div>
 
