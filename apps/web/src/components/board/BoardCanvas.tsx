@@ -351,6 +351,92 @@ export function BoardCanvas() {
     return () => el.removeEventListener("wheel", onWheel);
   }, [setZoom, setPanOffset]);
 
+  // ── Touch gestures: one-finger pan (on empty canvas) + two-finger pinch-zoom ──
+  // Box/item dragging stays with dnd-kit's TouchSensor (200ms press-and-hold), so a
+  // quick swipe pans instead of dragging. touch-action:none on the viewport stops
+  // the browser hijacking the gestures for native scroll/zoom.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+
+    let mode: "none" | "pan" | "pinch" = "none";
+    let sx = 0, sy = 0;
+    let sPan = { x: 0, y: 0 };
+    let sDist = 0, sZoom = 1, sMid = { x: 0, y: 0 };
+
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const mid = (t: TouchList) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+    const pannable = (target: EventTarget | null) =>
+      target instanceof Element && (target === canvasRef.current || target.hasAttribute("data-pannable"));
+
+    const onStart = (e: TouchEvent) => {
+      const state = useBoardStore.getState();
+      if (e.touches.length === 2) {
+        mode = "pinch";
+        sDist = dist(e.touches);
+        sZoom = state.zoom;
+        sMid = mid(e.touches);
+        sPan = { ...state.panOffset };
+        panMoved.current = true;
+        e.preventDefault();
+      } else if (e.touches.length === 1 && pannable(e.target)) {
+        mode = "pan";
+        sx = e.touches[0].clientX;
+        sy = e.touches[0].clientY;
+        sPan = { ...state.panOffset };
+        panMoved.current = false;
+      } else {
+        mode = "none";
+      }
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (mode === "pinch" && e.touches.length >= 2) {
+        e.preventDefault();
+        const rect = el.getBoundingClientRect();
+        const m = mid(e.touches);
+        const raw = sZoom * (dist(e.touches) / (sDist || 1));
+        const newZoom = parseFloat(Math.max(useBoardStore.getState().minZoom, Math.min(3, raw)).toFixed(3));
+        const ratio = newZoom / sZoom;
+        const ax = sMid.x - rect.left;
+        const ay = sMid.y - rect.top;
+        setZoom(newZoom);
+        setPanOffset({
+          x: ax - (ax - sPan.x) * ratio + (m.x - sMid.x),
+          y: ay - (ay - sPan.y) * ratio + (m.y - sMid.y),
+        });
+      } else if (mode === "pan" && e.touches.length === 1) {
+        const dx = e.touches[0].clientX - sx;
+        const dy = e.touches[0].clientY - sy;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) panMoved.current = true;
+        e.preventDefault();
+        setPanOffset({ x: sPan.x + dx, y: sPan.y + dy });
+      }
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) { mode = "none"; return; }
+      if (e.touches.length === 1) {
+        // Dropped from two fingers to one → continue panning with the remaining finger.
+        mode = "pan";
+        sx = e.touches[0].clientX;
+        sy = e.touches[0].clientY;
+        sPan = { ...useBoardStore.getState().panOffset };
+      }
+    };
+
+    el.addEventListener("touchstart", onStart, { passive: false });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, [setZoom, setPanOffset]);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -587,7 +673,7 @@ export function BoardCanvas() {
       <div
         ref={viewportRef}
         className="absolute inset-0 overflow-hidden"
-        style={{ zIndex: 2, cursor: panning ? "grabbing" : undefined }}
+        style={{ zIndex: 2, cursor: panning ? "grabbing" : undefined, touchAction: "none" }}
         onMouseDown={handlePanMouseDown}
         onMouseMove={handleMouseMove}
       >
