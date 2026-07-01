@@ -7,7 +7,7 @@ import {
   Code2, Music, Kanban, MessageSquare, FolderOpen,
   ChevronDown, ChevronRight,
   Layers, LayoutGrid, Image, KanbanSquare, Minus, Zap, Gamepad2,
-  Lightbulb, PenLine, Vote,
+  Lightbulb, PenLine, Vote, Twitch,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 import { BlockItem, ItemType, useBoardStore, useActiveBoard } from "@/store/boardStore";
@@ -184,6 +184,13 @@ export const ITEM_DEFINITIONS: {
     }),
   },
   {
+    type: "twitch",
+    label: "Twitch Status",
+    icon: <Twitch size={15} />,
+    description: "Live / offline + next stream",
+    defaultItem: () => ({ type: "twitch", twitchShowSchedule: true }),
+  },
+  {
     type: "embed-card",
     label: "Integration Card",
     icon: <Zap size={15} />,
@@ -274,6 +281,7 @@ function ItemTypeIcon({ type, size = 11 }: { type: ItemType; size?: number }) {
     case "suggestion": return <Lightbulb {...p} />;
     case "guestbook": return <PenLine {...p} />;
     case "poll": return <Vote {...p} />;
+    case "twitch": return <Twitch {...p} />;
     default: return <FileText {...p} />;
   }
 }
@@ -283,7 +291,7 @@ const TYPE_LABEL: Partial<Record<ItemType, string>> = {
   calendar: "Calendar", timer: "Timer", embed: "Embed", api: "API",
   graph: "Graph", playlist: "Playlist", kanban: "Kanban",
   chat: "Chat", filebank: "Files", widget: "Widget", divider: "Divider",
-  suggestion: "Suggestions", guestbook: "Guestbook", poll: "Poll",
+  suggestion: "Suggestions", guestbook: "Guestbook", poll: "Poll", twitch: "Twitch",
 };
 
 // ─── Collection section ───────────────────────────────────────────────────────

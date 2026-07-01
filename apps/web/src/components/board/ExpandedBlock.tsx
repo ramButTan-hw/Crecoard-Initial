@@ -21,6 +21,7 @@ import { ItemPermissionModal } from "./PermissionModal";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { ItemRenderer, ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel, ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, KanbanStylePanel, ChatStylePanel, chatChannelsInUse } from "@/components/items/ItemRenderer";
 import { SuggestionStylePanel, GuestbookStylePanel, PollStylePanel } from "@/components/items/CommunityItems";
+import { TwitchStylePanel } from "@/components/items/TwitchItem";
 import { FontPicker } from "@/components/ui/FontPicker";
 import { loadGoogleFont } from "@/lib/fonts";
 import { ITEM_DEFINITIONS } from "./ItemPalette";
@@ -55,6 +56,7 @@ const DEFAULT_SIZES: Record<ItemType, { w: number; h: number }> = {
   poll:         { w: 340, h: 280 },
   "embed-card": { w: 320, h: 220 },
   "external":   { w: 300, h: 300 },
+  twitch:       { w: 320, h: 300 },
 };
 
 function getDefaultLayout(item: BlockItem, idx: number) {
@@ -825,6 +827,12 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
               )}
               {selectedItem.type === "poll" && (
                 <PollStylePanel
+                  item={selectedItem}
+                  upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
+                />
+              )}
+              {selectedItem.type === "twitch" && (
+                <TwitchStylePanel
                   item={selectedItem}
                   upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
                 />

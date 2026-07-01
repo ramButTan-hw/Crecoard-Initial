@@ -36,6 +36,7 @@ import { DEFAULT_WIDGET_CODE } from "@/lib/defaultWidgetCode";
 import { EmbedCardItem } from "@/components/items/EmbedCardItem";
 import { ExternalItem } from "@/components/items/ExternalItem";
 import { SuggestionItem, GuestbookItem, PollItem } from "@/components/items/CommunityItems";
+import { TwitchItem } from "@/components/items/TwitchItem";
 import { nanoid } from "nanoid";
 import DOMPurify from "isomorphic-dompurify";
 import { cn } from "@/lib/utils";
@@ -183,6 +184,7 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     case "suggestion":  return <SuggestionItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} />;
     case "guestbook":   return <GuestbookItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} />;
     case "poll":        return <PollItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} />;
+    case "twitch":      return <TwitchItem item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} onUpdate={onUpdate} />;
     default:            return null;
   }})();
 

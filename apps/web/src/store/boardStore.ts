@@ -35,7 +35,7 @@ export type ItemType =
   | "chat" | "filebank"
   | "suggestion" | "guestbook" | "poll"
   | "embed-card"
-  | "external";
+  | "external" | "twitch";
 
 /**
  * Item types whose viewer-facing content lives in board_item_contributions
@@ -113,6 +113,28 @@ export interface SteamData {
   status: SteamStatus;
   currentGame?: string;
   recentGames: SteamGame[];
+  fetchedAt: number;
+}
+
+// ─── Twitch live-status ─────────────────────────────────────────────────────────
+export interface TwitchScheduleSegment {
+  title?: string;
+  startTime: string;   // ISO
+  category?: string;
+}
+
+export interface TwitchData {
+  channel: string;         // login (lowercase)
+  displayName: string;
+  profileImageUrl?: string;
+  description?: string;
+  isLive: boolean;
+  title?: string;          // stream title when live
+  gameName?: string;       // category when live
+  viewerCount?: number;
+  startedAt?: string;      // ISO, when the live stream began
+  thumbnailUrl?: string;   // resolved live thumbnail (template already filled)
+  nextStream?: TwitchScheduleSegment; // next scheduled stream when offline
   fetchedAt: number;
 }
 
@@ -357,6 +379,11 @@ export interface BlockItem {
   trackerGGData?: TrackerGGData;
   steam?: SteamConfig;
   steamData?: SteamData;
+
+  // twitch live-status
+  twitchChannel?: string;         // login/username
+  twitchData?: TwitchData;
+  twitchShowSchedule?: boolean;   // show next scheduled stream when offline (default true)
 
   // embed-card (webhook / integration display)
   embedCard?: EmbedCardData;
