@@ -435,7 +435,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
       onClick={(e) => { if (e.target === backdropRef.current) close(); }}
     >
       <div
-        className="flex h-[92vh] w-[92vw] max-w-[1400px] overflow-hidden rounded-2xl shadow-2xl"
+        className="flex h-[92dvh] w-[92vw] max-w-[1400px] overflow-hidden rounded-2xl shadow-2xl max-md:h-[100dvh] max-md:w-full max-md:max-w-none max-md:rounded-none"
         style={{
           border: box.style.borderStyle === "glow"
             ? "none"
@@ -456,7 +456,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
           >
             <div className="h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: box.style.borderColor }} />
             <input
-              className="flex-1 bg-transparent text-lg font-semibold text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+              className="min-w-0 flex-1 bg-transparent text-lg font-semibold text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
               placeholder="Block title…"
               value={box.title}
               readOnly={isFinished}
@@ -477,7 +477,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
             ) : (
               <span className="text-xs text-[var(--text-muted)]">{box.items.length} items · {summaryItems.length} in summary</span>
             )}
-            <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] p-0.5">
+            <div className="hidden items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] p-0.5 sm:flex">
               <button
                 onClick={() => setCanvasZoom((v) => Math.max(0.5, Math.round((v - 0.25) * 4) / 4))}
                 className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
@@ -502,12 +502,12 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
             </div>
             <button
               onClick={() => setShowGrid((v) => !v)}
-              className={cn("rounded p-1.5 transition-colors", showGrid ? "bg-[var(--accent)]/20 text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]")}
+              className={cn("hidden rounded p-1.5 transition-colors sm:block", showGrid ? "bg-[var(--accent)]/20 text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]")}
               title="Toggle grid"
             >
               <Grid3X3 size={15} />
             </button>
-            <button onClick={close} className="rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">
+            <button onClick={close} className="shrink-0 rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">
               <X size={18} />
             </button>
           </div>
@@ -631,8 +631,9 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
           </div>
         </div>
 
-        {/* ── Right panel — editors only ───────────────────────────── */}
-        {canEdit && <div className="flex w-[280px] flex-shrink-0 flex-col border-l border-[var(--border)]" style={{ background: "var(--surface-raised)" }}>
+        {/* ── Right panel — editors only (desktop; hidden on mobile to keep the
+              canvas + header usable — item settings via tap on the canvas item) ── */}
+        {canEdit && <div className="hidden md:flex w-[280px] flex-shrink-0 flex-col border-l border-[var(--border)]" style={{ background: "var(--surface-raised)" }}>
           {/* Tabs */}
           <div className="flex shrink-0 gap-0.5 border-b border-[var(--border)] px-3 pt-3 pb-2">
             <div className="flex gap-0.5 rounded-lg bg-[var(--surface-overlay)] p-0.5 w-full">

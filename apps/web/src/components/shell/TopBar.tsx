@@ -89,7 +89,7 @@ export function TopBar() {
         }}
       >
         {/* Board name */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex min-w-0 items-center gap-1.5">
           {editingName ? (
             <input
               autoFocus
@@ -103,11 +103,11 @@ export function TopBar() {
           ) : (
             <button
               onClick={() => { if (!isFinished) { setNameInput(board?.name ?? ""); setEditingName(true); } }}
-              className="flex items-center gap-1.5 rounded px-2 py-1 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--surface-overlay)] transition-colors"
+              className="flex min-w-0 max-w-[42vw] items-center gap-1.5 rounded px-2 py-1 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--surface-overlay)] transition-colors md:max-w-none"
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
-              {board?.name}
-              {!isFinished && <Pencil size={12} className="text-[var(--text-muted)]" />}
+              <span className="truncate">{board?.name}</span>
+              {!isFinished && <Pencil size={12} className="shrink-0 text-[var(--text-muted)]" />}
             </button>
           )}
         </div>
@@ -144,16 +144,16 @@ export function TopBar() {
 
         {!isFinished && <div className="h-5 w-px bg-[var(--border)]" />}
 
-        {/* Grid toggle */}
+        {/* Grid toggle — desktop only (touch users have pinch-zoom/grid via gestures) */}
         {!isFinished && (
-          <>
+          <div className="hidden items-center gap-3 sm:flex">
             <ToolbarButton active={showGrid} onClick={toggleGrid} title="Toggle grid" desktop={isDesktop}><Grid3X3 size={15} /></ToolbarButton>
             <div className="h-5 w-px bg-[var(--border)]" />
-          </>
+          </div>
         )}
 
-        {/* Zoom */}
-        <div className="flex items-center gap-1">
+        {/* Zoom — desktop only; mobile uses pinch-zoom */}
+        <div className="hidden items-center gap-1 sm:flex">
           <ToolbarButton onClick={() => zoomAtCanvasCenter(zoom - 0.1)} title="Zoom out" desktop={isDesktop}><ZoomOut size={15} /></ToolbarButton>
           <button
             onClick={() => zoomAtCanvasCenter(1)}
@@ -170,7 +170,7 @@ export function TopBar() {
 
         {/* Presence avatars (shown when collab is on or there are remote members) */}
         {(board?.collabEnabled || members.length > 0) && (
-          <div className="flex items-center">
+          <div className="hidden items-center md:flex">
             {/* Live dot */}
             <div
               className={cn("h-1.5 w-1.5 rounded-full mr-2 transition-colors", isConnected ? "bg-green-400" : "bg-yellow-400")}
