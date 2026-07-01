@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Twitch, Users, ExternalLink, RefreshCw, CalendarClock } from "lucide-react";
 import { BlockItem, TwitchData, useBoardStore } from "@/store/boardStore";
+import { communityStyle, CommunityAppearanceSection } from "@/components/items/CommunityItems";
 
 const TWITCH_PURPLE = "#9146FF";
 const STALE_MS = 60 * 1000;      // refetch if data older than this
@@ -71,6 +72,8 @@ export function TwitchItem({ item, boardId, boxId, collapsed, isFinished, onUpda
   const channel = item.twitchChannel;
   const data = item.twitchData;
   const showSchedule = item.twitchShowSchedule !== false;
+  const purple = item.communityAccent || TWITCH_PURPLE;
+  const { container } = communityStyle(item, TWITCH_PURPLE);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,7 +114,7 @@ export function TwitchItem({ item, boardId, boxId, collapsed, isFinished, onUpda
   if (collapsed) {
     return (
       <div className="flex items-center gap-2 px-2 py-1 text-xs truncate">
-        <Twitch size={11} className="flex-shrink-0" style={{ color: TWITCH_PURPLE }} />
+        <Twitch size={11} className="flex-shrink-0" style={{ color: purple }} />
         <span className="font-bold truncate">{data?.displayName ?? channel ?? "Twitch"}</span>
         {data?.isLive ? (
           <span className="flex items-center gap-1 flex-shrink-0 text-red-500">
@@ -135,7 +138,7 @@ export function TwitchItem({ item, boardId, boxId, collapsed, isFinished, onUpda
     };
     return (
       <div className="flex h-full w-full flex-col justify-center gap-2 p-3">
-        <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: TWITCH_PURPLE }}>
+        <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: purple }}>
           <Twitch size={14} /> Twitch channel
         </div>
         <input
@@ -147,7 +150,7 @@ export function TwitchItem({ item, boardId, boxId, collapsed, isFinished, onUpda
           className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
         />
         <div className="flex gap-1.5">
-          <button onClick={save} className="flex-1 rounded px-2 py-1.5 text-xs font-medium text-white" style={{ background: TWITCH_PURPLE }}>Track</button>
+          <button onClick={save} className="flex-1 rounded px-2 py-1.5 text-xs font-medium text-white" style={{ background: purple }}>Track</button>
           {channel && <button onClick={() => setShowSetup(false)} className="rounded border border-[var(--border)] px-2.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]">Cancel</button>}
         </div>
       </div>
@@ -157,10 +160,10 @@ export function TwitchItem({ item, boardId, boxId, collapsed, isFinished, onUpda
   const channelUrl = `https://twitch.tv/${channel}`;
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden rounded-md border border-[var(--border)]" style={{ background: "var(--surface-raised)" }}>
+    <div className="flex h-full w-full flex-col overflow-hidden rounded-md border border-[var(--border)]" style={{ background: "var(--surface-raised)", ...container }}>
       {/* Header */}
-      <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2 flex-shrink-0" style={{ borderLeftWidth: 3, borderLeftColor: TWITCH_PURPLE }}>
-        <Twitch size={13} style={{ color: TWITCH_PURPLE }} className="flex-shrink-0" />
+      <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2 flex-shrink-0" style={{ borderLeftWidth: 3, borderLeftColor: purple }}>
+        <Twitch size={13} style={{ color: purple }} className="flex-shrink-0" />
         <span className="flex-1 truncate text-xs font-bold">{data?.displayName ?? channel}</span>
         {data?.isLive ? (
           <span className="flex items-center gap-1 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-black tracking-wide text-red-500">
@@ -221,7 +224,7 @@ export function TwitchItem({ item, boardId, boxId, collapsed, isFinished, onUpda
             ) : (
               <p className="text-[11px] text-[var(--text-muted)]">Currently offline</p>
             )}
-            <a href={channelUrl} target="_blank" rel="noopener noreferrer" className="mt-1 flex items-center gap-1 text-[11px] font-medium hover:underline" style={{ color: TWITCH_PURPLE }}>
+            <a href={channelUrl} target="_blank" rel="noopener noreferrer" className="mt-1 flex items-center gap-1 text-[11px] font-medium hover:underline" style={{ color: purple }}>
               Visit channel <ExternalLink size={10} />
             </a>
           </div>
@@ -253,6 +256,7 @@ export function TwitchStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
           <span className="text-[var(--text-secondary)]">Show next scheduled stream when offline</span>
         </label>
       </div>
+      <CommunityAppearanceSection item={item} upd={upd} />
     </div>
   );
 }

@@ -6,7 +6,7 @@ import {
   BarChart2, Plug, CalendarDays, Table2,
   Code2, Music, Kanban, MessageSquare, FolderOpen,
   ChevronDown, ChevronRight,
-  Layers, LayoutGrid, Image, KanbanSquare, Minus, Zap, Gamepad2,
+  Layers, LayoutGrid, Image, KanbanSquare, Zap, Gamepad2,
   Lightbulb, PenLine, Vote, Twitch,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
@@ -40,6 +40,13 @@ export const ITEM_DEFINITIONS: {
     icon: <List size={15} />,
     description: "Checklist / to-do",
     defaultItem: () => ({ type: "list", listItems: [{ id: nanoid(), text: "", checked: false }], listFontAutoScale: true }),
+  },
+  {
+    type: "image",
+    label: "Image",
+    icon: <Image size={15} />,
+    description: "Photo or picture",
+    defaultItem: () => ({ type: "image", imageFit: "cover" }),
   },
   {
     type: "embed",
@@ -298,7 +305,6 @@ function ItemTypeIcon({ type, size = 11 }: { type: ItemType; size?: number }) {
     case "chat": return <MessageSquare {...p} />;
     case "filebank": return <FolderOpen {...p} />;
     case "widget": return <Code2 {...p} />;
-    case "divider": return <Minus {...p} />;
     case "suggestion": return <Lightbulb {...p} />;
     case "guestbook": return <PenLine {...p} />;
     case "poll": return <Vote {...p} />;
@@ -311,7 +317,7 @@ const TYPE_LABEL: Partial<Record<ItemType, string>> = {
   text: "Text", list: "List", table: "Table", image: "Image",
   calendar: "Calendar", timer: "Timer", embed: "Embed", api: "API",
   graph: "Graph", playlist: "Playlist", kanban: "Kanban",
-  chat: "Chat", filebank: "Files", widget: "Widget", divider: "Divider",
+  chat: "Chat", filebank: "Files", widget: "Widget",
   suggestion: "Suggestions", guestbook: "Guestbook", poll: "Poll", twitch: "Twitch",
 };
 

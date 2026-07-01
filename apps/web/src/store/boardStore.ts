@@ -30,7 +30,7 @@ export interface BoxPerms {
 
 export type ItemType =
   | "text" | "list" | "embed" | "timer"
-  | "image" | "graph" | "api" | "calendar" | "table" | "divider" | "widget"
+  | "image" | "graph" | "api" | "calendar" | "table" | "widget"
   | "playlist" | "kanban"
   | "chat" | "filebank"
   | "suggestion" | "guestbook" | "poll"
@@ -373,6 +373,23 @@ export interface BlockItem {
   pollQuestion?: string;
   pollOptions?: PollOption[];
   pollShowResults?: "always" | "afterVote"; // when non-voters see the tallies (default afterVote)
+
+  // Shared appearance for community items (suggestion / guestbook / poll / twitch)
+  communityAccent?: string;
+  communityBgColor?: string;
+  communityFontFamily?: string;
+  communityFontSize?: number;
+  communityTextColor?: string;
+  communityBorderColor?: string;
+  communityBorderWidth?: number;
+  communityBorderRadius?: number;
+
+  // image styling
+  imageFit?: "cover" | "contain" | "fill";
+  imageBorderRadius?: number;
+  imageBorderColor?: string;
+  imageBorderWidth?: number;
+  imageCaption?: string;
 
   // external integrations (tracker-gg, steam, …)
   externalProvider?: "tracker-gg" | "steam";

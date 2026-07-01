@@ -20,7 +20,7 @@ import {
 import { useCanEditBoard, useServerBoard, useServerBoardData, roleAllowed } from "@/contexts/ServerBoardContext";
 import { ItemPermissionModal } from "./PermissionModal";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
-import { ItemRenderer, ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel, ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, KanbanStylePanel, ChatStylePanel, chatChannelsInUse } from "@/components/items/ItemRenderer";
+import { ItemRenderer, ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel, ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, KanbanStylePanel, ChatStylePanel, ImageStylePanel, chatChannelsInUse } from "@/components/items/ItemRenderer";
 import { SuggestionStylePanel, GuestbookStylePanel, PollStylePanel } from "@/components/items/CommunityItems";
 import { TwitchStylePanel } from "@/components/items/TwitchItem";
 import { FontPicker } from "@/components/ui/FontPicker";
@@ -46,7 +46,6 @@ const DEFAULT_SIZES: Record<ItemType, { w: number; h: number }> = {
   api:      { w: 380, h: 240 },
   calendar: { w: 460, h: 380 },
   table:    { w: 520, h: 320 },
-  divider:  { w: 420, h: 44  },
   widget:   { w: 480, h: 340 },
   playlist: { w: 420, h: 420 },
   kanban:   { w: 700, h: 460 },
@@ -694,7 +693,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
               {([
                 { id: "items", label: "Items" },
                 { id: "collapsed", label: "Collapsed" },
-                ...(selectedItem && !["divider","chat","filebank"].includes(selectedItem.type) ? [{ id: "item", label: (() => { switch (selectedItem.type) { case "list": return "List"; case "text": return "Text"; case "graph": return "Chart"; case "timer": return "Timer"; case "api": return "API"; case "calendar": return "Calendar"; case "table": return "Table"; case "image": return "Image"; case "embed": return "Embed"; case "widget": return "Widget"; case "kanban": return "Kanban"; case "playlist": return "Playlist"; default: return "Item"; } })() }] : []),
+                ...(selectedItem && !["chat","filebank"].includes(selectedItem.type) ? [{ id: "item", label: (() => { switch (selectedItem.type) { case "list": return "List"; case "text": return "Text"; case "graph": return "Chart"; case "timer": return "Timer"; case "api": return "API"; case "calendar": return "Calendar"; case "table": return "Table"; case "image": return "Image"; case "embed": return "Embed"; case "widget": return "Widget"; case "kanban": return "Kanban"; case "playlist": return "Playlist"; default: return "Item"; } })() }] : []),
                 { id: "style", label: "Style" },
               ] as { id: string; label: string }[]).map((t) => (
                 <button
@@ -893,23 +892,10 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                 />
               )}
               {selectedItem.type === "image" && (
-                <div className="flex flex-col gap-3 p-3">
-                  <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Fit</label>
-                  <div className="flex gap-1">
-                    {(["cover","contain","fill"] as const).map(fit => (
-                      <button key={fit} onClick={() => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, { imageObjectFit: fit })}
-                        className={cn("flex-1 rounded-lg border px-2 py-1.5 text-xs capitalize transition-colors",
-                          selectedItem.imageObjectFit === fit ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]")}>
-                        {fit}
-                      </button>
-                    ))}
-                  </div>
-                  <label className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Alt text</label>
-                  <input className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-                    placeholder="Describe this image…"
-                    value={selectedItem.imageAlt ?? ""}
-                    onChange={e => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, { imageAlt: e.target.value })} />
-                </div>
+                <ImageStylePanel
+                  item={selectedItem}
+                  upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
+                />
               )}
               {!["list","text","graph","embed","timer","api","calendar","table","playlist","kanban","image"].includes(selectedItem.type) && (
                 <div className="p-4 text-xs text-[var(--text-muted)]">No style options for this item type.</div>

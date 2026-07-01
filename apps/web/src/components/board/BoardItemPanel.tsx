@@ -5,7 +5,7 @@ import { useBoardStore, useActiveBoard, BoardLevelItem } from "@/store/boardStor
 import { useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
 import {
   ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel,
-  ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, ChatStylePanel, chatChannelsInUse,
+  ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, ChatStylePanel, ImageStylePanel, chatChannelsInUse,
 } from "@/components/items/ItemRenderer";
 import { TextStylePanel } from "@/components/board/ExpandedBlock";
 import { EmbedCardStylePanel } from "@/components/items/EmbedCardItem";
@@ -108,7 +108,10 @@ export function BoardItemPanel() {
         {item.type === "twitch" && (
           <TwitchStylePanel item={item} upd={upd} />
         )}
-        {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","external","chat","suggestion","guestbook","poll","twitch"].includes(item.type) && (
+        {item.type === "image" && (
+          <ImageStylePanel item={item} upd={upd} />
+        )}
+        {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","external","chat","suggestion","guestbook","poll","twitch","image"].includes(item.type) && (
           <div className="p-4 text-xs text-[var(--text-muted)]">No style options for this item type.</div>
         )}
         {item.settingsLocked && (

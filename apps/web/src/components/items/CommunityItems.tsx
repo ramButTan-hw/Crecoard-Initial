@@ -7,6 +7,7 @@ import type { BlockItem, PollOption } from "@/store/boardStore";
 import { useUser } from "@/contexts/UserContext";
 import { useItemContributions } from "@/contexts/BoardContributionsContext";
 import { useCanEditBoard } from "@/contexts/ServerBoardContext";
+import { FontPicker } from "@/components/ui/FontPicker";
 import { cn } from "@/lib/utils";
 
 type Upd = (p: Partial<BlockItem>) => void;
@@ -20,7 +21,24 @@ interface RendererProps {
   canContribute?: boolean;
 }
 
-// ─── Shared bits ────────────────────────────────────────────────────────────
+// ─── Shared appearance ──────────────────────────────────────────────────────
+
+/** Resolves the community appearance fields into an accent + container style. */
+export function communityStyle(item: BlockItem, defaultAccent = "var(--accent)") {
+  const accent = item.communityAccent || defaultAccent;
+  const bordered = (item.communityBorderWidth ?? 0) > 0;
+  const boxed = !!item.communityBgColor || bordered;
+  const container: React.CSSProperties = {
+    background: item.communityBgColor || undefined,
+    color: item.communityTextColor || undefined,
+    fontFamily: item.communityFontFamily || undefined,
+    fontSize: item.communityFontSize ? `${item.communityFontSize}px` : undefined,
+    border: bordered ? `${item.communityBorderWidth}px solid ${item.communityBorderColor || "var(--border)"}` : undefined,
+    borderRadius: item.communityBorderRadius ?? undefined,
+    padding: boxed ? 10 : undefined,
+  };
+  return { accent, container };
+}
 
 /** Small pending / author line shared by suggestion + guestbook entries. */
 function Attribution({ name, pending }: { name: string; pending?: boolean }) {
@@ -44,6 +62,7 @@ export function SuggestionItem({ item, boardId, collapsed, canContribute }: Rend
   const canModerate = useCanEditBoard();
   const { contributions, add, removeOwn, moderateRemove, togglePin, setApproved } = useItemContributions(item.id, boardId);
   const [draft, setDraft] = useState("");
+  const { accent, container } = communityStyle(item);
 
   const requireApproval = !!item.requireContributionApproval;
   const allowUpvotes = item.suggestionAllowUpvotes !== false; // default on
@@ -77,9 +96,9 @@ export function SuggestionItem({ item, boardId, collapsed, canContribute }: Rend
   };
 
   return (
-    <div className="flex h-full w-full flex-col gap-1.5 overflow-hidden text-sm">
+    <div className="flex h-full w-full flex-col gap-1.5 overflow-hidden text-sm" style={container}>
       <div className="flex items-center gap-1.5 shrink-0 text-[var(--text-secondary)]">
-        <Lightbulb size={14} className="text-[var(--accent)]" />
+        <Lightbulb size={14} style={{ color: accent }} />
         <span className="font-semibold truncate">{item.suggestionTitle || "Suggestions"}</span>
         <span className="ml-auto text-[11px] text-[var(--text-muted)]">{suggestions.length}</span>
       </div>
@@ -100,8 +119,9 @@ export function SuggestionItem({ item, boardId, collapsed, canContribute }: Rend
                   onClick={() => canContribute && toggleUpvote(c.id)}
                   disabled={!canContribute}
                   title={canContribute ? (upvoted ? "Remove upvote" : "Upvote") : "Upvoting disabled"}
+                  style={upvoted ? { color: accent } : undefined}
                   className={cn("flex flex-col items-center rounded px-1 py-0.5 leading-none transition-colors",
-                    upvoted ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]",
+                    upvoted ? "" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]",
                     !canContribute && "opacity-50 cursor-default")}
                 >
                   <ArrowBigUp size={14} fill={upvoted ? "currentColor" : "none"} />
@@ -111,7 +131,7 @@ export function SuggestionItem({ item, boardId, collapsed, canContribute }: Rend
               <div className="min-w-0 flex-1">
                 <p className="break-words leading-snug">{c.content}</p>
                 <div className="mt-0.5 flex items-center gap-1">
-                  {c.pinned && <Pin size={9} className="text-[var(--accent)]" />}
+                  {c.pinned && <Pin size={9} style={{ color: accent }} />}
                   <Attribution name={c.authorName} pending={!c.approved} />
                 </div>
               </div>
@@ -121,7 +141,7 @@ export function SuggestionItem({ item, boardId, collapsed, canContribute }: Rend
                     <button {...swallow} onClick={() => void setApproved(c.id, true)} title="Approve" className="rounded p-0.5 text-[var(--text-muted)] opacity-0 transition-colors hover:text-green-400 group-hover/s:opacity-100"><Check size={12} /></button>
                   )}
                   {canModerate && (
-                    <button {...swallow} onClick={() => void togglePin(c.id, !c.pinned)} title={c.pinned ? "Unpin" : "Pin"} className={cn("rounded p-0.5 transition-colors", c.pinned ? "text-[var(--accent)]" : "text-[var(--text-muted)] opacity-0 hover:text-[var(--text-primary)] group-hover/s:opacity-100")}><Pin size={12} /></button>
+                    <button {...swallow} onClick={() => void togglePin(c.id, !c.pinned)} title={c.pinned ? "Unpin" : "Pin"} style={c.pinned ? { color: accent } : undefined} className={cn("rounded p-0.5 transition-colors", c.pinned ? "" : "text-[var(--text-muted)] opacity-0 hover:text-[var(--text-primary)] group-hover/s:opacity-100")}><Pin size={12} /></button>
                   )}
                   {(isOwn || canModerate) && (
                     <button {...swallow} onClick={() => void (isOwn ? removeOwn(c.id) : moderateRemove(c.id))} title="Remove" className="rounded p-0.5 text-[var(--text-muted)] opacity-0 transition-colors hover:text-red-400 group-hover/s:opacity-100"><Trash2 size={12} /></button>
@@ -143,7 +163,7 @@ export function SuggestionItem({ item, boardId, collapsed, canContribute }: Rend
             placeholder={item.suggestionPrompt || "Suggest something…"}
             className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
           />
-          <button {...swallow} onClick={submit} className="rounded bg-[var(--accent)] px-2 py-1 text-xs text-white transition-opacity hover:opacity-90">Suggest</button>
+          <button {...swallow} onClick={submit} style={{ background: accent }} className="rounded px-2 py-1 text-xs text-white transition-opacity hover:opacity-90">Suggest</button>
         </div>
       )}
     </div>
@@ -157,6 +177,7 @@ export function GuestbookItem({ item, boardId, collapsed, canContribute }: Rende
   const canModerate = useCanEditBoard();
   const { contributions, add, removeOwn, moderateRemove, setApproved } = useItemContributions(item.id, boardId);
   const [draft, setDraft] = useState("");
+  const { accent, container } = communityStyle(item);
 
   const requireApproval = !!item.requireContributionApproval;
   const me = identity.userId;
@@ -174,9 +195,9 @@ export function GuestbookItem({ item, boardId, collapsed, canContribute }: Rende
   };
 
   return (
-    <div className="flex h-full w-full flex-col gap-1.5 overflow-hidden text-sm">
+    <div className="flex h-full w-full flex-col gap-1.5 overflow-hidden text-sm" style={container}>
       <div className="flex items-center gap-1.5 shrink-0 text-[var(--text-secondary)]">
-        <PenLine size={14} className="text-[var(--accent)]" />
+        <PenLine size={14} style={{ color: accent }} />
         <span className="font-semibold truncate">{item.guestbookTitle || "Guestbook"}</span>
         <span className="ml-auto text-[11px] text-[var(--text-muted)]">{entries.length}</span>
       </div>
@@ -220,7 +241,7 @@ export function GuestbookItem({ item, boardId, collapsed, canContribute }: Rende
             placeholder={item.guestbookPrompt || "Leave a message…"}
             className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
           />
-          <button {...swallow} onClick={submit} className="rounded bg-[var(--accent)] px-2 py-1 text-xs text-white transition-opacity hover:opacity-90">Sign</button>
+          <button {...swallow} onClick={submit} style={{ background: accent }} className="rounded px-2 py-1 text-xs text-white transition-opacity hover:opacity-90">Sign</button>
         </div>
       )}
     </div>
@@ -233,6 +254,7 @@ export function PollItem({ item, boardId, collapsed, isFinished, canContribute }
   const { identity } = useUser();
   const canModerate = useCanEditBoard();
   const { contributions, add, editOwn, removeOwn } = useItemContributions(item.id, boardId);
+  const { accent, container } = communityStyle(item);
 
   const options = item.pollOptions ?? [];
   const me = identity.userId;
@@ -255,9 +277,9 @@ export function PollItem({ item, boardId, collapsed, isFinished, canContribute }
   };
 
   return (
-    <div className="flex h-full w-full flex-col gap-1.5 overflow-hidden text-sm">
+    <div className="flex h-full w-full flex-col gap-1.5 overflow-hidden text-sm" style={container}>
       <div className="flex items-center gap-1.5 shrink-0 text-[var(--text-secondary)]">
-        <Vote size={14} className="text-[var(--accent)]" />
+        <Vote size={14} style={{ color: accent }} />
         <span className="font-semibold truncate">{item.pollQuestion || "Poll"}</span>
       </div>
 
@@ -275,16 +297,17 @@ export function PollItem({ item, boardId, collapsed, isFinished, canContribute }
               {...swallow}
               onClick={() => castVote(o.id)}
               disabled={!canContribute}
+              style={mine ? { borderColor: accent } : undefined}
               className={cn("relative w-full overflow-hidden rounded-md border px-2.5 py-1.5 text-left transition-colors",
-                mine ? "border-[var(--accent)]" : "border-[var(--border)]",
-                canContribute ? "hover:border-[var(--accent)] cursor-pointer" : "cursor-default")}
+                mine ? "" : "border-[var(--border)]",
+                canContribute ? "cursor-pointer hover:border-[var(--text-muted)]" : "cursor-default")}
             >
               {showResults && (
                 <span aria-hidden className="absolute inset-y-0 left-0 z-0 transition-[width] duration-300"
-                  style={{ width: `${pct}%`, background: mine ? "var(--accent)" : "var(--border)", opacity: mine ? 0.28 : 0.5 }} />
+                  style={{ width: `${pct}%`, background: mine ? accent : "var(--border)", opacity: mine ? 0.28 : 0.5 }} />
               )}
               <span className="relative z-10 flex items-center gap-2">
-                {mine && <Check size={12} className="shrink-0 text-[var(--accent)]" />}
+                {mine && <Check size={12} className="shrink-0" style={{ color: accent }} />}
                 <span className="min-w-0 flex-1 truncate">{o.label || "Untitled"}</span>
                 {showResults && <span className="shrink-0 text-[11px] tabular-nums text-[var(--text-muted)]">{pct}% · {count}</span>}
               </span>
@@ -316,6 +339,51 @@ function ApprovalToggle({ item, upd }: { item: BlockItem; upd: Upd }) {
   );
 }
 
+function ColorRow({ label, value, fallback, onChange, onClear }: {
+  label: string; value?: string; fallback: string; onChange: (v: string) => void; onClear?: () => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 transition-colors hover:border-[var(--text-muted)]">
+      <span className="relative h-5 w-5 flex-shrink-0 overflow-hidden rounded border border-white/15" style={{ backgroundColor: value || fallback }}>
+        <input type="color" value={value || fallback} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+      </span>
+      <span className="flex-1 text-[var(--text-secondary)]">{label}</span>
+      {value && onClear && (
+        <button onClick={(e) => { e.preventDefault(); onClear(); }} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset</button>
+      )}
+    </label>
+  );
+}
+
+function Slider({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (v: number) => void }) {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="w-14 text-[var(--text-muted)]">{label}</span>
+      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="flex-1 accent-[var(--accent)]" />
+      <span className="w-6 text-right tabular-nums text-[var(--text-muted)]">{value}</span>
+    </label>
+  );
+}
+
+/** Shared appearance controls for community items (suggestion/guestbook/poll/twitch). */
+export function CommunityAppearanceSection({ item, upd }: { item: BlockItem; upd: Upd }) {
+  return (
+    <div>
+      <p className={LABEL_CLS}>Appearance</p>
+      <div className="flex flex-col gap-2">
+        <ColorRow label="Accent" value={item.communityAccent} fallback="#6c63ff" onChange={(v) => upd({ communityAccent: v })} onClear={() => upd({ communityAccent: undefined })} />
+        <ColorRow label="Background" value={item.communityBgColor} fallback="#17181d" onChange={(v) => upd({ communityBgColor: v })} onClear={() => upd({ communityBgColor: undefined })} />
+        <ColorRow label="Text" value={item.communityTextColor} fallback="#e7e7ea" onChange={(v) => upd({ communityTextColor: v })} onClear={() => upd({ communityTextColor: undefined })} />
+        <FontPicker compact value={item.communityFontFamily ?? "Inter"} onChange={(f) => upd({ communityFontFamily: f || undefined })} />
+        <Slider label="Size" min={11} max={22} value={item.communityFontSize ?? 14} onChange={(v) => upd({ communityFontSize: v })} />
+        <ColorRow label="Border" value={item.communityBorderColor} fallback="#2a2b31" onChange={(v) => upd({ communityBorderColor: v })} onClear={() => upd({ communityBorderColor: undefined })} />
+        <Slider label="Width" min={0} max={4} value={item.communityBorderWidth ?? 0} onChange={(v) => upd({ communityBorderWidth: v })} />
+        <Slider label="Radius" min={0} max={24} value={item.communityBorderRadius ?? 0} onChange={(v) => upd({ communityBorderRadius: v })} />
+      </div>
+    </div>
+  );
+}
+
 export function SuggestionStylePanel({ item, upd }: { item: BlockItem; upd: Upd }) {
   return (
     <div className="flex flex-col gap-4 p-3 text-xs">
@@ -337,6 +405,7 @@ export function SuggestionStylePanel({ item, upd }: { item: BlockItem; upd: Upd 
           <ApprovalToggle item={item} upd={upd} />
         </div>
       </div>
+      <CommunityAppearanceSection item={item} upd={upd} />
     </div>
   );
 }
@@ -356,6 +425,7 @@ export function GuestbookStylePanel({ item, upd }: { item: BlockItem; upd: Upd }
         <p className={LABEL_CLS}>Behaviour</p>
         <ApprovalToggle item={item} upd={upd} />
       </div>
+      <CommunityAppearanceSection item={item} upd={upd} />
     </div>
   );
 }
@@ -411,6 +481,8 @@ export function PollStylePanel({ item, upd }: { item: BlockItem; upd: Upd }) {
           ))}
         </div>
       </div>
+
+      <CommunityAppearanceSection item={item} upd={upd} />
     </div>
   );
 }

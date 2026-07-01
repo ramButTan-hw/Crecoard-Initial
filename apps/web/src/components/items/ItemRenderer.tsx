@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
 import { useItemContributions } from "@/contexts/BoardContributionsContext";
 import { useCanEditBoard } from "@/contexts/ServerBoardContext";
+import { uploadFile } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import { buildIcs } from "@/lib/ics";
 import { REMINDER_LEADS, eventStartDate, createReminder } from "@/lib/reminders";
@@ -176,7 +177,6 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     case "api":      return <ApiItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "calendar": return <CalendarItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "table":    return <TableItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
-    case "divider":  return <hr className="border-[var(--border)] my-1" />;
     case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "playlist": return <PlaylistItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "kanban":   return <KanbanItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
@@ -3731,69 +3731,153 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
 
 // ─── Image ────────────────────────────────────────────────────────────────────
 
-function ImageItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+/** Upload to Supabase storage; fall back to an inline data URL in guest/local mode. */
+async function readImageToUrl(file: File, userId: string): Promise<string> {
+  const uploaded = await uploadFile(file, userId, "images");
+  if (uploaded) return uploaded;
+  return await new Promise<string>((resolve) => {
     const reader = new FileReader();
-    reader.onload = (ev) => upd({ imageUrl: ev.target?.result as string });
+    reader.onload = (ev) => resolve(ev.target?.result as string);
     reader.readAsDataURL(file);
+  });
+}
+
+function ImageItem({ item, upd, collapsed, isFinished }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean }) {
+  const { identity } = useUser();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    upd({ imageUrl: await readImageToUrl(file, identity.userId) });
+    setUploading(false);
+  };
+
+  const fit = item.imageFit ?? item.imageObjectFit ?? "cover";
+  const frame: React.CSSProperties = {
+    borderRadius: item.imageBorderRadius ?? 8,
+    border: (item.imageBorderWidth ?? 0) > 0 ? `${item.imageBorderWidth}px solid ${item.imageBorderColor || "var(--border)"}` : undefined,
   };
 
   if (!item.imageUrl) {
     if (collapsed) {
-      return <div className="flex h-full items-center justify-center opacity-30"><span className="text-[10px]">No image</span></div>;
+      return <div className="flex h-full items-center justify-center opacity-30"><ImageIcon size={20} /></div>;
     }
     return (
-      <div className="flex flex-col items-center gap-2 rounded border border-dashed border-[var(--border)] p-4 text-[var(--text-muted)]">
-        <span className="text-2xl">🖼️</span>
-        <input
-          className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm text-[var(--text-primary)] outline-none text-center placeholder:text-[var(--text-muted)]"
-          placeholder="Paste image URL…"
-          onBlur={(e) => { if (e.target.value) upd({ imageUrl: e.target.value }); }}
-        />
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-        <button
-          onClick={() => fileRef.current?.click()}
-          className="flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--border)] px-4 py-2 text-sm text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
-        >
-          <Upload size={14} /> Upload from file
-        </button>
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--border)] p-4 text-[var(--text-muted)]">
+        <ImageIcon size={24} />
+        {!isFinished && <>
+          <input
+            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm text-[var(--text-primary)] outline-none text-center placeholder:text-[var(--text-muted)]"
+            placeholder="Paste image URL…"
+            onBlur={(e) => { if (e.target.value) upd({ imageUrl: e.target.value }); }}
+          />
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 rounded-lg border border-dashed border-[var(--border)] px-4 py-2 text-sm text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50"
+          >
+            <Upload size={14} /> {uploading ? "Uploading…" : "Upload from file"}
+          </button>
+        </>}
       </div>
     );
   }
 
   return (
-    <div className="relative flex flex-col gap-1">
-      <img
-        src={item.imageUrl}
-        alt=""
-        className={cn("w-full rounded border border-[var(--border)]", collapsed ? "h-24" : "max-h-64")}
-        style={{ objectFit: item.imageObjectFit ?? "cover" }}
-      />
-      {!isFinished && !collapsed && (
-        <div className="flex items-center gap-1">
-          {(["cover", "contain", "fill"] as const).map((fit) => (
-            <button
-              key={fit}
-              onClick={() => upd({ imageObjectFit: fit })}
-              className={cn("rounded px-2 py-0.5 text-xs capitalize transition-colors", (item.imageObjectFit ?? "cover") === fit ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]")}
-            >
-              {fit}
+    <div className="relative h-full w-full overflow-hidden" style={{ borderRadius: item.imageBorderRadius ?? 8 }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={item.imageUrl} alt={item.imageCaption ?? ""} className="h-full w-full" style={{ objectFit: fit, ...frame }} />
+      {item.imageCaption && (
+        <div className="absolute inset-x-0 bottom-0 truncate bg-black/55 px-2 py-1 text-[11px] text-white">{item.imageCaption}</div>
+      )}
+    </div>
+  );
+}
+
+export function ImageStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const { identity } = useUser();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const fit = item.imageFit ?? item.imageObjectFit ?? "cover";
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    upd({ imageUrl: await readImageToUrl(file, identity.userId) });
+    setUploading(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-4 p-3 text-xs">
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Source</p>
+        <input
+          className="mb-1.5 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+          placeholder="Image URL…"
+          value={item.imageUrl?.startsWith("data:") ? "" : (item.imageUrl ?? "")}
+          onChange={(e) => upd({ imageUrl: e.target.value || undefined })}
+        />
+        <div className="flex gap-1.5">
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          <button onClick={() => fileRef.current?.click()} disabled={uploading} className="flex flex-1 items-center justify-center gap-1.5 rounded border border-dashed border-[var(--border)] py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50">
+            <Upload size={11} /> {uploading ? "Uploading…" : item.imageUrl ? "Replace" : "Upload"}
+          </button>
+          {item.imageUrl && (
+            <button onClick={() => upd({ imageUrl: "" })} className="rounded border border-[var(--border)] px-2.5 text-xs text-[var(--text-muted)] transition-colors hover:text-red-400">Clear</button>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Fit</p>
+        <div className="flex gap-1">
+          {(["cover", "contain", "fill"] as const).map((f) => (
+            <button key={f} onClick={() => upd({ imageFit: f })}
+              className={cn("flex-1 rounded border px-2 py-1.5 capitalize transition-colors", fit === f ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]")}>
+              {f}
             </button>
           ))}
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-          <button onClick={() => fileRef.current?.click()} className="ml-auto flex items-center gap-1 rounded px-2 py-0.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors border border-[var(--border)]">
-            <Upload size={11} /> Replace
-          </button>
-          <button onClick={() => upd({ imageUrl: "" })} className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors border border-[var(--border)]">
-            <Trash2 size={11} /> Remove
-          </button>
         </div>
-      )}
+      </div>
+
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Frame</p>
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2">
+            <span className="w-14 text-[var(--text-muted)]">Radius</span>
+            <input type="range" min={0} max={32} value={item.imageBorderRadius ?? 8} onChange={(e) => upd({ imageBorderRadius: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+            <span className="w-6 text-right tabular-nums text-[var(--text-muted)]">{item.imageBorderRadius ?? 8}</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="w-14 text-[var(--text-muted)]">Border</span>
+            <input type="range" min={0} max={8} value={item.imageBorderWidth ?? 0} onChange={(e) => upd({ imageBorderWidth: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
+            <span className="w-6 text-right tabular-nums text-[var(--text-muted)]">{item.imageBorderWidth ?? 0}</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 transition-colors hover:border-[var(--text-muted)]">
+            <span className="relative h-5 w-5 flex-shrink-0 overflow-hidden rounded border border-white/15" style={{ backgroundColor: item.imageBorderColor || "#2a2b31" }}>
+              <input type="color" value={item.imageBorderColor || "#2a2b31"} onChange={(e) => upd({ imageBorderColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+            </span>
+            <span className="flex-1 text-[var(--text-secondary)]">Border color</span>
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Caption</p>
+        <input
+          className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+          placeholder="Optional caption…"
+          value={item.imageCaption ?? ""}
+          onChange={(e) => upd({ imageCaption: e.target.value || undefined })}
+        />
+      </div>
     </div>
   );
 }
