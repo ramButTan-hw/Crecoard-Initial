@@ -16,13 +16,11 @@ import { useCollab } from "@/lib/useCollabSession";
 import { ItemRenderer } from "@/components/items/ItemRenderer";
 import { DeckBox } from "./DeckBox";
 import { ContextMenu } from "@/components/ui/ContextMenu";
+import { magnetize } from "@/lib/snapToGrid";
 import { cn } from "@/lib/utils";
 
 const MIN_W = 160;
 const MIN_H = 100;
-const GRID = 20;
-
-function snap(v: number) { return Math.round(v / GRID) * GRID; }
 
 // ─── Collapsed item card (absolute-positioned, draggable + resizable) ──────────
 
@@ -206,6 +204,8 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
         e.stopPropagation(); e.preventDefault();
         resizing.current = true;
         resizeOrigin.current = { mx: e.clientX, my: e.clientY, x: box.x, y: box.y, w: box.width, h: box.height };
+        const snapEnabled = useBoardStore.getState().showGrid;
+        const snap = (v: number) => magnetize(v, snapEnabled);
 
         const compute = (ev: MouseEvent) => {
           const dx = (ev.clientX - resizeOrigin.current.mx) / zoom;

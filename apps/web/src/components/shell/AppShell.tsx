@@ -29,8 +29,8 @@ import { ProfileModal } from "./ProfileModal";
 import { SettingsModal } from "./SettingsModal";
 import { UserProfileModal, type ViewableUser } from "./UserProfileModal";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
-import { createSnapToGrid } from "@/lib/snapToGrid";
-import { CANVAS_WIDTH, CANVAS_HEIGHT, SNAP_UNIT } from "@/lib/boardConstants";
+import { createSnapToGrid, magnetize } from "@/lib/snapToGrid";
+import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/boardConstants";
 import { applyThemeVars, applyAppFont, CSS_VAR_NAMES, ThemeVarMap } from "@/lib/appThemes";
 import { CollabContext, useCollabSessionSetup } from "@/lib/useCollabSession";
 import { getSelfIdentity } from "@/lib/collaboration";
@@ -127,6 +127,7 @@ function AppShellInner() {
   });
   const selectedBoxId = useBoardStore((s) => s.selectedBoxId);
   const expandedBoxId = useBoardStore((s) => s.expandedBoxId);
+  const showGrid = useBoardStore((s) => s.showGrid);
   const board = useActiveBoard();
   const isFinished = board?.isFinished ?? false;
 
@@ -315,7 +316,7 @@ function AppShellInner() {
   const touchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } });
   const sensors = useSensors(mouseSensor, touchSensor);
   // Zoom-aware snap: snap to GRID_MINOR canvas px regardless of zoom level
-  const snapToGrid = useMemo(() => createSnapToGrid(zoom), [zoom]);
+  const snapToGrid = useMemo(() => createSnapToGrid(zoom, showGrid), [zoom, showGrid]);
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
     // Block all drag interactions in live preview and for members
@@ -349,7 +350,7 @@ function AppShellInner() {
       const board = state.boards.find((b) => b.id === effectiveBoardId) ?? state.serverBoards[effectiveBoardId];
       const box = board?.boxes.find((b) => b.id === boxId);
       if (!box) return;
-      const snap = (v: number) => Math.round(v / SNAP_UNIT) * SNAP_UNIT;
+      const snap = (v: number) => magnetize(v, state.showGrid);
       setDragPos({
         x: snap(box.x + deltaX / state.zoom),
         y: snap(box.y + deltaY / state.zoom),
@@ -381,7 +382,7 @@ function AppShellInner() {
       const board = state.boards.find((b) => b.id === boardId) ?? state.serverBoards[boardId];
       const box = board?.boxes.find((b) => b.id === boxId);
       if (box && e.delta) {
-        const snap = (v: number) => Math.round(v / SNAP_UNIT) * SNAP_UNIT;
+        const snap = (v: number) => magnetize(v, state.showGrid);
         const newX = Math.max(0, Math.min(CANVAS_WIDTH - box.width, snap(box.x + e.delta.x / state.zoom)));
         const newY = Math.max(0, Math.min(CANVAS_HEIGHT - box.height, snap(box.y + e.delta.y / state.zoom)));
         const cx = newX + box.width / 2;

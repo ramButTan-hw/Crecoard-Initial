@@ -11,9 +11,8 @@ import { ItemRenderer } from "@/components/items/ItemRenderer";
 import { ContextMenu, type ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { magnetize } from "@/lib/snapToGrid";
 
-const GRID = 20;
-const snap = (v: number) => Math.round(v / GRID) * GRID;
 const MIN_W = 80;
 const MIN_H = 40;
 
@@ -70,6 +69,7 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
     const startY = e.clientY;
     const origX = item.boardX;
     const origY = item.boardY;
+    const snap = (v: number) => magnetize(v, useBoardStore.getState().showGrid);
 
     const onMove = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) / zoom;
@@ -110,6 +110,7 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
         const origY = item.boardY;
         const origW = item.boardW;
         const origH = item.boardH;
+        const snap = (v: number) => magnetize(v, useBoardStore.getState().showGrid);
 
         const compute = (ev: PointerEvent) => {
           const dx = (ev.clientX - startX) / zoom;
