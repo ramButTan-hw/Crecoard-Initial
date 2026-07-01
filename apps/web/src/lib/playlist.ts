@@ -20,11 +20,14 @@ export interface EmbedResult {
 export function resolveEmbed(raw: string, autoplay: boolean): EmbedResult {
   const url = raw.trim();
 
+  // origin is required for YouTube's postMessage API to send state events back
+  const ytOrigin = typeof window !== "undefined" ? `&origin=${encodeURIComponent(window.location.origin)}` : "";
+
   // YouTube playlist
   const ytPlaylistMatch = url.match(/youtube\.com\/(?:playlist\?|watch\?[^#]*)list=([A-Za-z0-9_-]+)/);
   if (ytPlaylistMatch) return {
     kind: "iframe",
-    url: `https://www.youtube.com/embed/videoseries?list=${ytPlaylistMatch[1]}&autoplay=${autoplay ? 1 : 0}&rel=0&enablejsapi=1`,
+    url: `https://www.youtube.com/embed/videoseries?list=${ytPlaylistMatch[1]}&autoplay=${autoplay ? 1 : 0}&rel=0&enablejsapi=1${ytOrigin}`,
     platform: "YouTube",
     aspectRatio: "16/9",
     isPlaylist: true,
@@ -41,7 +44,7 @@ export function resolveEmbed(raw: string, autoplay: boolean): EmbedResult {
     const m = url.match(p);
     if (m) return {
       kind: "iframe",
-      url: `https://www.youtube.com/embed/${m[1]}?autoplay=${autoplay ? 1 : 0}&rel=0&enablejsapi=1`,
+      url: `https://www.youtube.com/embed/${m[1]}?autoplay=${autoplay ? 1 : 0}&rel=0&enablejsapi=1${ytOrigin}`,
       platform: "YouTube",
       aspectRatio: "16/9",
     };

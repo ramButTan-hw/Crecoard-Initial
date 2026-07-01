@@ -132,14 +132,27 @@ export function PlayerHost() {
   useEffect(() => {
     if (embed?.platform !== "YouTube") return;
     ytReadyRef.current = false;
+    let gotMessage = false;
     const sendVol = (v: number) => iframeRef.current?.contentWindow?.postMessage(
       JSON.stringify({ event: "command", func: "setVolume", args: [v] }), "*"
     );
+    // YouTube only starts streaming state events after a "listening" handshake.
+    // One onLoad shot is racy (and needs channel:"widget"), so retry until the
+    // first message arrives.
+    const sendListening = () => iframeRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*"
+    );
+    const handshake = setInterval(() => {
+      if (gotMessage) { clearInterval(handshake); return; }
+      sendListening();
+    }, 600);
+    sendListening();
     const onMsg = (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
       try {
         const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        if (d?.event === "onReady") { ytReadyRef.current = true; sendVol(volRef.current); }
+        if (!gotMessage) { gotMessage = true; ytReadyRef.current = true; sendVol(volRef.current); }
+        if (d?.event === "onReady") sendVol(volRef.current);
         const state: unknown = d?.event === "onStateChange" ? d.info : d?.info?.playerState;
         if (state === 1) usePlayerStore.getState().setPlaying(true);
         else if (state === 2) usePlayerStore.getState().setPlaying(false);
@@ -147,7 +160,7 @@ export function PlayerHost() {
       } catch {}
     };
     window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
+    return () => { window.removeEventListener("message", onMsg); clearInterval(handshake); };
   }, [embed?.url, embed?.platform]);
 
   useEffect(() => {
