@@ -11,7 +11,7 @@ import { FriendsView } from "./FriendsView";
 import { BoardTabs } from "./BoardTabs";
 import { TopBar } from "./TopBar";
 import { BoardCanvas } from "../board/BoardCanvas";
-import { ItemPalette } from "../board/ItemPalette";
+import { ItemPalette, ITEM_DEFINITIONS } from "../board/ItemPalette";
 import { ExpandedBlock } from "../board/ExpandedBlock";
 import { BoardItemPanel } from "../board/BoardItemPanel";
 import { StylePanel } from "../box/StylePanel";
@@ -19,7 +19,9 @@ import { ServerBoardHeader } from "../server/ServerBoardHeader";
 import { DmPopout } from "./DmPopout";
 import { ChatDrawer } from "./ChatDrawer";
 import { UsernameSetupModal } from "./UsernameSetupModal";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Plus } from "lucide-react";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { MobileSheet } from "@/components/ui/MobileSheet";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { SettingsPanel } from "./SettingsPanel";
 import { TemplatesModal } from "./TemplatesModal";
@@ -127,6 +129,44 @@ function AppShellInner() {
   const expandedBoxId = useBoardStore((s) => s.expandedBoxId);
   const board = useActiveBoard();
   const isFinished = board?.isFinished ?? false;
+
+  // ── Mobile shell: side panels become bottom sheets; palette opens from a FAB ──
+  const isMobile = useIsMobile();
+  const [mobilePaletteOpen, setMobilePaletteOpen] = useState(false);
+  // Whether the canvas accepts edits in the current view (gates palette/panels).
+  const canvasEditable = activeView === "board"
+    ? !isFinished
+    : (isDraftMode && (viewerRole === "owner" || viewerRole === "admin"));
+
+  // Tap-to-add (mobile): place a board-level item at the visible canvas centre.
+  const addItemAtCenter = useCallback((def: (typeof ITEM_DEFINITIONS)[number]) => {
+    const state = useBoardStore.getState();
+    const boardId = activeView === "server" && activeServerId
+      ? (activeServerBoardId ?? activeBoardId)
+      : activeBoardId;
+    if (!boardId) return;
+    const scrollEl = (document.querySelector("[data-board-canvas]") as HTMLElement | null)?.parentElement;
+    const rect = scrollEl?.getBoundingClientRect();
+    const sizes: Record<string, [number, number]> = {
+      text: [280, 120], list: [280, 200], timer: [200, 200], graph: [360, 260],
+      table: [500, 300], calendar: [400, 340], image: [280, 200], embed: [360, 260],
+      widget: [360, 260], api: [280, 180], playlist: [280, 300], chat: [320, 420],
+      suggestion: [320, 320], guestbook: [320, 340], poll: [320, 280], twitch: [320, 300],
+    };
+    const [w, h] = sizes[def.type] ?? [280, 200];
+    const snap = (v: number) => Math.round(v / 20) * 20;
+    let boardX = 40, boardY = 40;
+    if (rect) {
+      const cx = (rect.width / 2 - state.panOffset.x) / state.zoom;
+      const cy = (rect.height / 2 - state.panOffset.y) / state.zoom;
+      boardX = Math.max(0, snap(cx - w / 2));
+      boardY = Math.max(0, snap(cy - h / 2));
+    }
+    const boardItem = { ...def.defaultItem(), id: nanoid(), showInCollapsed: false as const, boardX, boardY, boardW: w, boardH: h };
+    state.addBoardItem(boardId, boardItem);
+    collabRef.current?.broadcastOp?.({ op: "addBoardItem", boardId, item: boardItem });
+    setMobilePaletteOpen(false);
+  }, [activeView, activeServerId, activeServerBoardId, activeBoardId]);
 
   const webhookBoardId = activeView === "server" && activeServerId
     ? (realServers.find((s) => s.id === activeServerId) ?? MOCK_SERVERS.find((s) => s.id === activeServerId))?.boardId ?? null
@@ -615,10 +655,10 @@ function AppShellInner() {
                 <BoardTabs />
                 <TopBar />
                 <div className="flex flex-1 overflow-hidden">
-                  <ItemPalette />
+                  {!isMobile && <ItemPalette />}
                   <BoardCanvas />
-                  {selectedBoxId && !isFinished && !expandedBoxId && !selectedBoardItemId && <StylePanel boxId={selectedBoxId} />}
-                  {selectedBoardItemId && !isFinished && !expandedBoxId && <BoardItemPanel />}
+                  {!isMobile && selectedBoxId && !isFinished && !expandedBoxId && !selectedBoardItemId && <StylePanel boxId={selectedBoxId} />}
+                  {!isMobile && selectedBoardItemId && !isFinished && !expandedBoxId && <BoardItemPanel />}
                 </div>
               </div>
             </DndContext>
@@ -683,10 +723,10 @@ function AppShellInner() {
                 <CollabContext.Provider value={collabSession}>
                   <DndContext id="dnd-server-canvas" sensors={sensors} modifiers={[snapToGrid]} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragEnd={handleDragEnd}>
                     <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}>
-                      {isDraftMode && canEdit && <ItemPalette />}
+                      {!isMobile && isDraftMode && canEdit && <ItemPalette />}
                       <BoardCanvas />
-                      {selectedBoxId && !expandedBoxId && !selectedBoardItemId && isDraftMode && canEdit && <StylePanel boxId={selectedBoxId} />}
-                      {selectedBoardItemId && !expandedBoxId && isDraftMode && canEdit && <BoardItemPanel />}
+                      {!isMobile && selectedBoxId && !expandedBoxId && !selectedBoardItemId && isDraftMode && canEdit && <StylePanel boxId={selectedBoxId} />}
+                      {!isMobile && selectedBoardItemId && !expandedBoxId && isDraftMode && canEdit && <BoardItemPanel />}
                       {!isDraftMode && !hasLiveVersion && (
                         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, pointerEvents: "none" }}>
                           <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Nothing published yet.</p>
@@ -769,6 +809,39 @@ function AppShellInner() {
           onClose={() => setOpenDmIds((prev) => prev.filter((id) => id !== dmId))}
         />
       ))}
+
+      {/* Mobile: side panels as bottom sheets + a FAB to open the item palette */}
+      {isMobile && canvasEditable && !expandedBoxId && (
+        <>
+          <MobileSheet
+            open={!!selectedBoxId && !selectedBoardItemId}
+            onClose={() => useBoardStore.getState().selectBox(null)}
+            title="Block settings"
+          >
+            {selectedBoxId && <StylePanel boxId={selectedBoxId} />}
+          </MobileSheet>
+          <MobileSheet
+            open={!!selectedBoardItemId}
+            onClose={() => useBoardStore.getState().selectBoardItem(null)}
+            title="Item settings"
+          >
+            <BoardItemPanel />
+          </MobileSheet>
+          <MobileSheet open={mobilePaletteOpen} onClose={() => setMobilePaletteOpen(false)} title="Add item">
+            <ItemPalette onPick={addItemAtCenter} />
+          </MobileSheet>
+          {!selectedBoxId && !selectedBoardItemId && !mobilePaletteOpen && (
+            <button
+              onClick={() => setMobilePaletteOpen(true)}
+              aria-label="Add item"
+              className="fixed right-4 z-[1100] flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-lg transition-transform active:scale-95"
+              style={{ bottom: "calc(52px + env(safe-area-inset-bottom) + 14px)" }}
+            >
+              <Plus size={22} />
+            </button>
+          )}
+        </>
+      )}
 
       {/* Bottom navigation bar */}
       <div style={{ position: "relative", zIndex: 1 }}>

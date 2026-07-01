@@ -212,11 +212,28 @@ export const ITEM_DEFINITIONS: {
 
 // ─── Draggable palette item ───────────────────────────────────────────────────
 
-function DraggableItem({ def, selectedBoxId }: { def: (typeof ITEM_DEFINITIONS)[number]; selectedBoxId: string | null }) {
+function DraggableItem({ def, selectedBoxId, onPick }: { def: (typeof ITEM_DEFINITIONS)[number]; selectedBoxId: string | null; onPick?: (def: (typeof ITEM_DEFINITIONS)[number]) => void }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `palette-${def.type}`,
     data: { kind: "new-item", itemType: def.type, defaultItem: def.defaultItem },
+    disabled: !!onPick, // mobile: tap to add instead of drag
   });
+
+  // Tap-to-add mode (mobile bottom sheet) — no drag, placed at canvas center.
+  if (onPick) {
+    return (
+      <button
+        onClick={() => onPick(def)}
+        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] active:bg-[var(--surface-overlay)]"
+      >
+        <span className="flex-shrink-0 text-[var(--text-muted)]">{def.icon}</span>
+        <div className="flex min-w-0 flex-col">
+          <span className="text-sm leading-tight">{def.label}</span>
+          <span className="text-[10px] leading-tight text-[var(--text-muted)]">{def.description}</span>
+        </div>
+      </button>
+    );
+  }
 
   return (
     <div
@@ -395,7 +412,7 @@ function CollectionSection({ boardId }: { boardId: string }) {
 
 // ─── Main palette ─────────────────────────────────────────────────────────────
 
-export function ItemPalette() {
+export function ItemPalette({ onPick }: { onPick?: (def: (typeof ITEM_DEFINITIONS)[number]) => void } = {}) {
   const personalBoard = useActiveBoard();
   const serverBoard = useServerBoardData();
   const board = serverBoard ?? personalBoard;
@@ -403,6 +420,7 @@ export function ItemPalette() {
   const hasAppBg = useHasAppBg();
   const { serverId } = useServerBoard();
   const visibleDefs = ITEM_DEFINITIONS.filter(d => !d.serverOnly || serverId !== null);
+  const mobile = !!onPick;
 
   const [collectionOpen, setCollectionOpen] = useState(true);
 
@@ -414,23 +432,28 @@ export function ItemPalette() {
 
   return (
     <div
-      className="flex w-[196px] flex-shrink-0 flex-col overflow-y-auto border-r border-[var(--border)]"
-      style={{ background: hasAppBg ? "transparent" : "var(--surface-raised)" }}
+      className={cn(
+        "flex flex-col overflow-y-auto",
+        mobile ? "w-full" : "w-[196px] flex-shrink-0 border-r border-[var(--border)]"
+      )}
+      style={{ background: mobile ? "transparent" : (hasAppBg ? "transparent" : "var(--surface-raised)") }}
     >
       {/* Items section */}
       <div className="border-b border-[var(--border)]">
-        <div className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-          Items
-        </div>
+        {!mobile && (
+          <div className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            Items
+          </div>
+        )}
         <div className="pb-2">
           {visibleDefs.map((def) => (
-            <DraggableItem key={def.type} def={def} selectedBoxId={selectedBoxId} />
+            <DraggableItem key={def.type} def={def} selectedBoxId={selectedBoxId} onPick={onPick} />
           ))}
         </div>
       </div>
 
-      {/* Collection section */}
-      {board && (
+      {/* Collection section — desktop only (mobile sheet stays focused on adding) */}
+      {!mobile && board && (
         <div className="border-b border-[var(--border)]">
           <SectionHeader
             label="Collection"
