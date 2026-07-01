@@ -756,7 +756,7 @@ function AppShellInner() {
           />
           {/* Friends #1 — modal entry animation; Friends #2 — viewport overflow guard */}
           <div
-            className="fixed z-[999] w-[520px] max-h-[min(600px,calc(100vh-120px))] rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in-0 duration-150"
+            className="fixed z-[999] w-[min(520px,calc(100vw-24px))] max-h-[min(600px,calc(100vh-120px))] rounded-2xl border border-[var(--border)] shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in-0 duration-150"
             style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
           >
             <FriendsView
@@ -908,7 +908,7 @@ function AppShellInner() {
       {publishModalOpen && (
         <div className="fixed inset-0 z-[1010] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div
-            className="w-[420px] rounded-2xl border border-[var(--border)] shadow-2xl p-6"
+            className="w-[min(420px,calc(100vw-32px))] rounded-2xl border border-[var(--border)] shadow-2xl p-6"
             style={{ background: "var(--surface-raised)" }}
           >
             <h3 className="text-base font-semibold text-[var(--text-primary)] mb-1">Publish Board</h3>

@@ -291,31 +291,32 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
       <div className="fixed inset-0 z-[1001] flex" style={{ background: "var(--surface)" }}>
         {/* Left nav */}
         <div
-          className="w-[220px] flex-shrink-0 border-r border-[var(--border)] flex flex-col p-4 gap-1"
+          className="w-14 md:w-[220px] flex-shrink-0 border-r border-[var(--border)] flex flex-col p-2 md:p-4 gap-1"
           style={{ background: "var(--sidebar)" }}
         >
-          <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          <p className="mb-2 hidden px-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] md:block">
             Server Settings
           </p>
           {NAV_ITEMS.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
+              title={item.label}
               className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
+                "flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:justify-start md:text-left",
                 activeTab === item.id
                   ? "bg-[var(--surface-overlay)] text-[var(--text-primary)]"
                   : "text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)]/50 hover:text-[var(--text-primary)]"
               )}
             >
               {item.icon && <span className="opacity-70">{item.icon}</span>}
-              {item.label}
+              <span className="hidden md:inline">{item.label}</span>
             </button>
           ))}
         </div>
 
         {/* Right content */}
-        <div className="flex-1 overflow-y-auto p-8 relative">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 relative">
           <button
             onClick={onClose}
             className="absolute right-6 top-6 flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors"

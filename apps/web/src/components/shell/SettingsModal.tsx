@@ -188,31 +188,32 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
         >
           {/* ── Sidebar ───────────────────────────────────────────── */}
           <nav
-            className="flex w-[220px] flex-shrink-0 flex-col gap-1 overflow-y-auto py-5 px-3"
+            className="flex w-14 md:w-[220px] flex-shrink-0 flex-col gap-1 overflow-y-auto py-5 px-2 md:px-3"
             style={{ background: "var(--sidebar)", borderRight: "1px solid var(--border)" }}
           >
-            <p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+            <p className="mb-2 hidden px-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] md:block">
               Settings
             </p>
 
             {GROUPS.map((group) => (
               <div key={group} className="mb-3">
-                <p className="mb-1 px-2 text-[9px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                <p className="mb-1 hidden px-2 text-[9px] font-semibold uppercase tracking-widest text-[var(--text-muted)] md:block">
                   {group}
                 </p>
                 {SECTIONS.filter((s) => s.group === group).map((s) => (
                   <button
                     key={s.id}
                     onClick={() => setActive(s.id)}
+                    title={s.label}
                     className={cn(
-                      "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all text-left",
+                      "flex w-full items-center justify-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-all md:justify-start md:text-left",
                       active === s.id
                         ? "bg-[var(--accent)] text-white"
                         : "text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
                     )}
                   >
                     {s.icon}
-                    {s.label}
+                    <span className="hidden md:inline">{s.label}</span>
                   </button>
                 ))}
               </div>

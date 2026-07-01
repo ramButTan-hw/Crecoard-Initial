@@ -10,6 +10,7 @@ import { useServers } from "@/contexts/ServersContext";
 import { CreateServerModal } from "@/components/server/CreateServerModal";
 import type { Server } from "@/types/server";
 import { useBoardStore } from "@/store/boardStore";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 interface BottomBarProps {
   activeView: "board" | "server";
@@ -32,6 +33,7 @@ export function BottomBar({
   const [showProfile, setShowProfile] = useState(false);
   const [showServerGrid, setShowServerGrid] = useState(false);
   const [showCreateServer, setShowCreateServer] = useState(false);
+  const isMobile = useIsMobile();
   const { identity, signOut } = useUser();
 
   useEffect(() => setMounted(true), []);
@@ -277,7 +279,26 @@ export function BottomBar({
         </div>
       )}
 
-      {/* Bottom bar */}
+      {/* Mobile: a compact, evenly-spaced bottom tab bar (the desktop server-rail
+          doesn't fit a phone). Servers open in the grid sheet; profile in the popup. */}
+      {isMobile ? (
+        <nav
+          className="flex flex-shrink-0 items-stretch border-t border-[var(--border)] pb-safe"
+          style={{ background: "var(--surface-raised)", position: "relative", zIndex: 1 }}
+        >
+          <MobileTab label="Boards" active={activeView === "board" && !showProfile} onClick={() => { setShowProfile(false); onViewChange("board"); }} icon={<LogoMark size={20} badge />} />
+          <MobileTab label="Servers" active={activeView === "server" && !showProfile} onClick={() => setShowServerGrid(true)} icon={<Layout size={19} />} />
+          <MobileTab label="Friends" active={showFriends && !showProfile} onClick={onFriendsToggle} icon={<Users size={19} />} />
+          <MobileTab label="You" active={showProfile} onClick={() => setShowProfile((v) => !v)} icon={
+            <span className="flex h-[22px] w-[22px] items-center justify-center overflow-hidden rounded-full" style={{ background: mounted ? (identity.color ?? "var(--surface-overlay)") : "var(--surface-overlay)" }}>
+              {mounted && identity.avatarUrl
+                ? <img src={identity.avatarUrl} alt="" className="h-full w-full object-cover" />
+                : <span className="text-[10px] font-bold text-white">{mounted ? (identity.displayName[0] ?? "?").toUpperCase() : "?"}</span>}
+            </span>
+          } />
+        </nav>
+      ) : (
+      /* Bottom bar (desktop) */
       <div
         className="flex h-[52px] flex-shrink-0 items-center border-t border-[var(--border)] overflow-visible"
         style={{ background: "var(--surface-raised)", position: "relative", zIndex: 1 }}
@@ -378,7 +399,25 @@ export function BottomBar({
 
         <div className="flex-1" />
       </div>
+      )}
     </>
+  );
+}
+
+function MobileTab({ label, icon, active, onClick }: {
+  label: string; icon: React.ReactNode; active?: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 transition-colors",
+        active ? "text-[var(--accent)]" : "text-[var(--text-muted)] active:text-[var(--text-primary)]"
+      )}
+    >
+      <span className="flex h-[22px] items-center justify-center">{icon}</span>
+      <span className="text-[10px] font-medium leading-none">{label}</span>
+    </button>
   );
 }
 

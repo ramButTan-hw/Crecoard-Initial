@@ -60,7 +60,7 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
     >
       <div
         className="relative flex flex-col bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-2xl overflow-hidden"
-        style={{ width: 920, maxHeight: "88vh" }}
+        style={{ width: "min(92vw, 920px)", maxHeight: "88vh" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ── */}
