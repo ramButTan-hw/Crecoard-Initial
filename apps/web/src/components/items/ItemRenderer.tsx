@@ -9,7 +9,7 @@ import {
   Music, SkipBack, SkipForward, Repeat, Shuffle, Volume1, Volume2, VolumeX,
   Radio, Users, Lock, LockOpen, CheckSquare, Square, Copy, FileDown, CopyPlus,
   ArrowUpToLine, ArrowDownToLine, Maximize2, Eye, EyeOff, CalendarDays, Code2, Pencil,
-  List, ListOrdered, Link2, Unlink, IndentIncrease, IndentDecrease, RemoveFormatting, GripVertical, Pin,
+  List, ListOrdered, Link2, Unlink, IndentIncrease, IndentDecrease, RemoveFormatting, GripVertical, Pin, Bell,
 } from "lucide-react";
 import { WallpaperEditor } from "@/components/ui/WallpaperEditor";
 import {
@@ -45,6 +45,7 @@ import { useItemContributions } from "@/contexts/BoardContributionsContext";
 import { useCanEditBoard } from "@/contexts/ServerBoardContext";
 import { supabase } from "@/lib/supabase";
 import { buildIcs } from "@/lib/ics";
+import { REMINDER_LEADS, eventStartDate, createReminder } from "@/lib/reminders";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 
 const CHART_COLORS = ["#d59ee8", "#48cfa6", "#f2994a", "#eb5757", "#9b51e0", "#2d9cdb"];
@@ -5203,8 +5204,11 @@ interface EventPopupProps {
   onDelete: (id: string) => void;
   onClose: () => void;
   isFinished?: boolean;
+  boardId?: string;
+  itemId?: string;
 }
-function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished }: EventPopupProps) {
+function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished, boardId, itemId }: EventPopupProps) {
+  const { identity } = useUser();
   const isNew = !event;
   const [title, setTitle] = useState(event?.title ?? "");
   const [color, setColor] = useState(event?.color ?? accent);
@@ -5215,6 +5219,32 @@ function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished
   const [location, setLocation] = useState(event?.location ?? "");
   const [allDay, setAllDay] = useState(event?.allDay ?? !event?.startTime);
   const readOnly = !!event?.feedId || isFinished;
+
+  const [remindBusy, setRemindBusy] = useState(false);
+  const [reminderMsg, setReminderMsg] = useState<string | null>(null);
+  const setReminder = async (leadMs: number) => {
+    if (!dateVal) return;
+    const start = eventStartDate(dateVal, allDay ? undefined : (startTime || undefined));
+    const remindAt = new Date(start.getTime() - leadMs);
+    if (remindAt.getTime() <= Date.now()) {
+      setReminderMsg("That time has already passed");
+      setTimeout(() => setReminderMsg(null), 3000);
+      return;
+    }
+    setRemindBusy(true);
+    const res = await createReminder({
+      userId: identity.userId,
+      title: title.trim() || "Event",
+      body: `${start.toLocaleString()}${location ? ` · ${location}` : ""}${description ? `\n\n${description}` : ""}`,
+      remindAt,
+      boardId,
+      itemId,
+      url: typeof window !== "undefined" ? window.location.origin : undefined,
+    });
+    setRemindBusy(false);
+    setReminderMsg(res.ok ? "Reminder set — you'll get an email" : "Couldn't set reminder — sign in and try again");
+    setTimeout(() => setReminderMsg(null), 3000);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -5307,6 +5337,22 @@ function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished
 
           {event?.feedId && (
             <p className="text-[9px] text-[var(--text-muted)] italic">From external calendar feed — read only</p>
+          )}
+
+          {/* Remind me */}
+          {!isNew && dateVal && (
+            <div className="flex flex-col gap-1.5 border-t border-[var(--border)] pt-2">
+              <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]"><Bell size={12} /> Remind me</div>
+              <div className="flex flex-wrap gap-1.5">
+                {REMINDER_LEADS.map(l => (
+                  <button key={l.label} disabled={remindBusy} onClick={() => setReminder(l.ms)}
+                    className="rounded border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors disabled:opacity-40">
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+              {reminderMsg && <p className="text-[10px] text-[var(--text-muted)]">{reminderMsg}</p>}
+            </div>
           )}
 
           {/* Actions */}
@@ -5547,7 +5593,7 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished, extraC
       {item.calendarBgImage && <div style={{ position:"absolute", inset:0, zIndex:0, backgroundImage:`url(${item.calendarBgImage})`, backgroundSize: item.calendarBgImageSize??"cover", backgroundPosition:"center", borderRadius: br, opacity:(item.calendarBgImageOpacity??100)/100, pointerEvents:"none" }} />}
 
       {/* Popup */}
-      {popup && <EventPopup event={popup.event} date={popup.date} accent={accent} onSave={saveEvent} onDelete={deleteEvent} onClose={() => setPopup(null)} isFinished={isFinished} />}
+      {popup && <EventPopup event={popup.event} date={popup.date} accent={accent} onSave={saveEvent} onDelete={deleteEvent} onClose={() => setPopup(null)} isFinished={isFinished} boardId={boardId} itemId={item.id} />}
 
       {/* Month/year picker — rendered at container level to escape nav overflow:hidden */}
       {showDatePicker && (
