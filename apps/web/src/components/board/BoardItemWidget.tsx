@@ -287,6 +287,7 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
           selectBoardItem(item.id);
           bringBoardItemToFront(boardId, item.id);
         }}
+        onContextMenu={handleContextMenu}
       >
         {/* Drag handle — thin strip at top; visible on hover, or when selected (touch) */}
         {!isFinished && canEditBoard && (
