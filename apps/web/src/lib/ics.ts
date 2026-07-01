@@ -29,7 +29,7 @@ export function buildIcs(events: CalendarEvent[], calName: string): string {
   for (const e of events) {
     const ymd = e.date.replace(/-/g, "");
     lines.push("BEGIN:VEVENT");
-    lines.push(`UID:${e.id}@crecoard`);
+    lines.push(icsFold(`UID:${icsEscape(e.id)}@crecoard`));
     lines.push(`DTSTAMP:${stamp}`);
     if (e.allDay || !e.startTime) {
       lines.push(`DTSTART;VALUE=DATE:${ymd}`);
