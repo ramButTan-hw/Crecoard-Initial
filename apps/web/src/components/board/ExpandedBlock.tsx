@@ -341,7 +341,10 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
   } = useBoardStore();
   const personalBoard = useActiveBoard();
   const serverBoard = useServerBoardData();
-  const { boardId: serverBoardId } = useServerBoard();
+  const { boardId: serverBoardId, serverId } = useServerBoard();
+  // Server-only item types (chat, filebank, community items) are hidden from
+  // personal boards, matching the palette.
+  const addableDefs = ITEM_DEFINITIONS.filter((d) => !d.serverOnly || serverId !== null);
   const board = serverBoardId ? serverBoard : personalBoard;
   const boardId = serverBoardId ?? activeBoardId;
   const box = board?.boxes.find((b) => b.id === boxId);
@@ -643,7 +646,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                 y={canvasCtxMenu.y}
                 onClose={() => setCanvasCtxMenu(null)}
                 items={[
-                  ...ITEM_DEFINITIONS.map((def) => ({
+                  ...addableDefs.map((def) => ({
                     label: `Add ${def.label}`,
                     icon: def.icon as React.ReactNode,
                     onClick: () => addItem(boardId, boxId, { ...def.defaultItem(), showInCollapsed: false }),
@@ -762,7 +765,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                 <div className="flex-1 overflow-y-auto p-4">
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Add item</p>
                   <div className="flex flex-col gap-0.5">
-                    {ITEM_DEFINITIONS.map((def) => (
+                    {addableDefs.map((def) => (
                       <button
                         key={def.type}
                         onClick={() => addItem(boardId, boxId, { ...def.defaultItem(), showInCollapsed: false })}

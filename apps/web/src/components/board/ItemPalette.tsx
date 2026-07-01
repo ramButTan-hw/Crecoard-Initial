@@ -160,6 +160,7 @@ export const ITEM_DEFINITIONS: {
     label: "Suggestion Box",
     icon: <Lightbulb size={15} />,
     description: "Viewers suggest & upvote ideas",
+    serverOnly: true,
     defaultItem: () => ({ type: "suggestion", suggestionAllowUpvotes: true }),
   },
   {
@@ -167,6 +168,7 @@ export const ITEM_DEFINITIONS: {
     label: "Guestbook",
     icon: <PenLine size={15} />,
     description: "Visitors leave signed messages",
+    serverOnly: true,
     defaultItem: () => ({ type: "guestbook" }),
   },
   {
@@ -174,6 +176,7 @@ export const ITEM_DEFINITIONS: {
     label: "Poll",
     icon: <Vote size={15} />,
     description: "Viewers vote — live results",
+    serverOnly: true,
     defaultItem: () => ({
       type: "poll",
       pollShowResults: "afterVote",
@@ -188,6 +191,7 @@ export const ITEM_DEFINITIONS: {
     label: "Twitch Status",
     icon: <Twitch size={15} />,
     description: "Live / offline + next stream",
+    serverOnly: true,
     defaultItem: () => ({ type: "twitch", twitchShowSchedule: true }),
   },
   {
