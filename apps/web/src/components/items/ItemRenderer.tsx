@@ -8486,7 +8486,7 @@ function PlatformBadge({ platform }: { platform: string }) {
   );
 }
 
-function PlaylistItem({ item, upd, boardId, boxId, collapsed, canInteract, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId: string; boxId: string; collapsed?: boolean; isFinished?: boolean; canInteract?: boolean; extraContextItems?: ContextMenuEntry[] }) {
+function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInteract, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId: string; boxId: string; collapsed?: boolean; isFinished?: boolean; canInteract?: boolean; extraContextItems?: ContextMenuEntry[] }) {
   // Playlists stay interactive even on a finished board — people keep adding songs
   // to a shared queue — so add/remove are intentionally not gated on isFinished.
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
@@ -8536,14 +8536,18 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, canInteract, extra
     if (hasPlayableEmbed && !collapsed) claimSelf();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasPlayableEmbed, collapsed, playerKey]);
+  // Playlists stay interactive on finished boards (canInteract bakes isFinished
+  // in upstream, but the interact wall is skipped when finished — mirror that
+  // here or the pinned player would get pointer-events:none and eat no clicks).
+  const slotInteractive = canInteract !== false || !!isFinished;
   const slotCb = useCallback((el: HTMLDivElement | null) => {
     const s = usePlayerStore.getState();
-    if (el) s.registerSlot(playerKey, el, canInteract !== false);
+    if (el) s.registerSlot(playerKey, el, slotInteractive);
     else {
       const existing = s.slots[playerKey]?.el;
       if (existing) s.unregisterSlot(playerKey, existing);
     }
-  }, [playerKey, canInteract]);
+  }, [playerKey, slotInteractive]);
   const accent = item.playlistAccentColor || "var(--accent)";
   const showList = item.playlistShowList !== false;
   const volSupported = !embed || embed.kind === "audio" || embed.platform === "YouTube" || embed.platform === "SoundCloud";
