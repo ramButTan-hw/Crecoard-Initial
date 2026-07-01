@@ -7,6 +7,7 @@ import {
   Code2, Music, Kanban, MessageSquare, FolderOpen,
   ChevronDown, ChevronRight,
   Layers, LayoutGrid, Image, KanbanSquare, Minus, Zap, Gamepad2,
+  Lightbulb, PenLine, Vote,
 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 import { BlockItem, ItemType, useBoardStore, useActiveBoard } from "@/store/boardStore";
@@ -155,6 +156,34 @@ export const ITEM_DEFINITIONS: {
     defaultItem: () => ({ type: "external" }),
   },
   {
+    type: "suggestion",
+    label: "Suggestion Box",
+    icon: <Lightbulb size={15} />,
+    description: "Viewers suggest & upvote ideas",
+    defaultItem: () => ({ type: "suggestion", suggestionAllowUpvotes: true }),
+  },
+  {
+    type: "guestbook",
+    label: "Guestbook",
+    icon: <PenLine size={15} />,
+    description: "Visitors leave signed messages",
+    defaultItem: () => ({ type: "guestbook" }),
+  },
+  {
+    type: "poll",
+    label: "Poll",
+    icon: <Vote size={15} />,
+    description: "Viewers vote — live results",
+    defaultItem: () => ({
+      type: "poll",
+      pollShowResults: "afterVote",
+      pollOptions: [
+        { id: nanoid(), label: "" },
+        { id: nanoid(), label: "" },
+      ],
+    }),
+  },
+  {
     type: "embed-card",
     label: "Integration Card",
     icon: <Zap size={15} />,
@@ -242,6 +271,9 @@ function ItemTypeIcon({ type, size = 11 }: { type: ItemType; size?: number }) {
     case "filebank": return <FolderOpen {...p} />;
     case "widget": return <Code2 {...p} />;
     case "divider": return <Minus {...p} />;
+    case "suggestion": return <Lightbulb {...p} />;
+    case "guestbook": return <PenLine {...p} />;
+    case "poll": return <Vote {...p} />;
     default: return <FileText {...p} />;
   }
 }
@@ -251,6 +283,7 @@ const TYPE_LABEL: Partial<Record<ItemType, string>> = {
   calendar: "Calendar", timer: "Timer", embed: "Embed", api: "API",
   graph: "Graph", playlist: "Playlist", kanban: "Kanban",
   chat: "Chat", filebank: "Files", widget: "Widget", divider: "Divider",
+  suggestion: "Suggestions", guestbook: "Guestbook", poll: "Poll",
 };
 
 // ─── Collection section ───────────────────────────────────────────────────────

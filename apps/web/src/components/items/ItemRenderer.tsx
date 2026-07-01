@@ -35,6 +35,7 @@ import { loadGoogleFont } from "@/lib/fonts";
 import { DEFAULT_WIDGET_CODE } from "@/lib/defaultWidgetCode";
 import { EmbedCardItem } from "@/components/items/EmbedCardItem";
 import { ExternalItem } from "@/components/items/ExternalItem";
+import { SuggestionItem, GuestbookItem, PollItem } from "@/components/items/CommunityItems";
 import { nanoid } from "nanoid";
 import DOMPurify from "isomorphic-dompurify";
 import { cn } from "@/lib/utils";
@@ -179,6 +180,9 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     case "filebank":    return <FileBankBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} />;
     case "embed-card":  return <EmbedCardItem item={item} collapsed={collapsed} />;
     case "external":    return <ExternalItem item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} onUpdate={onUpdate} />;
+    case "suggestion":  return <SuggestionItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} />;
+    case "guestbook":   return <GuestbookItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} />;
+    case "poll":        return <PollItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} />;
     default:            return null;
   }})();
 
@@ -1724,6 +1728,12 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
           <span className="text-[var(--text-secondary)]">Let viewers add their own entries</span>
         </label>
         <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">Contributed entries are attributed to their author and only the author (or the board owner) can remove them.</p>
+        {item.allowContributions && (
+          <label className="mt-2 flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={!!item.requireContributionApproval} onChange={(e) => upd({ requireContributionApproval: e.target.checked })} className="accent-[var(--accent)]" />
+            <span className="text-[var(--text-secondary)]">Require approval before showing</span>
+          </label>
+        )}
       </div>
 
       {/* Checkbox */}
@@ -1966,19 +1976,20 @@ function PanelSlider({ label, value, min, max, step = 1, decimals = 0, onChange 
  * through the security-definer RPCs (delete_contribution / set_contribution_pinned).
  */
 function ListContributions({
-  itemId, boardId, collapsed, canContribute, marker, dividerBorder, rowSpacing, fontColor,
+  itemId, boardId, collapsed, canContribute, requireApproval, marker, dividerBorder, rowSpacing, fontColor,
 }: {
   itemId: string;
   boardId: string;
   collapsed?: boolean;
   canContribute: boolean;
+  requireApproval: boolean;
   marker: "checkbox" | "bullet" | "number" | "none";
   dividerBorder?: string;
   rowSpacing: number;
   fontColor?: string;
 }) {
   const { identity } = useUser();
-  const { contributions, add, removeOwn, editOwn, moderateRemove, togglePin } = useItemContributions(itemId, boardId);
+  const { contributions, add, removeOwn, editOwn, moderateRemove, togglePin, setApproved } = useItemContributions(itemId, boardId);
   const canModerate = useCanEditBoard();
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1998,7 +2009,7 @@ function ListContributions({
   const submitAdd = () => {
     const text = draft.trim();
     if (!text) return;
-    void add(text);
+    void add(text, { approved: !requireApproval });
     setDraft("");
   };
 
@@ -2044,6 +2055,7 @@ function ListContributions({
               <span className="flex-1 min-w-0" style={{ wordBreak: "break-word" }}>
                 <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(c.content) }} />
                 <span className="ml-1.5 text-[10px] whitespace-nowrap" style={{ color: muted }}>— {c.authorName || "Anonymous"}</span>
+                {!c.approved && <span className="ml-1 text-[10px] whitespace-nowrap italic" style={{ color: muted }}>· pending</span>}
               </span>
             )}
             {!collapsed && !isEditing && (canDelete || canModerate) && (
@@ -2055,6 +2067,15 @@ function ListContributions({
                     className="text-[var(--text-muted)] opacity-0 group-hover/contrib:opacity-100 hover:text-[var(--text-primary)] transition-colors rounded p-0.5"
                   >
                     <Pencil size={11} />
+                  </button>
+                )}
+                {canModerate && !c.approved && (
+                  <button
+                    onClick={() => void setApproved(c.id, true)}
+                    title="Approve entry"
+                    className="text-[var(--text-muted)] opacity-0 group-hover/contrib:opacity-100 hover:text-green-400 transition-colors rounded p-0.5"
+                  >
+                    <Check size={11} />
                   </button>
                 )}
                 {canModerate && (
@@ -2442,6 +2463,7 @@ function ListItem({ item, upd, collapsed, isFinished, canInput, canContribute, b
           boardId={boardId}
           collapsed={collapsed}
           canContribute={!!canContribute}
+          requireApproval={!!item.requireContributionApproval}
           marker={marker}
           dividerBorder={shown.length > 0 && (item.listDividerStyle ?? "solid") !== "none"
             ? `${item.listDividerWidth ?? 1}px ${item.listDividerStyle ?? "solid"} ${item.listDividerColor ?? "#ffffff"}${Math.round(((item.listDividerOpacity ?? 20) / 100) * 255).toString(16).padStart(2, "0")}`

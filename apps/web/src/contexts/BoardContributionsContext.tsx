@@ -40,12 +40,12 @@ interface BoardContributionsContextValue {
    * Returns an unsubscribe function — call it when the item unmounts.
    */
   loadAndSubscribe: (itemId: string, boardId: string) => () => void;
-  /** Add a contribution (optimistic + Supabase insert). */
+  /** Add a contribution (optimistic + Supabase insert). `approved: false` for moderated boxes. */
   addContribution: (
     itemId: string,
     boardId: string,
     content: string,
-    opts?: { kind?: string }
+    opts?: { kind?: string; approved?: boolean }
   ) => Promise<void>;
   /** Delete one of your own contributions (optimistic). */
   removeOwn: (id: string, itemId: string) => Promise<void>;
@@ -55,6 +55,8 @@ interface BoardContributionsContextValue {
   moderateRemove: (id: string, itemId: string) => Promise<void>;
   /** Moderator: pin/unpin a contribution via the security-definer RPC (optimistic). */
   togglePin: (id: string, itemId: string, pinned: boolean) => Promise<void>;
+  /** Moderator: approve/reject a contribution via the security-definer RPC (optimistic). */
+  setApproved: (id: string, itemId: string, approved: boolean) => Promise<void>;
 }
 
 const BoardContributionsContext = createContext<BoardContributionsContextValue>({
@@ -65,6 +67,7 @@ const BoardContributionsContext = createContext<BoardContributionsContextValue>(
   editOwn: async () => {},
   moderateRemove: async () => {},
   togglePin: async () => {},
+  setApproved: async () => {},
 });
 
 export function useBoardContributions(): BoardContributionsContextValue {
@@ -86,7 +89,7 @@ export function useItemContributions(itemId: string, boardId: string) {
   const contributions = ctx.contributionsByItem[itemId] ?? [];
 
   const add = useCallback(
-    (content: string, opts?: { kind?: string }) => ctx.addContribution(itemId, boardId, content, opts),
+    (content: string, opts?: { kind?: string; approved?: boolean }) => ctx.addContribution(itemId, boardId, content, opts),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [itemId, boardId]
   );
@@ -115,7 +118,13 @@ export function useItemContributions(itemId: string, boardId: string) {
     [itemId]
   );
 
-  return { contributions, add, removeOwn, editOwn, moderateRemove, togglePin };
+  const setApproved = useCallback(
+    (id: string, approved: boolean) => ctx.setApproved(id, itemId, approved),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [itemId]
+  );
+
+  return { contributions, add, removeOwn, editOwn, moderateRemove, togglePin, setApproved };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -260,9 +269,10 @@ export function BoardContributionsProvider({ children }: { children: React.React
     itemId: string,
     boardId: string,
     content: string,
-    opts: { kind?: string } = {},
+    opts: { kind?: string; approved?: boolean } = {},
   ): Promise<void> => {
     const kind = opts.kind ?? "entry";
+    const approved = opts.approved ?? true;
     const optimisticId = `opt-${crypto.randomUUID()}`;
     const optimistic: Contribution = {
       id: optimisticId,
@@ -272,7 +282,7 @@ export function BoardContributionsProvider({ children }: { children: React.React
       authorName: identity.displayName,
       kind,
       content,
-      approved: true,
+      approved,
       pinned: false,
       createdAt: new Date().toISOString(),
     };
@@ -293,6 +303,7 @@ export function BoardContributionsProvider({ children }: { children: React.React
         author_name: identity.displayName,
         kind,
         content,
+        approved,
       })
       .select()
       .single();
@@ -381,9 +392,23 @@ export function BoardContributionsProvider({ children }: { children: React.React
     if (error) setContributionsByItem((prev) => ({ ...prev, [itemId]: prevList })); // rollback
   }, [contributionsByItem]);
 
+  const setApproved = useCallback(async (id: string, itemId: string, approved: boolean): Promise<void> => {
+    if (id.startsWith("opt-")) return;
+    const prevList = contributionsByItem[itemId] ?? [];
+    setContributionsByItem((prev) => ({
+      ...prev,
+      [itemId]: (prev[itemId] ?? []).map((x) => (x.id === id ? { ...x, approved } : x)),
+    }));
+
+    if (!isSupabaseReady()) return;
+
+    const { error } = await supabase.rpc("set_contribution_approved", { p_id: id, p_approved: approved });
+    if (error) setContributionsByItem((prev) => ({ ...prev, [itemId]: prevList })); // rollback
+  }, [contributionsByItem]);
+
   return (
     <BoardContributionsContext.Provider
-      value={{ contributionsByItem, loadAndSubscribe, addContribution, removeOwn, editOwn, moderateRemove, togglePin }}
+      value={{ contributionsByItem, loadAndSubscribe, addContribution, removeOwn, editOwn, moderateRemove, togglePin, setApproved }}
     >
       {children}
     </BoardContributionsContext.Provider>

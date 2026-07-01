@@ -10,6 +10,7 @@ import {
 import { TextStylePanel } from "@/components/board/ExpandedBlock";
 import { EmbedCardStylePanel } from "@/components/items/EmbedCardItem";
 import { ExternalStylePanel } from "@/components/items/ExternalItem";
+import { SuggestionStylePanel, GuestbookStylePanel, PollStylePanel } from "@/components/items/CommunityItems";
 import { ITEM_DEFINITIONS } from "./ItemPalette";
 
 export function BoardItemPanel() {
@@ -94,7 +95,16 @@ export function BoardItemPanel() {
         {item.type === "chat" && (
           <ChatStylePanel item={item} upd={upd} usedChannels={chatChannelsInUse(board, item.id)} />
         )}
-        {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","external","chat"].includes(item.type) && (
+        {item.type === "suggestion" && (
+          <SuggestionStylePanel item={item} upd={upd} />
+        )}
+        {item.type === "guestbook" && (
+          <GuestbookStylePanel item={item} upd={upd} />
+        )}
+        {item.type === "poll" && (
+          <PollStylePanel item={item} upd={upd} />
+        )}
+        {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","external","chat","suggestion","guestbook","poll"].includes(item.type) && (
           <div className="p-4 text-xs text-[var(--text-muted)]">No style options for this item type.</div>
         )}
         {item.settingsLocked && (

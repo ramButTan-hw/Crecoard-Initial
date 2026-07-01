@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CopyPlus, Trash2, ArrowUpToLine, ArrowDownToLine, Lock, Unlock, LockOpen, Eye, EyeOff, ShieldCheck,
 } from "lucide-react";
-import { BoardLevelItem, useBoardStore } from "@/store/boardStore";
+import { BoardLevelItem, useBoardStore, isContributableType } from "@/store/boardStore";
 import { useCanEditBoard, useServerBoard, roleAllowed } from "@/contexts/ServerBoardContext";
 import { ItemPermissionModal } from "./PermissionModal";
 import { ItemRenderer } from "@/components/items/ItemRenderer";
@@ -51,7 +51,7 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
 
   const canInteract = !isFinished && roleAllowed(viewerRole, viewerRoleIds, item.perms?.interact);
   const canInput = !isFinished && roleAllowed(viewerRole, viewerRoleIds, item.perms?.input);
-  const canContribute = !isFinished && !!item.allowContributions && roleAllowed(viewerRole, viewerRoleIds, item.perms?.contribute);
+  const canContribute = !isFinished && (!!item.allowContributions || isContributableType(item.type)) && roleAllowed(viewerRole, viewerRoleIds, item.perms?.contribute);
 
   const displayX = livePos?.x ?? item.boardX;
   const displayY = livePos?.y ?? item.boardY;

@@ -33,8 +33,20 @@ export type ItemType =
   | "image" | "graph" | "api" | "calendar" | "table" | "divider" | "widget"
   | "playlist" | "kanban"
   | "chat" | "filebank"
+  | "suggestion" | "guestbook" | "poll"
   | "embed-card"
   | "external";
+
+/**
+ * Item types whose viewer-facing content lives in board_item_contributions
+ * (author-attributed, RLS-guarded), not the board JSONB. These are inherently
+ * contributable — canContribute is granted without the per-item allowContributions
+ * opt-in that List requires.
+ */
+export const CONTRIBUTABLE_TYPES: ReadonlySet<ItemType> = new Set(["suggestion", "guestbook", "poll"]);
+export function isContributableType(type: ItemType): boolean {
+  return CONTRIBUTABLE_TYPES.has(type);
+}
 
 // ─── Tracker.gg integration ───────────────────────────────────────────────────
 export type TrackerGGGame =
@@ -237,6 +249,7 @@ export interface ListEntry {
   depth?: number; // indentation level for nested sub-items (0 = top level)
 }
 export interface GraphPoint { label: string; [key: string]: string | number }
+export interface PollOption { id: string; label: string }
 
 export interface BlockItem {
   id: string;
@@ -320,6 +333,22 @@ export interface BlockItem {
   listProgressPosition?: "top" | "bottom";
   /** Opt-in: let permitted viewers append their own entries (stored in board_item_contributions, not here). */
   allowContributions?: boolean;
+  /** Moderated box: contributed entries stay hidden (approved=false) until a moderator approves them. */
+  requireContributionApproval?: boolean;
+
+  // suggestion box (contributions-backed, kind="suggestion" + "upvote")
+  suggestionTitle?: string;
+  suggestionPrompt?: string;      // input placeholder
+  suggestionAllowUpvotes?: boolean;
+
+  // guestbook (contributions-backed, kind="guestbook")
+  guestbookTitle?: string;
+  guestbookPrompt?: string;       // input placeholder
+
+  // poll (options owner-authored here; votes in contributions, kind="vote")
+  pollQuestion?: string;
+  pollOptions?: PollOption[];
+  pollShowResults?: "always" | "afterVote"; // when non-voters see the tallies (default afterVote)
 
   // external integrations (tracker-gg, steam, …)
   externalProvider?: "tracker-gg" | "steam";

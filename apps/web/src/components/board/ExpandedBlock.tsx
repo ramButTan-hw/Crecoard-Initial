@@ -14,12 +14,13 @@ import {
 } from "lucide-react";
 import {
   useBoardStore, useActiveBoard,
-  BlockItem, Box, ItemType, BoxStyle,
+  BlockItem, Box, ItemType, BoxStyle, isContributableType,
 } from "@/store/boardStore";
 import { useCanEditBoard, useServerBoard, useServerBoardData, roleAllowed } from "@/contexts/ServerBoardContext";
 import { ItemPermissionModal } from "./PermissionModal";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { ItemRenderer, ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel, ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, KanbanStylePanel, ChatStylePanel, chatChannelsInUse } from "@/components/items/ItemRenderer";
+import { SuggestionStylePanel, GuestbookStylePanel, PollStylePanel } from "@/components/items/CommunityItems";
 import { FontPicker } from "@/components/ui/FontPicker";
 import { loadGoogleFont } from "@/lib/fonts";
 import { ITEM_DEFINITIONS } from "./ItemPalette";
@@ -49,6 +50,9 @@ const DEFAULT_SIZES: Record<ItemType, { w: number; h: number }> = {
   kanban:   { w: 700, h: 460 },
   chat:     { w: 380, h: 440 },
   filebank:     { w: 360, h: 340 },
+  suggestion:   { w: 340, h: 320 },
+  guestbook:    { w: 340, h: 340 },
+  poll:         { w: 340, h: 280 },
   "embed-card": { w: 320, h: 220 },
   "external":   { w: 300, h: 300 },
 };
@@ -129,7 +133,7 @@ function ItemCard({
   const canInput = !isFinished &&
     roleAllowed(viewerRole, viewerRoleIds, box?.perms?.interact) &&
     roleAllowed(viewerRole, viewerRoleIds, item.perms?.input);
-  const canContribute = !isFinished && !!item.allowContributions &&
+  const canContribute = !isFinished && (!!item.allowContributions || isContributableType(item.type)) &&
     roleAllowed(viewerRole, viewerRoleIds, box?.perms?.interact) &&
     roleAllowed(viewerRole, viewerRoleIds, item.perms?.contribute);
 
@@ -805,6 +809,24 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                     useBoardStore.getState().boards.find((b) => b.id === boardId) ?? useBoardStore.getState().serverBoards[boardId],
                     selectedItem.id,
                   )}
+                />
+              )}
+              {selectedItem.type === "suggestion" && (
+                <SuggestionStylePanel
+                  item={selectedItem}
+                  upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
+                />
+              )}
+              {selectedItem.type === "guestbook" && (
+                <GuestbookStylePanel
+                  item={selectedItem}
+                  upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
+                />
+              )}
+              {selectedItem.type === "poll" && (
+                <PollStylePanel
+                  item={selectedItem}
+                  upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
                 />
               )}
               {selectedItem.type === "image" && (
