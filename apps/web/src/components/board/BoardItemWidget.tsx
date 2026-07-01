@@ -10,6 +10,7 @@ import { ItemPermissionModal } from "./PermissionModal";
 import { ItemRenderer } from "@/components/items/ItemRenderer";
 import { ContextMenu, type ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 const GRID = 20;
 const snap = (v: number) => Math.round(v / GRID) * GRID;
@@ -29,6 +30,7 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
     duplicateBoardItem, bringBoardItemToFront, sendBoardItemToBack,
     updateBoardItem, selectBoardItem, focusBoardItem,
   } = useBoardStore();
+  const isMobile = useIsMobile();
   const zoom = useBoardStore((s) => s.zoom);
   const canEditBoard = useCanEditBoard();
   const anyBoardFocused = useBoardStore((s) =>
@@ -286,19 +288,34 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
           bringBoardItemToFront(boardId, item.id);
         }}
       >
-        {/* Drag handle — thin strip at top, visible on hover */}
+        {/* Drag handle — thin strip at top; visible on hover, or when selected (touch) */}
         {!isFinished && canEditBoard && (
           <div
-            className="absolute left-0 right-0 z-20 flex items-center justify-center opacity-0 group-hover/biw:opacity-100 transition-opacity"
+            className={cn(
+              "absolute left-0 right-0 z-20 flex items-center justify-center transition-opacity",
+              isSelected ? "opacity-100" : "opacity-0 group-hover/biw:opacity-100"
+            )}
             style={{
-              top: 0, height: 10,
+              top: 0, height: isMobile ? 16 : 10,
               cursor: "grab",
               background: "rgba(88,101,242,0.55)",
               backdropFilter: "blur(2px)",
             }}
             onPointerDown={handleDragStart}
           >
-            <div style={{ width: 24, height: 2, borderRadius: 1, background: "rgba(255,255,255,0.7)" }} />
+            <div style={{ width: isMobile ? 32 : 24, height: isMobile ? 3 : 2, borderRadius: 2, background: "rgba(255,255,255,0.7)" }} />
+          </div>
+        )}
+
+        {/* Mobile: delete/duplicate when selected */}
+        {!isFinished && canEditBoard && isMobile && isSelected && (
+          <div className="absolute top-2 right-1 z-30 flex items-center gap-1">
+            <button onClick={(e) => { e.stopPropagation(); duplicateBoardItem(boardId, item.id); }} title="Duplicate" className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--surface-overlay)] text-[var(--text-secondary)] shadow">
+              <CopyPlus size={14} />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); removeBoardItem(boardId, item.id); }} title="Delete" className="flex h-7 w-7 items-center justify-center rounded-full bg-red-500 text-white shadow">
+              <Trash2 size={14} />
+            </button>
           </div>
         )}
 
