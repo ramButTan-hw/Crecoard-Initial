@@ -29,7 +29,7 @@ import { ProfileModal } from "./ProfileModal";
 import { SettingsModal } from "./SettingsModal";
 import { UserProfileModal, type ViewableUser } from "./UserProfileModal";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
-import { createSnapToGrid, snapPosition, type Rect } from "@/lib/snapToGrid";
+import { createSnapToGrid, magnetize } from "@/lib/snapToGrid";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/boardConstants";
 import { applyThemeVars, applyAppFont, CSS_VAR_NAMES, ThemeVarMap } from "@/lib/appThemes";
 import { CollabContext, useCollabSessionSetup } from "@/lib/useCollabSession";
@@ -315,24 +315,8 @@ function AppShellInner() {
   const mouseSensor = useSensor(MouseSensor, { activationConstraint: { distance: 6 } });
   const touchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } });
   const sensors = useSensors(mouseSensor, touchSensor);
-  // Zoom-aware snap: snap to GRID_MINOR canvas px regardless of zoom level
-  // Alignment targets for a dragging box = its sibling boxes' edges/centers, scoped
-  // to the board actually being edited (server draft + its :live snapshot share box
-  // ids, so we must NOT search all boards or we can grab a stale copy).
-  const getAlignInfo = useCallback((id: string): { rect: Rect; targets: Rect[] } | null => {
-    const s = useBoardStore.getState();
-    const effectiveBoardId = (activeView === "server" && activeServerId)
-      ? (activeServerBoardId ?? s.activeBoardId)
-      : s.activeBoardId;
-    const board = s.boards.find((b) => b.id === effectiveBoardId) ?? s.serverBoards[effectiveBoardId];
-    const box = board?.boxes.find((x) => x.id === id);
-    if (!board || !box) return null;
-    const targets = board.boxes
-      .filter((x) => x.id !== id && !x.deckOwnerId)
-      .map((x) => ({ x: x.x, y: x.y, w: x.width, h: x.height }));
-    return { rect: { x: box.x, y: box.y, w: box.width, h: box.height }, targets };
-  }, [activeView, activeServerId, activeServerBoardId]);
-  const snapToGrid = useMemo(() => createSnapToGrid(zoom, showGrid, getAlignInfo), [zoom, showGrid, getAlignInfo]);
+  // Zoom-aware magnetic snap: snap to GRID_MINOR canvas px regardless of zoom level.
+  const snapToGrid = useMemo(() => createSnapToGrid(zoom, showGrid), [zoom, showGrid]);
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
     // Block all drag interactions in live preview and for members
@@ -366,9 +350,8 @@ function AppShellInner() {
       const board = state.boards.find((b) => b.id === effectiveBoardId) ?? state.serverBoards[effectiveBoardId];
       const box = board?.boxes.find((b) => b.id === boxId);
       if (!box || !board) return;
-      const targets = board.boxes.filter((b) => b.id !== boxId && !b.deckOwnerId).map((b) => ({ x: b.x, y: b.y, w: b.width, h: b.height }));
-      const p = snapPosition({ x: box.x + deltaX / state.zoom, y: box.y + deltaY / state.zoom, w: box.width, h: box.height }, targets, state.showGrid);
-      setDragPos({ x: p.x, y: p.y });
+      const snap = (v: number) => magnetize(v, state.showGrid);
+      setDragPos({ x: snap(box.x + deltaX / state.zoom), y: snap(box.y + deltaY / state.zoom) });
     });
   }, [activeView, activeServerId, activeServerBoardId, isDraftMode, viewerRole, setDragPos]);
 
@@ -396,10 +379,9 @@ function AppShellInner() {
       const board = state.boards.find((b) => b.id === boardId) ?? state.serverBoards[boardId];
       const box = board?.boxes.find((b) => b.id === boxId);
       if (box && e.delta) {
-        const targets = board!.boxes.filter((b) => b.id !== boxId && !b.deckOwnerId).map((b) => ({ x: b.x, y: b.y, w: b.width, h: b.height }));
-        const p = snapPosition({ x: box.x + e.delta.x / state.zoom, y: box.y + e.delta.y / state.zoom, w: box.width, h: box.height }, targets, state.showGrid);
-        const newX = Math.max(0, Math.min(CANVAS_WIDTH - box.width, p.x));
-        const newY = Math.max(0, Math.min(CANVAS_HEIGHT - box.height, p.y));
+        const snap = (v: number) => magnetize(v, state.showGrid);
+        const newX = Math.max(0, Math.min(CANVAS_WIDTH - box.width, snap(box.x + e.delta.x / state.zoom)));
+        const newY = Math.max(0, Math.min(CANVAS_HEIGHT - box.height, snap(box.y + e.delta.y / state.zoom)));
         const cx = newX + box.width / 2;
         const cy = newY + box.height / 2;
         const target = !box.deckOwnerId ? board!.boxes.find(b =>
