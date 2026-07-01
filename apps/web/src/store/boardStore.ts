@@ -19,6 +19,8 @@ export interface ItemPerms {
   input?: string[];      // ServerRole IDs that can type/enter text
   interact?: string[];   // ServerRole IDs that can click/toggle/play
   contribute?: string[]; // ServerRole IDs that can add their own entries (suggestion box, contributable list, …)
+  /** Granular per-function allowlists (schema per item type in lib/playlist ITEM_FN_SCHEMAS), e.g. playlist "playback"/"queue-add"/"volume". */
+  fns?: Record<string, string[]>;
 }
 
 export interface BoxPerms {

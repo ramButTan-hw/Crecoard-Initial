@@ -327,6 +327,7 @@ function ItemCard({
         {permModalOpen && (
           <ItemPermissionModal
             targetLabel={item.type}
+            itemType={item.type}
             initialPerms={item.perms}
             onSave={(perms) => updateItem(boardId, boxId, item.id, { perms })}
             onClose={() => setPermModalOpen(false)}

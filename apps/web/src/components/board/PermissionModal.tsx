@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Crown, X } from "lucide-react";
 import type { BoxPerms, ItemPerms } from "@/store/boardStore";
 import { useServerBoard } from "@/contexts/ServerBoardContext";
+import { ITEM_FN_SCHEMAS } from "@/lib/playlist";
 import { cn } from "@/lib/utils";
 
 // ─── Role toggle selector ─────────────────────────────────────────────────────
@@ -140,22 +141,57 @@ export function BoxPermissionModal({ targetLabel, initialPerms, onSave, onClose 
 
 interface ItemPermModalProps {
   targetLabel: string;
+  /** Item type — unlocks per-function permission rows when a schema exists (e.g. playlist) */
+  itemType?: string;
   initialPerms?: ItemPerms;
   onSave: (perms: ItemPerms) => void;
   onClose: () => void;
 }
 
-export function ItemPermissionModal({ targetLabel, initialPerms, onSave, onClose }: ItemPermModalProps) {
+export function ItemPermissionModal({ targetLabel, itemType, initialPerms, onSave, onClose }: ItemPermModalProps) {
   const [edit,     setEdit]     = useState<PermValue>(initPerm(initialPerms?.edit));
   const [input,    setInput]    = useState<PermValue>(initPerm(initialPerms?.input));
   const [interact, setInteract] = useState<PermValue>(initPerm(initialPerms?.interact));
 
+  // Per-function rows (granular controls inside the item, e.g. playlist playback/queue/volume)
+  const fnSchema = itemType ? ITEM_FN_SCHEMAS[itemType] : undefined;
+  const [fns, setFns] = useState<Record<string, PermValue>>(() =>
+    Object.fromEntries((fnSchema ?? []).map((f) => [f.id, initPerm(initialPerms?.fns?.[f.id])]))
+  );
+
+  const save = () => {
+    const fnsOut: Record<string, string[]> = {};
+    for (const f of fnSchema ?? []) {
+      const v = savePerm(fns[f.id] ?? null);
+      if (v !== undefined) fnsOut[f.id] = v;
+    }
+    onSave({
+      edit: savePerm(edit),
+      input: savePerm(input),
+      interact: savePerm(interact),
+      fns: Object.keys(fnsOut).length > 0 ? fnsOut : undefined,
+    });
+    onClose();
+  };
+
   return (
-    <PermModalShell title="Item Permissions" subtitle={targetLabel} onClose={onClose}
-      onSave={() => { onSave({ edit: savePerm(edit), input: savePerm(input), interact: savePerm(interact) }); onClose(); }}>
+    <PermModalShell title="Item Permissions" subtitle={targetLabel} onClose={onClose} onSave={save}>
       <RoleSelector label="Edit" description="Who can edit settings and style" value={edit} onChange={setEdit} />
       <RoleSelector label="Text entry" description="Who can type or enter text" value={input} onChange={setInput} />
-      <RoleSelector label="Interact" description="Who can click, toggle, and use this item" value={interact} onChange={setInteract} />
+      <RoleSelector label="Interact" description="Who can click, toggle, and use this item (master switch)" value={interact} onChange={setInteract} />
+      {fnSchema && fnSchema.length > 0 && (
+        <>
+          <div className="border-t border-[var(--border)] pt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Functions</p>
+            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Fine-grained controls within the item</p>
+          </div>
+          {fnSchema.map((f) => (
+            <RoleSelector key={f.id} label={f.label} description={f.description}
+              value={fns[f.id] ?? null}
+              onChange={(v) => setFns((prev) => ({ ...prev, [f.id]: v }))} />
+          ))}
+        </>
+      )}
     </PermModalShell>
   );
 }
@@ -178,7 +214,7 @@ function PermModalShell({
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-[380px] rounded-xl border border-[var(--border)] shadow-2xl flex flex-col"
+        className="w-[380px] max-h-[min(640px,calc(100vh-48px))] rounded-xl border border-[var(--border)] shadow-2xl flex flex-col"
         style={{ background: "var(--surface-raised)" }}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -192,7 +228,7 @@ function PermModalShell({
           </button>
         </div>
 
-        <div className="flex flex-col gap-5 px-4 py-4">
+        <div className="flex flex-col gap-5 px-4 py-4 overflow-y-auto min-h-0">
           {children}
         </div>
 

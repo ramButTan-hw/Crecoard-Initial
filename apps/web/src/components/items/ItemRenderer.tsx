@@ -42,7 +42,9 @@ import DOMPurify from "isomorphic-dompurify";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
 import { useItemContributions } from "@/contexts/BoardContributionsContext";
-import { useCanEditBoard } from "@/contexts/ServerBoardContext";
+import { useCanEditBoard, useServerBoard, roleAllowed } from "@/contexts/ServerBoardContext";
+import { resolveEmbed, PLATFORM_COLORS, getStaticThumbnail, advancePlaylistIndex, playerKeyOf } from "@/lib/playlist";
+import { usePlayerStore } from "@/store/playerStore";
 import { uploadFile } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import { buildIcs } from "@/lib/ics";
@@ -177,7 +179,7 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     case "calendar": return <CalendarItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "table":    return <TableItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
     case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
-    case "playlist": return <PlaylistItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
+    case "playlist": return <PlaylistItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} canInteract={canInteract} extraContextItems={extraContextItems} />;
     case "kanban":   return <KanbanItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     // Items whose renderer builds no context menu of its own — wrap so right-click
     // opens the standard item menu (Duplicate/Delete/…) right at the block.
@@ -8469,107 +8471,8 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems 
 
 
 // ─── Multi-platform embed resolver ───────────────────────────────────────────
-
-interface EmbedResult {
-  kind: "iframe" | "audio" | "link";
-  url: string;
-  platform: string;
-  /** CSS aspect-ratio string for the player container, e.g. "16/9" or undefined for fixed-height */
-  aspectRatio?: string;
-  /** Fixed pixel height (use instead of aspectRatio for compact embeds like Spotify track) */
-  fixedHeight?: number;
-  /** True when the URL is a playlist/album (not a single track) */
-  isPlaylist?: boolean;
-}
-
-function resolveEmbed(raw: string, autoplay: boolean): EmbedResult {
-  const url = raw.trim();
-
-  // YouTube playlist
-  const ytPlaylistMatch = url.match(/youtube\.com\/(?:playlist\?|watch\?[^#]*)list=([A-Za-z0-9_-]+)/);
-  if (ytPlaylistMatch) return {
-    kind: "iframe",
-    url: `https://www.youtube.com/embed/videoseries?list=${ytPlaylistMatch[1]}&autoplay=${autoplay ? 1 : 0}&rel=0&enablejsapi=1`,
-    platform: "YouTube",
-    aspectRatio: "16/9",
-    isPlaylist: true,
-  };
-
-  // YouTube / YouTube Music (individual videos)
-  const ytPats = [
-    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
-    /(?:youtube\.com|music\.youtube\.com)\/watch\?(?:.*&)?v=([a-zA-Z0-9_-]{11})/,
-    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
-    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
-  ];
-  for (const p of ytPats) {
-    const m = url.match(p);
-    if (m) return {
-      kind: "iframe",
-      url: `https://www.youtube.com/embed/${m[1]}?autoplay=${autoplay ? 1 : 0}&rel=0&enablejsapi=1`,
-      platform: "YouTube",
-      aspectRatio: "16/9",
-    };
-  }
-
-  // SoundCloud
-  if (/soundcloud\.com/.test(url)) return {
-    kind: "iframe",
-    url: `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=${autoplay}&hide_related=true&show_comments=false&visual=true&color=%23d59ee8`,
-    platform: "SoundCloud",
-    fixedHeight: 166,
-  };
-
-  // Apple Music
-  const amMatch = url.match(/music\.apple\.com\/([a-z]{2})\/(album|playlist|song|artist)\/([^/?]+)(?:\/([^/?]+))?/);
-  if (amMatch) return {
-    kind: "iframe",
-    url: `https://embed.music.apple.com/${amMatch[1]}/${amMatch[2]}/${amMatch[3]}${amMatch[4] ? "/" + amMatch[4] : ""}`,
-    platform: "Apple Music",
-    fixedHeight: 175,
-  };
-
-  // Deezer
-  const dzMatch = url.match(/deezer\.com\/(?:[a-z]{2}\/)?(track|album|playlist|artist)\/(\d+)/);
-  if (dzMatch) return {
-    kind: "iframe",
-    url: `https://widget.deezer.com/widget/dark/${dzMatch[1]}/${dzMatch[2]}${autoplay ? "?autoplay=true" : ""}`,
-    platform: "Deezer",
-    fixedHeight: 300,
-  };
-
-  // Tidal (no public embed — link out)
-  if (/tidal\.com/.test(url)) return { kind: "link", url, platform: "Tidal" };
-
-  // Bandcamp (no reliable embed URL from page URL — link out)
-  if (/bandcamp\.com/.test(url)) return { kind: "link", url, platform: "Bandcamp" };
-
-  // Amazon Music (no embed — link out)
-  if (/music\.amazon/.test(url)) return { kind: "link", url, platform: "Amazon Music" };
-
-  // Direct audio file
-  if (/\.(mp3|ogg|wav|m4a|flac|aac|opus)(\?.*)?$/i.test(url)) return {
-    kind: "audio",
-    url,
-    platform: "Audio file",
-  };
-
-  // Generic iframe attempt for everything else
-  if (url.startsWith("http")) return { kind: "iframe", url, platform: "Web", aspectRatio: "16/9" };
-
-  return { kind: "link", url, platform: "Unknown" };
-}
-
-const PLATFORM_COLORS: Record<string, string> = {
-  YouTube: "#ff0000",
-  Spotify: "#1db954",
-  SoundCloud: "#ff5500",
-  "Apple Music": "#fc3c44",
-  Deezer: "#a238ff",
-  Tidal: "#00ffff",
-  Bandcamp: "#1da0c3",
-  "Amazon Music": "#00a8e0",
-};
+// resolveEmbed & friends live in lib/playlist so the global PlayerHost (which
+// owns the actual media elements — playback survives board switches) shares them.
 
 function PlatformBadge({ platform }: { platform: string }) {
   const color = PLATFORM_COLORS[platform];
@@ -8583,15 +8486,7 @@ function PlatformBadge({ platform }: { platform: string }) {
   );
 }
 
-function getStaticThumbnail(trackUrl: string): string | null {
-  const ytId = trackUrl.match(
-    /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/
-  )?.[1];
-  if (ytId) return `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`;
-  return null;
-}
-
-function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; extraContextItems?: ContextMenuEntry[] }) {
+function PlaylistItem({ item, upd, boardId, boxId, collapsed, canInteract, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; boardId: string; boxId: string; collapsed?: boolean; isFinished?: boolean; canInteract?: boolean; extraContextItems?: ContextMenuEntry[] }) {
   // Playlists stay interactive even on a finished board — people keep adding songs
   // to a shared queue — so add/remove are intentionally not gated on isFinished.
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
@@ -8602,10 +8497,6 @@ function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: Block
   const [showVol, setShowVol] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const scWidgetRef = useRef<{ setVolume: (v: number) => void; bind: (ev: string, cb: () => void) => void } | null>(null);
-  const ytReadyRef = useRef(false);
   const mountedRef = useRef(true);
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
 
@@ -8615,8 +8506,44 @@ function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: Block
   const embed = currentTrack ? resolveEmbed(currentTrack.url, !!item.playlistAutoplay) : null;
 
   const vol = item.playlistVolume ?? 80;
-  const volRef = useRef(vol);
-  volRef.current = vol;
+
+  // ── Granular per-function permissions (item.perms.fns — see lib/playlist) ──
+  const { viewerRole, viewerRoleIds } = useServerBoard();
+  const canFn = (fn: string) => roleAllowed(viewerRole, viewerRoleIds, item.perms?.fns?.[fn]);
+  const canPlayback = canFn("playback");
+  const canQueueAdd = canFn("queue-add");
+  const canQueueRemove = canFn("queue-remove");
+  const canImport = canFn("import");
+  const canVolume = canFn("volume");
+  const canModes = canFn("modes");
+
+  // ── Global player claim: media lives in PlayerHost so playback survives board
+  //    switches; this item registers its embed slot and PlayerHost pins over it.
+  const playerKey = playerKeyOf(boardId, boxId ?? "", item.id);
+  const activeClaimKey = usePlayerStore((s) =>
+    s.claim ? playerKeyOf(s.claim.boardId, s.claim.boxId, s.claim.itemId) : null);
+  const playerPlaying = usePlayerStore((s) => s.playing);
+  const ownsPlayer = activeClaimKey === playerKey;
+  const playingElsewhere = !ownsPlayer && activeClaimKey !== null && playerPlaying === true;
+  const claimSelf = (opts?: { steal?: boolean; userIntent?: boolean }) =>
+    usePlayerStore.getState().claimPlayer(
+      { boardId, boxId: boxId ?? "", itemId: item.id, canPlayback, canVolume },
+      opts
+    );
+  const hasPlayableEmbed = !!embed && embed.kind !== "link";
+  useEffect(() => {
+    // claim if free/idle so simply opening the board pins the player here
+    if (hasPlayableEmbed && !collapsed) claimSelf();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasPlayableEmbed, collapsed, playerKey]);
+  const slotCb = useCallback((el: HTMLDivElement | null) => {
+    const s = usePlayerStore.getState();
+    if (el) s.registerSlot(playerKey, el, canInteract !== false);
+    else {
+      const existing = s.slots[playerKey]?.el;
+      if (existing) s.unregisterSlot(playerKey, existing);
+    }
+  }, [playerKey, canInteract]);
   const accent = item.playlistAccentColor || "var(--accent)";
   const showList = item.playlistShowList !== false;
   const volSupported = !embed || embed.kind === "audio" || embed.platform === "YouTube" || embed.platform === "SoundCloud";
@@ -8642,74 +8569,7 @@ function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: Block
     borderRadius: br > 0 ? br : undefined,
   };
 
-  // Sync volume → audio element
-  useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = vol / 100;
-  }, [vol]);
-
-  // YouTube: listen for onReady then apply volume; re-register on track change
-  useEffect(() => {
-    if (embed?.platform !== "YouTube") return;
-    ytReadyRef.current = false;
-    const sendVol = (v: number) => iframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: "command", func: "setVolume", args: [v] }), "*"
-    );
-    const onMsg = (e: MessageEvent) => {
-      if (e.source !== iframeRef.current?.contentWindow) return;
-      try {
-        const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        if (d?.event === "onReady" || d?.info === 1) { ytReadyRef.current = true; sendVol(volRef.current); }
-      } catch {}
-    };
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embed?.url]);
-
-  // YouTube: push volume changes after player is ready
-  useEffect(() => {
-    if (embed?.platform !== "YouTube" || !ytReadyRef.current) return;
-    iframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: "command", func: "setVolume", args: [vol] }), "*"
-    );
-  }, [vol, embed?.platform]);
-
-  // SoundCloud: load Widget API script once, bind widget on track change
-  useEffect(() => {
-    if (embed?.platform !== "SoundCloud") return;
-    scWidgetRef.current = null;
-    const bindWidget = () => {
-      const SC = (window as any).SC;
-      if (!SC || !iframeRef.current) return;
-      const w = SC.Widget(iframeRef.current);
-      scWidgetRef.current = w;
-      w.bind(SC.Widget.Events.READY, () => w.setVolume(vol));
-    };
-    if ((window as any).SC) {
-      bindWidget();
-    } else if (!document.getElementById("sc-widget-api")) {
-      const s = document.createElement("script");
-      s.id = "sc-widget-api";
-      s.src = "https://w.soundcloud.com/player/api.js";
-      s.onload = bindWidget;
-      document.head.appendChild(s);
-    } else {
-      const el = document.getElementById("sc-widget-api")!;
-      // Use a setTimeout to check if SC is already available (race: script may have loaded before listener)
-      const tid = setTimeout(() => {
-        el.removeEventListener("load", bindWidget);
-        if (!scWidgetRef.current && (window as any).SC) bindWidget();
-      }, 0);
-      el.addEventListener("load", () => { clearTimeout(tid); bindWidget(); }, { once: true });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embed?.url]);
-
-  // SoundCloud: push volume changes after widget is bound
-  useEffect(() => {
-    if (embed?.platform !== "SoundCloud") return;
-    try { scWidgetRef.current?.setVolume(vol); } catch {}
-  }, [vol, embed?.platform]);
+  // (Volume/YouTube/SoundCloud bridges live in PlayerHost — it owns the media.)
 
   // Resolve artwork URL for "artwork" layout
   useEffect(() => {
@@ -8725,28 +8585,24 @@ function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: Block
   }, [currentTrack?.url]);
 
   const goNext = () => {
-    if (tracks.length === 0) return;
-    if (item.playlistShuffle && tracks.length > 1) {
-      let next = currentIdx;
-      while (next === currentIdx) next = Math.floor(Math.random() * tracks.length);
-      upd({ playlistCurrentIndex: next });
-      return;
-    }
-    const next = item.playlistLoop
-      ? (currentIdx + 1) % tracks.length
-      : Math.min(currentIdx + 1, tracks.length - 1);
-    upd({ playlistCurrentIndex: next });
+    if (tracks.length === 0 || !canPlayback) return;
+    claimSelf({ steal: true, userIntent: true });
+    const next = advancePlaylistIndex(item, 1);
+    upd({ playlistCurrentIndex: next ?? Math.min(currentIdx + 1, tracks.length - 1) });
   };
 
   const goPrev = () => {
-    if (tracks.length === 0) return;
-    const next = item.playlistLoop
-      ? (currentIdx - 1 + tracks.length) % tracks.length
-      : Math.max(currentIdx - 1, 0);
-    upd({ playlistCurrentIndex: next });
+    if (tracks.length === 0 || !canPlayback) return;
+    claimSelf({ steal: true, userIntent: true });
+    const next = advancePlaylistIndex(item, -1);
+    upd({ playlistCurrentIndex: next ?? 0 });
   };
 
-  const goTo = (idx: number) => upd({ playlistCurrentIndex: idx });
+  const goTo = (idx: number) => {
+    if (!canPlayback) return;
+    claimSelf({ steal: true, userIntent: true });
+    upd({ playlistCurrentIndex: idx });
+  };
 
   const addTrack = () => {
     const url = urlInput.trim();
@@ -8798,7 +8654,7 @@ function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: Block
       <div className="flex items-center gap-2">
         <Music size={13} className="text-[var(--text-muted)]" />
         <span className="text-sm text-[var(--text-secondary)] truncate">{currentTrack?.title ?? "No tracks"}</span>
-        {tracks.length > 1 && (
+        {tracks.length > 1 && canPlayback && (
           <div className="flex gap-1 ml-auto">
             <button onClick={(e) => { e.stopPropagation(); goPrev(); }} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"><SkipBack size={11} /></button>
             <button onClick={(e) => { e.stopPropagation(); goNext(); }} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"><SkipForward size={11} /></button>
@@ -8817,23 +8673,28 @@ function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: Block
         <p className="text-[11px] text-[var(--text-muted)]">Add a track below</p>
       </div>
     </div>
-  ) : embed.kind === "iframe" ? (
-    <iframe ref={iframeRef} key={embed.url} src={embed.url}
-      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-      allowFullScreen className="w-full h-full border-none block"
-      onLoad={() => {
-        // Tell YouTube's postMessage API we're listening so it fires onReady
-        if (embed.platform === "YouTube") {
-          iframeRef.current?.contentWindow?.postMessage(
-            JSON.stringify({ event: "listening", id: 1 }), "*"
-          );
-        }
-      }}
-    />
-  ) : embed.kind === "audio" ? (
-    /* eslint-disable-next-line jsx-a11y/media-has-caption */
-    <audio ref={audioRef} key={embed.url} src={embed.url} controls autoPlay={!!item.playlistAutoplay}
-      className="w-full h-8" style={{ colorScheme: "dark" }} />
+  ) : embed.kind === "iframe" || embed.kind === "audio" ? (
+    // Slot for the global PlayerHost: when this item owns the player, the real
+    // media (living in PlayerHost so it survives board switches) is pinned
+    // exactly over this div. Otherwise offer to take the player over.
+    ownsPlayer ? (
+      <div ref={slotCb} className="w-full h-full bg-black" />
+    ) : (
+      <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black/30 rounded-lg py-3">
+        <Music size={22} className="text-[var(--text-muted)] opacity-50" />
+        {playingElsewhere && (
+          <p className="text-[10px] text-[var(--text-muted)] text-center px-3">Another playlist is playing</p>
+        )}
+        {canPlayback && (
+          <button
+            onClick={() => claimSelf({ steal: true, userIntent: true })}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-[11px] font-medium hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: accent }}>
+            <Play size={11} /> Play here
+          </button>
+        )}
+      </div>
+    )
   ) : (
     <div className="w-full h-full flex flex-col items-center justify-center gap-2 py-4">
       <PlatformBadge platform={embed.platform} />
@@ -8849,35 +8710,43 @@ function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: Block
   const transportEl = tracks.length > 0 ? (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1">
-        <button onClick={goPrev} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shrink-0">
-          <SkipBack size={14} />
-        </button>
+        {canPlayback && (
+          <button onClick={goPrev} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shrink-0">
+            <SkipBack size={14} />
+          </button>
+        )}
         <div className="flex-1 min-w-0 text-center">
           <p className="text-[11px] font-medium text-[var(--text-primary)] truncate">{currentTrack?.title}</p>
           <p className="text-[9px] text-[var(--text-muted)]">{currentIdx + 1} / {tracks.length} · {embed?.platform}</p>
         </div>
-        <button onClick={goNext} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shrink-0">
-          <SkipForward size={14} />
-        </button>
-        <button onClick={() => upd({ playlistLoop: !item.playlistLoop })} title="Loop"
-          className="p-1.5 rounded-lg transition-colors shrink-0"
-          style={item.playlistLoop ? { color: accent } : { color: "var(--text-muted)" }}>
-          <Repeat size={12} />
-        </button>
-        <button onClick={() => upd({ playlistShuffle: !item.playlistShuffle })} title="Shuffle"
-          className="p-1.5 rounded-lg transition-colors shrink-0"
-          style={item.playlistShuffle ? { color: accent } : { color: "var(--text-muted)" }}>
-          <Shuffle size={12} />
-        </button>
-        <button
-          onClick={() => volSupported && setShowVol((v) => !v)}
-          title={volSupported ? "Volume" : `${embed?.platform} doesn't expose a volume API — use its built-in controls`}
-          className="p-1.5 rounded-lg transition-colors shrink-0"
-          style={{ color: !volSupported ? "var(--text-muted)" : showVol ? accent : "var(--text-muted)", opacity: volSupported ? 1 : 0.4, cursor: volSupported ? "pointer" : "not-allowed" }}>
-          {vol === 0 ? <VolumeX size={12} /> : vol < 50 ? <Volume1 size={12} /> : <Volume2 size={12} />}
-        </button>
+        {canPlayback && (
+          <button onClick={goNext} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shrink-0">
+            <SkipForward size={14} />
+          </button>
+        )}
+        {canModes && (<>
+          <button onClick={() => upd({ playlistLoop: !item.playlistLoop })} title="Loop"
+            className="p-1.5 rounded-lg transition-colors shrink-0"
+            style={item.playlistLoop ? { color: accent } : { color: "var(--text-muted)" }}>
+            <Repeat size={12} />
+          </button>
+          <button onClick={() => upd({ playlistShuffle: !item.playlistShuffle })} title="Shuffle"
+            className="p-1.5 rounded-lg transition-colors shrink-0"
+            style={item.playlistShuffle ? { color: accent } : { color: "var(--text-muted)" }}>
+            <Shuffle size={12} />
+          </button>
+        </>)}
+        {canVolume && (
+          <button
+            onClick={() => volSupported && setShowVol((v) => !v)}
+            title={volSupported ? "Volume" : `${embed?.platform} doesn't expose a volume API — use its built-in controls`}
+            className="p-1.5 rounded-lg transition-colors shrink-0"
+            style={{ color: !volSupported ? "var(--text-muted)" : showVol ? accent : "var(--text-muted)", opacity: volSupported ? 1 : 0.4, cursor: volSupported ? "pointer" : "not-allowed" }}>
+            {vol === 0 ? <VolumeX size={12} /> : vol < 50 ? <Volume1 size={12} /> : <Volume2 size={12} />}
+          </button>
+        )}
       </div>
-      {showVol && volSupported && (
+      {showVol && volSupported && canVolume && (
         <div className="flex items-center gap-2">
           <VolumeX size={10} className="shrink-0 text-[var(--text-muted)]" />
           <input type="range" min={0} max={100} value={vol}
@@ -8897,23 +8766,25 @@ function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: Block
         const active = i === currentIdx;
         return (
           <div key={track.id}
-            className={cn("group flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-colors", !active && "hover:bg-white/5")}
+            className={cn("group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors", canPlayback && "cursor-pointer", !active && canPlayback && "hover:bg-white/5")}
             style={active ? { backgroundColor: accent + "25" } : undefined}
             onClick={() => goTo(i)}>
             <span className="text-[10px] tabular-nums w-4 shrink-0 text-center" style={{ color: active ? accent : "var(--text-muted)" }}>{i + 1}</span>
             <PlatformBadge platform={trackEmbed.platform} />
             <span className={cn("flex-1 text-[11px] truncate", active ? "font-medium" : "text-[var(--text-secondary)]")} style={active ? { color: accent } : undefined}>{track.title}</span>
-            <button onClick={(e) => { e.stopPropagation(); removeTrack(track.id); }}
-              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-[var(--text-muted)] hover:text-red-400 transition-all">
-              <XIcon size={10} />
-            </button>
+            {canQueueRemove && (
+              <button onClick={(e) => { e.stopPropagation(); removeTrack(track.id); }}
+                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-[var(--text-muted)] hover:text-red-400 transition-all">
+                <XIcon size={10} />
+              </button>
+            )}
           </div>
         );
       })}
     </div>
   ) : null;
 
-  const addTrackEl = (
+  const addTrackEl = !canQueueAdd ? null : (
     <div className="shrink-0 border-t border-white/10 pt-2 flex flex-col gap-1.5">
       <input value={urlInput} onChange={(e) => { setUrlInput(e.target.value); setImportError(null); }}
         onKeyDown={(e) => { if (e.key === "Enter") addTrack(); }}
@@ -8929,7 +8800,7 @@ function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: Block
         </button>
       </div>
       {/* Playlist import button */}
-      {importInfo && (
+      {importInfo && canImport && (
         <button
           onClick={handleImportPlaylist}
           disabled={importing}
@@ -9047,7 +8918,7 @@ function PlaylistItem({ item, upd, collapsed, extraContextItems }: { item: Block
         {embedEl}
       </div>
     ) : embed.kind === "audio" ? (
-      <div className="shrink-0 rounded-lg overflow-hidden bg-[var(--surface-overlay)] p-2">{embedEl}</div>
+      <div className="shrink-0 rounded-lg overflow-hidden bg-[var(--surface-overlay)] p-2" style={{ height: 56 }}>{embedEl}</div>
     ) : (
       <div className="shrink-0 rounded-lg bg-[var(--surface-overlay)]" style={{ minHeight: 80 }}>{embedEl}</div>
     );

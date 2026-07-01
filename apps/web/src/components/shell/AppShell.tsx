@@ -33,6 +33,7 @@ import { createSnapToGrid, magnetize } from "@/lib/snapToGrid";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/boardConstants";
 import { applyThemeVars, applyAppFont, CSS_VAR_NAMES, ThemeVarMap } from "@/lib/appThemes";
 import { CollabContext, useCollabSessionSetup } from "@/lib/useCollabSession";
+import { PlayerHost } from "@/components/player/PlayerHost";
 import { getSelfIdentity } from "@/lib/collaboration";
 import { logServerAction } from "@/lib/serverAudit";
 import { ServerBoardContext } from "@/contexts/ServerBoardContext";
@@ -866,6 +867,9 @@ function AppShellInner() {
           onMenuStateChange={setBottomMenuOpen}
         />
       </div>
+
+      {/* Global media host — owns the playlist <iframe>/<audio> so music survives board switches */}
+      <PlayerHost />
 
       {storageError && (
         <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 rounded-lg border border-red-500/40 bg-[var(--surface)] px-4 py-2.5 shadow-xl text-sm text-red-400">

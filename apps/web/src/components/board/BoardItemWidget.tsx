@@ -406,6 +406,7 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
       {permModalOpen && (
         <ItemPermissionModal
           targetLabel={item.type}
+          itemType={item.type}
           initialPerms={item.perms}
           onSave={(perms) => updateBoardItem(boardId, item.id, { perms } as Partial<BoardLevelItem>)}
           onClose={() => setPermModalOpen(false)}
