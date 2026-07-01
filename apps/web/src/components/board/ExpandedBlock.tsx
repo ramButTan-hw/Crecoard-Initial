@@ -10,8 +10,9 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   X, Pin, Grid3X3, Upload, AlignLeft, AlignCenter, AlignRight, Trash2,
   CopyPlus, ArrowUp, ArrowDown, RefreshCw, LayoutGrid, Minus, Plus,
-  Lock, LockOpen, Eye, EyeOff, ShieldCheck,
+  Lock, LockOpen, Eye, EyeOff, ShieldCheck, SlidersHorizontal,
 } from "lucide-react";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import {
   useBoardStore, useActiveBoard,
   BlockItem, Box, ItemType, BoxStyle, isContributableType,
@@ -329,6 +330,9 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
   const [showGrid, setShowGrid] = useState(true);
   const [canvasZoom, setCanvasZoom] = useState(1);
   const [rightTab, setRightTab] = useState<"items" | "collapsed" | "item" | "style">("items");
+  const isMobile = useIsMobile();
+  // Mobile: the editor panel is a bottom sheet instead of a side column.
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [canvasCtxMenu, setCanvasCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -424,6 +428,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
     setSelectedItemId((prev) => {
       if (prev === itemId) { setRightTab("items"); return null; }
       setRightTab("item");
+      if (isMobile) setMobilePanelOpen(true); // surface item settings as a sheet
       return itemId;
     });
   };
@@ -507,6 +512,11 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
             >
               <Grid3X3 size={15} />
             </button>
+            {canEdit && (
+              <button onClick={() => setMobilePanelOpen(true)} title="Editor" className="shrink-0 rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors md:hidden">
+                <SlidersHorizontal size={17} />
+              </button>
+            )}
             <button onClick={close} className="shrink-0 rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">
               <X size={18} />
             </button>
@@ -631,9 +641,31 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
           </div>
         </div>
 
-        {/* ── Right panel — editors only (desktop; hidden on mobile to keep the
-              canvas + header usable — item settings via tap on the canvas item) ── */}
-        {canEdit && <div className="hidden md:flex w-[280px] flex-shrink-0 flex-col border-l border-[var(--border)]" style={{ background: "var(--surface-raised)" }}>
+        {/* ── Right panel — editors only. Desktop: side column. Mobile: bottom
+              sheet (opened by selecting an item or the header Editor button). ── */}
+        {canEdit && (
+        <>
+        {isMobile && mobilePanelOpen && (
+          <div className="fixed inset-0 z-[59] bg-black/50" onClick={() => setMobilePanelOpen(false)} />
+        )}
+        <div
+          className={cn(
+            "flex-col",
+            isMobile
+              ? cn(
+                  "fixed inset-x-0 bottom-0 z-[60] flex max-h-[82dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-[var(--border)] pb-safe transition-transform duration-200",
+                  mobilePanelOpen ? "translate-y-0" : "pointer-events-none translate-y-full"
+                )
+              : "hidden md:flex w-[280px] flex-shrink-0 border-l border-[var(--border)]"
+          )}
+          style={{ background: "var(--surface-raised)" }}
+        >
+          {isMobile && (
+            <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-3 py-2">
+              <span className="text-sm font-semibold text-[var(--text-primary)]">Editor</span>
+              <button onClick={() => setMobilePanelOpen(false)} className="rounded p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"><X size={18} /></button>
+            </div>
+          )}
           {/* Tabs */}
           <div className="flex shrink-0 gap-0.5 border-b border-[var(--border)] px-3 pt-3 pb-2">
             <div className="flex gap-0.5 rounded-lg bg-[var(--surface-overlay)] p-0.5 w-full">
@@ -907,7 +939,9 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
               </div>
             </div>
           )}
-        </div>}
+        </div>
+        </>
+        )}
       </div>
     </div>
   );
