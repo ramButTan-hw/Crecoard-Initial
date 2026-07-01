@@ -316,20 +316,22 @@ function AppShellInner() {
   const touchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } });
   const sensors = useSensors(mouseSensor, touchSensor);
   // Zoom-aware snap: snap to GRID_MINOR canvas px regardless of zoom level
-  // Alignment targets for a dragging box = its sibling boxes' edges/centers.
+  // Alignment targets for a dragging box = its sibling boxes' edges/centers, scoped
+  // to the board actually being edited (server draft + its :live snapshot share box
+  // ids, so we must NOT search all boards or we can grab a stale copy).
   const getAlignInfo = useCallback((id: string): { rect: Rect; targets: Rect[] } | null => {
     const s = useBoardStore.getState();
-    const allBoards = [...s.boards, ...Object.values(s.serverBoards)];
-    for (const b of allBoards) {
-      const box = b.boxes.find((x) => x.id === id);
-      if (!box) continue;
-      const targets = b.boxes
-        .filter((x) => x.id !== id && !x.deckOwnerId)
-        .map((x) => ({ x: x.x, y: x.y, w: x.width, h: x.height }));
-      return { rect: { x: box.x, y: box.y, w: box.width, h: box.height }, targets };
-    }
-    return null;
-  }, []);
+    const effectiveBoardId = (activeView === "server" && activeServerId)
+      ? (activeServerBoardId ?? s.activeBoardId)
+      : s.activeBoardId;
+    const board = s.boards.find((b) => b.id === effectiveBoardId) ?? s.serverBoards[effectiveBoardId];
+    const box = board?.boxes.find((x) => x.id === id);
+    if (!board || !box) return null;
+    const targets = board.boxes
+      .filter((x) => x.id !== id && !x.deckOwnerId)
+      .map((x) => ({ x: x.x, y: x.y, w: x.width, h: x.height }));
+    return { rect: { x: box.x, y: box.y, w: box.width, h: box.height }, targets };
+  }, [activeView, activeServerId, activeServerBoardId]);
   const snapToGrid = useMemo(() => createSnapToGrid(zoom, showGrid, getAlignInfo), [zoom, showGrid, getAlignInfo]);
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
