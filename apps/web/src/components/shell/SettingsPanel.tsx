@@ -5,6 +5,7 @@ import { X, Check, Plus, Trash2 } from "lucide-react";
 import { useBoardStore } from "@/store/boardStore";
 import { PRESET_THEMES, APP_FONTS, BG_FILTERS, ThemeVarMap } from "@/lib/appThemes";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -61,6 +62,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [tab, setTab] = useState<Tab>("theme");
   const [saveNameInput, setSaveNameInput] = useState("");
   const bgFileRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
 
   const {
     themeVars, savedThemes, appFont, appBg,
@@ -84,9 +86,16 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   };
 
   return (
+    <>
+    {isMobile && <div className="fixed inset-0 z-[998] bg-black/50" onClick={onClose} />}
     <div
-      className="fixed z-[999] w-[340px] rounded-xl border border-[var(--border)] shadow-2xl overflow-hidden"
-      style={{ background: "var(--surface-raised)", bottom: 12, left: 72 }}
+      className={cn(
+        "z-[999] border border-[var(--border)] shadow-2xl overflow-hidden",
+        isMobile
+          ? "fixed inset-x-0 bottom-0 w-full max-h-[85dvh] rounded-t-2xl pb-safe"
+          : "fixed w-[340px] rounded-xl"
+      )}
+      style={isMobile ? { background: "var(--surface-raised)" } : { background: "var(--surface-raised)", bottom: 12, left: 72 }}
     >
       {/* Tab bar */}
       <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-2 border-b border-[var(--border)]">
@@ -365,6 +374,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         )}
       </div>
     </div>
+    </>
   );
 }
 

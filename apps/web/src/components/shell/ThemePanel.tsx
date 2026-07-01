@@ -6,6 +6,7 @@ import { WallpaperEditor } from "@/components/ui/WallpaperEditor";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
 import { PRESET_THEMES, BG_FILTERS, ThemeVarMap } from "@/lib/appThemes";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { useUser } from "@/contexts/UserContext";
 import { uploadFile } from "@/lib/storage";
 
@@ -33,6 +34,7 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
   const [tab, setTab] = useState<Tab>("colors");
   const [saveNameInput, setSaveNameInput] = useState("");
   const bgFileRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
   const themeBgFileRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -90,9 +92,16 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
   };
 
   return (
+    <>
+    {isMobile && <div className="fixed inset-0 z-[998] bg-black/50" onClick={onClose} />}
     <div
-      className="fixed right-3 z-[999] w-[340px] rounded-xl border border-[var(--border)] shadow-2xl overflow-hidden"
-      style={{ background: "var(--surface-raised)", top: 88 }}
+      className={cn(
+        "z-[999] border border-[var(--border)] shadow-2xl overflow-hidden",
+        isMobile
+          ? "fixed inset-x-0 bottom-0 w-full max-h-[85dvh] rounded-t-2xl pb-safe"
+          : "fixed right-3 w-[340px] rounded-xl"
+      )}
+      style={isMobile ? { background: "var(--surface-raised)" } : { background: "var(--surface-raised)", top: 88 }}
     >
       {/* Tab bar */}
       <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-2 border-b border-[var(--border)]">
@@ -382,6 +391,7 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
         )}
       </div>
     </div>
+    </>
   );
 }
 

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { X, Send, Minus, Smile, ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { EmojiPicker } from "@/components/messaging/EmojiPicker";
 import { GifPicker } from "@/components/messaging/GifPicker";
 import { useMessaging } from "@/contexts/MessagingContext";
@@ -73,6 +74,7 @@ interface DmPopoutProps {
 export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutProps) {
   const messaging = useMessaging();
   const { identity } = useUser();
+  const isMobile = useIsMobile();
 
   // dmId is either a demo key ("d1") or a real conversationId (UUID)
   const isReal = UUID_RE.test(dmId);
@@ -226,16 +228,21 @@ export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutPro
 
   return (
     <div
-      className="fixed z-[1005] flex flex-col overflow-hidden rounded-2xl border border-[var(--border)] shadow-2xl"
-      style={{
-        left: pos.x,
-        top: pos.y,
-        width: W,
-        height: minimized ? "auto" : H,
-        background: "var(--surface-raised)",
-        transition: "height 0.15s ease",
-        userSelect: "none",
-      }}
+      className={cn(
+        "fixed z-[1005] flex flex-col overflow-hidden border border-[var(--border)] shadow-2xl",
+        isMobile ? "inset-x-0 top-0 h-[100dvh] rounded-none pb-safe" : "rounded-2xl"
+      )}
+      style={isMobile
+        ? { background: "var(--surface-raised)", userSelect: "none" }
+        : {
+            left: pos.x,
+            top: pos.y,
+            width: W,
+            height: minimized ? "auto" : H,
+            background: "var(--surface-raised)",
+            transition: "height 0.15s ease",
+            userSelect: "none",
+          }}
     >
       {/* Header — drag handle */}
       <div
