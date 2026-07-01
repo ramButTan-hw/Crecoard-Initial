@@ -10,6 +10,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { chatKeyFor, useBoardChat } from "@/contexts/BoardChatContext";
 import { ChatBlock } from "@/components/items/ChatBlock";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useVisualViewportHeight } from "@/hooks/useVisualViewport";
 import { cn } from "@/lib/utils";
 
 /**
@@ -32,6 +33,9 @@ export function ChatDrawer({ boardId, onClose }: { boardId: string; onClose: () 
   const isMobile = useIsMobile();
   // Mobile only: whether the full-screen conversation view is open (vs the channel list).
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  // Shrink the full-screen panel to the visual viewport so the composer stays above
+  // the on-screen keyboard instead of being covered by it.
+  const vvHeight = useVisualViewportHeight(isMobile);
 
   // Search this board's chat history (across channels).
   useEffect(() => {
@@ -156,7 +160,7 @@ export function ChatDrawer({ boardId, onClose }: { boardId: string; onClose: () 
   return (
     <div
       className="fixed right-0 top-0 z-[1100] flex h-full w-full flex-col border-l border-[var(--border)] shadow-2xl md:w-[380px]"
-      style={{ background: "var(--surface-raised)" }}
+      style={{ background: "var(--surface-raised)", ...(isMobile && vvHeight ? { height: vvHeight } : {}) }}
     >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
