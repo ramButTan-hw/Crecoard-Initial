@@ -12,6 +12,7 @@ import { useUser } from "@/contexts/UserContext";
 import { UsernameSetupModal } from "./UsernameSetupModal";
 import { useBoardStore } from "@/store/boardStore";
 import { setSoundEnabled } from "@/lib/sound";
+import { enablePush, disablePush, isPushEnabled, pushSupported, pushConfigured } from "@/lib/push";
 import { PRESET_THEMES, APP_FONTS, BG_FILTERS, ThemeVarMap } from "@/lib/appThemes";
 
 // ── Local-storage settings key ─────────────────────────────────────────────
@@ -405,6 +406,10 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
 
                   <SGroup label="Sounds">
                     <Toggle label="Notification sounds" desc="Play a sound for incoming messages" icon={<Volume2 size={14} />} value={prefs.notifySounds} onChange={(v) => patchPref("notifySounds", v)} />
+                  </SGroup>
+
+                  <SGroup label="Reminders">
+                    <PushToggle userId={userIdentity.userId} />
                   </SGroup>
                 </div>
               )}
@@ -817,6 +822,53 @@ function SGroup({ label, children }: { label: string; children: React.ReactNode 
       <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{label}</p>
       <div className="flex flex-col gap-2">{children}</div>
     </div>
+  );
+}
+
+function PushToggle({ userId }: { userId: string }) {
+  const [enabled, setEnabled] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => { void isPushEnabled().then(setEnabled); }, []);
+
+  if (!pushSupported() || !pushConfigured()) {
+    return (
+      <Toggle
+        label="Push notifications"
+        desc={!pushSupported() ? "Not supported on this device" : "Not configured on this server"}
+        icon={<Bell size={14} />}
+        value={false}
+        onChange={() => {}}
+      />
+    );
+  }
+
+  const toggle = async (v: boolean) => {
+    if (busy) return;
+    setBusy(true); setNote(null);
+    if (v) {
+      const res = await enablePush(userId);
+      setEnabled(res.ok);
+      if (!res.ok) setNote(res.error ?? "Couldn't enable push.");
+    } else {
+      await disablePush();
+      setEnabled(false);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <Toggle
+        label="Push notifications"
+        desc="Get reminders on this device even when the app is closed"
+        icon={<Bell size={14} />}
+        value={enabled}
+        onChange={toggle}
+      />
+      {note && <p className="mt-1 px-1 text-[11px] text-red-400">{note}</p>}
+    </>
   );
 }
 

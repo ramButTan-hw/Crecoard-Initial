@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail, emailConfigured } from "@/lib/email";
+import { sendPush, pushConfigured } from "@/lib/webpush";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -35,9 +36,9 @@ async function deliverDueReminders(): Promise<NextResponse> {
   if (!configured()) {
     return NextResponse.json({ error: "Reminders require Supabase to be configured." }, { status: 501 });
   }
-  // Leave rows pending until an email provider exists, so nothing is lost.
-  if (!emailConfigured()) {
-    return NextResponse.json({ error: "No email provider configured (set RESEND_API_KEY)." }, { status: 501 });
+  // Need at least one delivery channel; otherwise leave rows pending so nothing is lost.
+  if (!emailConfigured() && !pushConfigured()) {
+    return NextResponse.json({ error: "No delivery channel configured (set RESEND_API_KEY and/or VAPID keys)." }, { status: 501 });
   }
 
   const db = supabaseAdmin();
@@ -73,34 +74,53 @@ async function deliverDueReminders(): Promise<NextResponse> {
       .select("id");
     if (!claimed || claimed.length === 0) continue;
 
-    // Resolve the current email for this user (source of truth, not a snapshot).
-    const { data: userRes, error: userErr } = await db.auth.admin.getUserById(r.user_id as string);
-    const email = userRes?.user?.email;
-    if (userErr || !email) { await fail("no email on account"); continue; }
-
     const title = (r.title as string) || "Reminder";
     const body = (r.body as string) || "";
     const url = r.url as string | null;
-    const html =
-      `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.5">` +
-      `<p style="font-size:13px;color:#888;margin:0 0 8px">Reminder from Crecoard</p>` +
-      `<h2 style="margin:0 0 8px">${htmlEscape(title)}</h2>` +
-      (body ? `<p style="white-space:pre-wrap;margin:0 0 12px">${htmlEscape(body)}</p>` : "") +
-      (url ? `<p><a href="${htmlEscape(url)}" style="color:#6c63ff">Open board →</a></p>` : "") +
-      `</div>`;
-    const text = `${title}${body ? `\n\n${body}` : ""}${url ? `\n\n${url}` : ""}`;
+    let delivered = false;
+    const errors: string[] = [];
 
-    const result = await sendEmail({ to: email, subject: `Reminder: ${title}`, html, text });
-    if (result.ok) {
+    // Push: deliver to every registered device; prune dead subscriptions.
+    if (pushConfigured()) {
+      const { data: subs } = await db
+        .from("push_subscriptions")
+        .select("id, endpoint, p256dh, auth")
+        .eq("user_id", r.user_id as string);
+      for (const s of subs ?? []) {
+        const res = await sendPush(
+          { endpoint: s.endpoint as string, p256dh: s.p256dh as string, auth: s.auth as string },
+          { title: `Reminder: ${title}`, body, url: url ?? undefined, tag: `reminder-${r.id}` }
+        );
+        if (res.ok) delivered = true;
+        else if (res.gone) await db.from("push_subscriptions").delete().eq("id", s.id);
+        else if (res.error) errors.push(res.error);
+      }
+    }
+
+    // Email: resolve the current address (source of truth, not a snapshot).
+    if (emailConfigured()) {
+      const { data: userRes } = await db.auth.admin.getUserById(r.user_id as string);
+      const email = userRes?.user?.email;
+      if (email) {
+        const html =
+          `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.5">` +
+          `<p style="font-size:13px;color:#888;margin:0 0 8px">Reminder from Crecoard</p>` +
+          `<h2 style="margin:0 0 8px">${htmlEscape(title)}</h2>` +
+          (body ? `<p style="white-space:pre-wrap;margin:0 0 12px">${htmlEscape(body)}</p>` : "") +
+          (url ? `<p><a href="${htmlEscape(url)}" style="color:#6c63ff">Open board →</a></p>` : "") +
+          `</div>`;
+        const text = `${title}${body ? `\n\n${body}` : ""}${url ? `\n\n${url}` : ""}`;
+        const res = await sendEmail({ to: email, subject: `Reminder: ${title}`, html, text });
+        if (res.ok) delivered = true;
+        else if (!("skipped" in res && res.skipped) && "error" in res && res.error) errors.push(res.error);
+      }
+    }
+
+    if (delivered) {
       sent++;
       await db.from("reminders").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", r.id);
-    } else if ("skipped" in result && result.skipped) {
-      // Provider vanished mid-run (shouldn't happen after the guard) — release the
-      // claim so it retries next run, then stop.
-      await db.from("reminders").update({ status: "pending" }).eq("id", r.id);
-      break;
     } else {
-      await fail("error" in result ? result.error : "send failed");
+      await fail(errors[0] ?? "no delivery channel reached the user");
     }
   }
 
