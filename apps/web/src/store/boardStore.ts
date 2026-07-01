@@ -247,6 +247,8 @@ export interface CalendarFeed {
   url: string;
   color: string;
   enabled: boolean;
+  lastSyncedAt?: number; // epoch ms of last successful sync
+  lastError?: string;    // last sync error message (cleared on success)
 }
 
 export interface TableLink {

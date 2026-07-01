@@ -4965,7 +4965,188 @@ const MONTH_NAMES_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep"
 
 function fmtTime(t?: string) { if (!t) return ""; const [h, m] = t.split(":").map(Number); const ampm = h >= 12 ? "pm" : "am"; return `${h % 12 || 12}:${String(m).padStart(2,"0")}${ampm}`; }
 function todayKey() { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`; }
+function fmtRelativeTime(ms: number): string {
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return "just now";
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// ─── ICS export ────────────────────────────────────────────────────────────────
+// Build a standards-compliant .ics from board-authored events so a streamer's
+// schedule can be imported into Google/Apple/Outlook. Standards-only, no library.
+
+function icsEscape(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+}
+/** Fold long content lines to 75 octets per RFC 5545. */
+function icsFold(line: string): string {
+  if (line.length <= 75) return line;
+  const chunks: string[] = [];
+  let rest = line;
+  chunks.push(rest.slice(0, 75));
+  rest = rest.slice(75);
+  while (rest.length) { chunks.push(" " + rest.slice(0, 74)); rest = rest.slice(74); }
+  return chunks.join("\r\n");
+}
+function buildIcs(events: CalendarEvent[], calName: string): string {
+  const lines: string[] = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Crecoard//Calendar//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    `X-WR-CALNAME:${icsEscape(calName)}`,
+  ];
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  for (const e of events) {
+    const ymd = e.date.replace(/-/g, "");
+    lines.push("BEGIN:VEVENT");
+    lines.push(`UID:${e.id}@crecoard`);
+    lines.push(`DTSTAMP:${stamp}`);
+    if (e.allDay || !e.startTime) {
+      lines.push(`DTSTART;VALUE=DATE:${ymd}`);
+    } else {
+      lines.push(`DTSTART:${ymd}T${e.startTime.replace(":", "")}00`);
+      if (e.endTime) lines.push(`DTEND:${ymd}T${e.endTime.replace(":", "")}00`);
+    }
+    lines.push(icsFold(`SUMMARY:${icsEscape(e.title)}`));
+    if (e.description) lines.push(icsFold(`DESCRIPTION:${icsEscape(e.description)}`));
+    if (e.location) lines.push(icsFold(`LOCATION:${icsEscape(e.location)}`));
+    lines.push("END:VEVENT");
+  }
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n");
+}
+function downloadIcs(events: CalendarEvent[], calName: string): void {
+  const blob = new Blob([buildIcs(events, calName)], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${calName.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "calendar"}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 function dateLabel(key: string) { const [y,m,d] = key.split("-").map(Number); const dt = new Date(y,m-1,d); return dt.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}); }
+
+// ─── RRULE expansion ──────────────────────────────────────────────────────────
+// We expand recurring events within a bounded window so a single VEVENT with an
+// RRULE (e.g. a weekly stream) yields one occurrence per date, instead of showing
+// only its first instance. Standards-only (RFC 5545) — no external library.
+
+const ICS_WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]; // JS getDay() index
+const RRULE_WINDOW_BACK_DAYS = 31;   // keep last month's occurrences visible
+const RRULE_WINDOW_FWD_DAYS = 400;   // ~13 months ahead
+const RRULE_MAX_OCCURRENCES = 400;   // hard cap per event (guards runaway rules)
+
+function icsDateParts(raw: string): { y: number; m: number; d: number } | null {
+  const m = raw.match(/(\d{4})(\d{2})(\d{2})/);
+  return m ? { y: +m[1], m: +m[2], d: +m[3] } : null;
+}
+function ymdKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** All EXDATE date-keys declared in a VEVENT block. */
+function collectExdates(block: string): Set<string> {
+  const set = new Set<string>();
+  const re = /EXDATE[^:]*:([^\r\n]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(block))) {
+    for (const raw of m[1].split(",")) {
+      const p = icsDateParts(raw.trim());
+      if (p) set.add(`${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`);
+    }
+  }
+  return set;
+}
+
+/**
+ * Expand an RRULE into occurrence date-keys (YYYY-MM-DD), including the first,
+ * bounded to the display window. Supports FREQ DAILY/WEEKLY/MONTHLY/YEARLY with
+ * INTERVAL, COUNT, UNTIL, BYDAY, BYMONTHDAY. EXDATEs are removed post-expansion.
+ */
+function expandRrule(rrule: string, start: { y: number; m: number; d: number }, exdates: Set<string>): string[] {
+  const parts: Record<string, string> = {};
+  for (const seg of rrule.split(";")) {
+    const [k, v] = seg.split("=");
+    if (k && v) parts[k.toUpperCase()] = v;
+  }
+  const freq = (parts.FREQ ?? "").toUpperCase();
+  if (!["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].includes(freq)) {
+    return [ymdKey(new Date(start.y, start.m - 1, start.d, 12))];
+  }
+  const interval = Math.max(1, parseInt(parts.INTERVAL ?? "1", 10) || 1);
+  const count = parts.COUNT ? parseInt(parts.COUNT, 10) : undefined;
+  const untilP = parts.UNTIL ? icsDateParts(parts.UNTIL) : null;
+  const untilMs = untilP ? new Date(untilP.y, untilP.m - 1, untilP.d, 23, 59, 59).getTime() : undefined;
+  const byDay = parts.BYDAY ? parts.BYDAY.toUpperCase().split(",").map((s) => s.slice(-2)) : [];
+  const byMonthDay = parts.BYMONTHDAY ? parts.BYMONTHDAY.split(",").map((n) => parseInt(n, 10)).filter(Number.isFinite) : [];
+
+  const now = Date.now();
+  const winStart = now - RRULE_WINDOW_BACK_DAYS * 86400000;
+  const winEnd = now + RRULE_WINDOW_FWD_DAYS * 86400000;
+  const startDate = new Date(start.y, start.m - 1, start.d, 12);
+
+  const results: string[] = [];
+  let produced = 0;
+  let guard = 0;
+  const GUARD_MAX = 5000;
+
+  // Emit one candidate date; returns false when a stop condition is hit.
+  const emit = (d: Date): boolean => {
+    const t = d.getTime();
+    if (untilMs !== undefined && t > untilMs) return false;
+    if (t > winEnd) return false;
+    if (count !== undefined && produced >= count) return false;
+    produced++;
+    const key = ymdKey(d);
+    if (t >= winStart && !exdates.has(key) && results.length < RRULE_MAX_OCCURRENCES) results.push(key);
+    return true;
+  };
+
+  if (freq === "WEEKLY") {
+    const targetDows = byDay.length
+      ? byDay.map((c) => ICS_WEEKDAYS.indexOf(c)).filter((i) => i >= 0).sort((a, b) => a - b)
+      : [startDate.getDay()];
+    // Start from the Sunday of the start week; step INTERVAL weeks at a time.
+    const weekCursor = new Date(startDate);
+    weekCursor.setDate(weekCursor.getDate() - weekCursor.getDay());
+    while (guard++ < GUARD_MAX) {
+      let stop = false;
+      for (const dow of targetDows) {
+        const occ = new Date(weekCursor);
+        occ.setDate(occ.getDate() + dow);
+        if (occ.getTime() < startDate.getTime()) continue; // before the series start
+        if (!emit(occ)) { stop = true; break; }
+      }
+      if (stop) break;
+      weekCursor.setDate(weekCursor.getDate() + 7 * interval);
+      if (weekCursor.getTime() > winEnd && (untilMs === undefined || weekCursor.getTime() > untilMs)) break;
+    }
+  } else {
+    const cursor = new Date(startDate);
+    while (guard++ < GUARD_MAX) {
+      let occ: Date;
+      if (freq === "MONTHLY" && byMonthDay.length) {
+        occ = new Date(cursor.getFullYear(), cursor.getMonth(), byMonthDay[0], 12);
+      } else {
+        occ = new Date(cursor);
+      }
+      if (!emit(occ)) break;
+      if (freq === "DAILY") cursor.setDate(cursor.getDate() + interval);
+      else if (freq === "MONTHLY") cursor.setMonth(cursor.getMonth() + interval);
+      else cursor.setFullYear(cursor.getFullYear() + interval); // YEARLY
+      if (cursor.getTime() > winEnd && (untilMs === undefined || cursor.getTime() > untilMs)) break;
+    }
+  }
+  return results;
+}
 
 function parseIcs(text: string, feedId: string, feedColor: string): CalendarEvent[] {
   const events: CalendarEvent[] = [];
@@ -4983,7 +5164,18 @@ function parseIcs(text: string, feedId: string, feedColor: string): CalendarEven
     const desc = get("DESCRIPTION")?.replace(/\\n/g,"\n").replace(/\\,/g,",");
     const loc = get("LOCATION")?.replace(/\\,/g,",");
     const uid = get("UID") ?? crypto.randomUUID();
-    events.push({ id: `feed-${feedId}-${uid}`, date: dateStr, title: summary, color: feedColor, startTime: timeStr, endTime: endTimeStr, description: desc, location: loc, feedId, allDay: !dtstart.includes("T") });
+    const base = { title: summary, color: feedColor, startTime: timeStr, endTime: endTimeStr, description: desc, location: loc, feedId, allDay: !dtstart.includes("T") };
+
+    const rrule = get("RRULE");
+    const startParts = icsDateParts(dtstart);
+    if (rrule && startParts) {
+      const exdates = collectExdates(block);
+      for (const key of expandRrule(rrule, startParts, exdates)) {
+        events.push({ id: `feed-${feedId}-${uid}-${key}`, date: key, ...base });
+      }
+    } else {
+      events.push({ id: `feed-${feedId}-${uid}`, date: dateStr, ...base });
+    }
   }
   return events;
 }
@@ -5154,6 +5346,26 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished, extraC
 
   const localEvents: CalendarEvent[] = item.calendarEvents ?? [];
   const feedEvents: CalendarEvent[] = item.calendarFeedEvents ?? [];
+
+  // Auto-refresh external feeds: sync stale ones on mount, then on an interval.
+  // A live ref keeps the interval merging against the latest item/upd. Only the
+  // primary (expanded) render drives sync so collapsed pins don't double-fetch.
+  const feedSyncRef = useRef({ item, upd });
+  feedSyncRef.current = { item, upd };
+  useEffect(() => {
+    if (collapsed) return;
+    const hasEnabled = (item.calendarFeeds ?? []).some(f => f.enabled);
+    if (!hasEnabled) return;
+    const run = () => {
+      const it = feedSyncRef.current.item;
+      const stale = (it.calendarFeeds ?? []).filter(f => f.enabled && (!f.lastSyncedAt || Date.now() - f.lastSyncedAt > FEED_REFRESH_MS));
+      if (stale.length) void syncFeedsBatch(stale, it.calendarFeedEvents ?? [], it.calendarFeeds ?? [], feedSyncRef.current.upd);
+    };
+    run();
+    const id = setInterval(run, FEED_REFRESH_MS);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, collapsed]);
 
   // Migrate legacy single-link fields into the array format on the fly
   const links: TableLink[] = useMemo(() => {
@@ -5543,6 +5755,53 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished, extraC
   );
 }
 
+// ─── Calendar feed fetching + syncing ─────────────────────────────────────────
+
+const FEED_REFRESH_MS = 30 * 60 * 1000; // auto-refresh cadence & staleness threshold
+
+/** Fetch an iCal feed's raw text — direct first, CORS proxy as fallback. */
+async function fetchFeedText(url: string): Promise<string> {
+  try {
+    const r = await fetch(url, { cache: "no-cache" });
+    if (r.ok) return await r.text();
+  } catch { /* fall through to proxy */ }
+  const r = await fetch(`/api/proxy-ical?url=${encodeURIComponent(url)}`, { cache: "no-cache" });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return await r.text();
+}
+
+/**
+ * Sync a set of feeds in one batch and write results with a single `upd`, so
+ * concurrent per-feed writes can't clobber each other. Successful feeds get fresh
+ * events + lastSyncedAt; failed feeds keep their cached events + record lastError.
+ */
+async function syncFeedsBatch(
+  targets: CalendarFeed[],
+  baseEvents: CalendarEvent[],
+  baseFeeds: CalendarFeed[],
+  upd: (p: Partial<BlockItem>) => void,
+): Promise<void> {
+  const feeds = targets.filter(f => f.enabled);
+  if (!feeds.length) return;
+  const outcomes = await Promise.all(feeds.map(async (f) => {
+    try { return { id: f.id, events: parseIcs(await fetchFeedText(f.url), f.id, f.color), error: undefined as string | undefined }; }
+    catch (e) { return { id: f.id, events: null as CalendarEvent[] | null, error: e instanceof Error ? e.message : "Failed" }; }
+  }));
+
+  const syncedIds = new Set(feeds.map(f => f.id));
+  let events = baseEvents.filter(e => !syncedIds.has(e.feedId ?? ""));
+  for (const o of outcomes) {
+    events = o.events ? [...events, ...o.events] : [...events, ...baseEvents.filter(e => e.feedId === o.id)];
+  }
+  const now = Date.now();
+  const feedsNext = baseFeeds.map((f) => {
+    const o = outcomes.find(x => x.id === f.id);
+    if (!o) return f;
+    return o.error ? { ...f, lastError: o.error } : { ...f, lastSyncedAt: now, lastError: undefined };
+  });
+  upd({ calendarFeedEvents: events, calendarFeeds: feedsNext });
+}
+
 // ─── Calendar Style Panel ─────────────────────────────────────────────────────
 
 function useCalendarFeedSync(item: BlockItem, upd: (p: Partial<BlockItem>) => void) {
@@ -5554,27 +5813,20 @@ function useCalendarFeedSync(item: BlockItem, upd: (p: Partial<BlockItem>) => vo
     setSyncing(s => ({ ...s, [feed.id]: true }));
     setErrors(e => { const n = { ...e }; delete n[feed.id]; return n; });
     try {
-      // Try direct fetch first; CORS proxy as fallback
-      let text: string | null = null;
-      try {
-        const r = await fetch(feed.url, { cache: "no-cache" });
-        if (r.ok) text = await r.text();
-      } catch {}
-      if (!text) {
-        const proxy = `/api/proxy-ical?url=${encodeURIComponent(feed.url)}`;
-        const r = await fetch(proxy, { cache: "no-cache" });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        text = await r.text();
-      }
+      const text = await fetchFeedText(feed.url);
       const parsed = parseIcs(text, feed.id, feed.color);
-      const otherFeeds = (item.calendarFeedEvents ?? []).filter(e => e.feedId !== feed.id);
-      upd({ calendarFeedEvents: [...otherFeeds, ...parsed] });
+      const otherEvents = (item.calendarFeedEvents ?? []).filter(e => e.feedId !== feed.id);
+      const feedsNext = (item.calendarFeeds ?? []).map(f => f.id === feed.id ? { ...f, lastSyncedAt: Date.now(), lastError: undefined } : f);
+      upd({ calendarFeedEvents: [...otherEvents, ...parsed], calendarFeeds: feedsNext });
     } catch (err: unknown) {
-      setErrors(e => ({ ...e, [feed.id]: err instanceof Error ? err.message : "Failed" }));
+      const msg = err instanceof Error ? err.message : "Failed";
+      setErrors(e => ({ ...e, [feed.id]: msg }));
+      const feedsNext = (item.calendarFeeds ?? []).map(f => f.id === feed.id ? { ...f, lastError: msg } : f);
+      upd({ calendarFeeds: feedsNext });
     } finally {
       setSyncing(s => ({ ...s, [feed.id]: false }));
     }
-  }, [feeds, item.calendarFeedEvents, upd]);
+  }, [feeds, item.calendarFeedEvents, item.calendarFeeds, upd]);
 
   return { syncing, errors, syncFeed };
 }
@@ -5735,9 +5987,12 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
               <button onClick={() => removeFeed(f.id)} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>
             </div>
             <p className="text-[9px] text-[var(--text-muted)] truncate">{f.url}</p>
-            {errors[f.id] && <p className="text-[9px] text-red-400">{errors[f.id]}</p>}
+            {(errors[f.id] || f.lastError) && <p className="text-[9px] text-red-400">{errors[f.id] ?? f.lastError}</p>}
             {(item.calendarFeedEvents ?? []).filter(e => e.feedId === f.id).length > 0 && (
-              <p className="text-[9px] text-[var(--text-muted)]">{(item.calendarFeedEvents ?? []).filter(e => e.feedId === f.id).length} events loaded</p>
+              <p className="text-[9px] text-[var(--text-muted)]">
+                {(item.calendarFeedEvents ?? []).filter(e => e.feedId === f.id).length} events loaded
+                {f.lastSyncedAt && <span> · synced {fmtRelativeTime(f.lastSyncedAt)}</span>}
+              </p>
             )}
           </div>
         ))}
@@ -5768,6 +6023,19 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
             <p className="text-orange-400/80">Note: Calendar must be public or use a secret key URL. Private calendars require authentication not supported here.</p>
           </div>
         </details>
+      </section>
+
+      {/* Export */}
+      <section>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Export</p>
+        <p className="mb-2 text-[9px] text-[var(--text-muted)]">Download this board&apos;s own events as a .ics file to import into Google, Apple, or Outlook Calendar.</p>
+        <button
+          onClick={() => downloadIcs(events, "Crecoard Calendar")}
+          disabled={events.length === 0}
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-[var(--border)] py-1.5 text-[10px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-40"
+        >
+          <FileDown size={12} /> Export .ics{events.length > 0 ? ` (${events.length})` : ""}
+        </button>
       </section>
 
       {/* Display */}
