@@ -74,16 +74,18 @@ function getDefaultLayout(item: BlockItem, idx: number) {
 
 // ─── Resize handle ───────────────────────────────────────────────────────────
 
-function ResizeHandle({ onMouseDown, isText }: { onMouseDown: (e: React.MouseEvent) => void; isText: boolean }) {
+function ResizeHandle({ onPointerDown, isText, big }: { onPointerDown: (e: React.PointerEvent) => void; isText: boolean; big?: boolean }) {
   const [hovered, setHovered] = useState(false);
+  const size = big ? 28 : 18; // larger touch target on mobile
   return (
     <div
-      onMouseDown={onMouseDown}
+      onPointerDown={onPointerDown}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      className="touch-none"
       style={{
-        position: "absolute", right: 0, bottom: 0, width: 18, height: 18,
-        cursor: "se-resize", zIndex: 20, opacity: hovered ? 0.9 : 0.35,
+        position: "absolute", right: 0, bottom: 0, width: size, height: size,
+        cursor: "se-resize", zIndex: 20, opacity: hovered || big ? 0.9 : 0.35,
         background: "linear-gradient(135deg, transparent 50%, var(--accent) 50%)",
         borderRadius: isText ? 0 : "0 0 10px 0",
         transition: "opacity 0.15s",
@@ -123,6 +125,7 @@ function ItemCard({
 }) {
   const { resizeExpandedItem, updateItem } = useBoardStore();
   const { serverId, viewerRole, viewerRoleIds } = useServerBoard();
+  const isMobile = useIsMobile();
   const box = useBoardStore((s) =>
     s.boards.find((b) => b.id === boardId)?.boxes.find((bx) => bx.id === boxId) ??
     s.serverBoards[boardId]?.boxes.find((bx) => bx.id === boxId)
@@ -153,11 +156,11 @@ function ItemCard({
 
   useEffect(() => { return () => { itemResizeCleanupRef.current?.(); }; }, []);
 
-  const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
+  const onResizeMouseDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation(); e.preventDefault();
     resizing.current = true;
     resizeStart.current = { x: e.clientX, y: e.clientY, w: layout.w, h: layout.h };
-    const onMove = (ev: MouseEvent) => {
+    const onMove = (ev: PointerEvent) => {
       if (!resizing.current) return;
       const dx = (ev.clientX - resizeStart.current.x) / zoom;
       const dy = (ev.clientY - resizeStart.current.y) / zoom;
@@ -167,11 +170,11 @@ function ItemCard({
       });
     };
     const cleanup = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
       itemResizeCleanupRef.current = null;
     };
-    const onUp = (ev: MouseEvent) => {
+    const onUp = (ev: PointerEvent) => {
       resizing.current = false;
       const dx = (ev.clientX - resizeStart.current.x) / zoom;
       const dy = (ev.clientY - resizeStart.current.y) / zoom;
@@ -183,8 +186,8 @@ function ItemCard({
       cleanup();
     };
     itemResizeCleanupRef.current = cleanup;
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   }, [boardId, boxId, item.id, layout.w, layout.h, resizeExpandedItem]);
 
   const displayW = liveSize?.w ?? layout.w;
@@ -241,15 +244,30 @@ function ItemCard({
           {...attributes}
           {...listeners}
           onClick={(e) => e.stopPropagation()}
-          className="flex items-center justify-center w-full shrink-0 cursor-grab active:cursor-grabbing touch-none z-20 opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ height: 16, paddingTop: 2, paddingBottom: 2 }}
+          className={cn(
+            "flex items-center justify-center w-full shrink-0 cursor-grab active:cursor-grabbing touch-none z-20 transition-opacity",
+            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}
+          style={{ height: isMobile ? 22 : 16, paddingTop: 2, paddingBottom: 2 }}
         >
-          <div className="w-10 h-[3px] rounded-full bg-[var(--text-muted)]" />
+          <div className={cn("rounded-full bg-[var(--text-muted)]", isMobile ? "h-[4px] w-14" : "h-[3px] w-10")} />
+        </div>
+      )}
+
+      {/* Mobile: quick actions when selected (delete / duplicate) */}
+      {!isFinished && isMobile && isSelected && (
+        <div className="absolute top-1 right-1 z-30 flex items-center gap-1">
+          <button onClick={(e) => { e.stopPropagation(); onDuplicate(); }} title="Duplicate" className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--surface-overlay)] text-[var(--text-secondary)] shadow">
+            <CopyPlus size={14} />
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); onDelete(); }} title="Delete" className="flex h-7 w-7 items-center justify-center rounded-full bg-red-500 text-white shadow">
+            <Trash2 size={14} />
+          </button>
         </div>
       )}
 
       {/* Status badges */}
-      {!isFinished && (
+      {!isFinished && !(isMobile && isSelected) && (
         <div className="absolute top-1 right-1 z-20 pointer-events-none flex items-center gap-1">
           {item.showInCollapsed && (
             <span title="Pinned to collapsed view" className="flex items-center gap-0.5 rounded-full bg-[var(--accent)]/20 px-1.5 py-0.5 text-[9px] font-semibold text-[var(--accent)] leading-none">
@@ -306,7 +324,7 @@ function ItemCard({
 
       {/* Resize handle */}
       {!isFinished && (
-        <ResizeHandle onMouseDown={onResizeMouseDown} isText={isText} />
+        <ResizeHandle onPointerDown={onResizeMouseDown} isText={isText} big={isMobile} />
       )}
     </div>
   );
@@ -480,9 +498,9 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                 </div>
               </div>
             ) : (
-              <span className="text-xs text-[var(--text-muted)]">{box.items.length} items · {summaryItems.length} in summary</span>
+              <span className="hidden text-xs text-[var(--text-muted)] sm:inline">{box.items.length} items · {summaryItems.length} in summary</span>
             )}
-            <div className="hidden items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] p-0.5 sm:flex">
+            <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] p-0.5">
               <button
                 onClick={() => setCanvasZoom((v) => Math.max(0.5, Math.round((v - 0.25) * 4) / 4))}
                 className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"

@@ -778,7 +778,7 @@ function AppShellInner() {
         const totalUnread = Object.entries(unread).reduce((sum, [k, v]) => (k.startsWith(cbid + "::") ? sum + v : sum), 0);
         return (
           <>
-            {!showChatDrawer && (
+            {!showChatDrawer && !expandedBoxId && (
               <button
                 onClick={() => setShowChatDrawer(true)}
                 title="Chat"
@@ -834,7 +834,7 @@ function AppShellInner() {
             <button
               onClick={() => setMobilePaletteOpen(true)}
               aria-label="Add item"
-              className="fixed right-4 z-[1100] flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-lg transition-transform active:scale-95"
+              className="fixed right-4 z-[900] flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-lg transition-transform active:scale-95"
               style={{ bottom: "calc(52px + env(safe-area-inset-bottom) + 14px)" }}
             >
               <Plus size={22} />
