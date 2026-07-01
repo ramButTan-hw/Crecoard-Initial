@@ -230,7 +230,7 @@ export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutPro
     <div
       className={cn(
         "fixed z-[1005] flex flex-col overflow-hidden border border-[var(--border)] shadow-2xl",
-        isMobile ? "inset-x-0 top-0 h-[100dvh] rounded-none pb-safe" : "rounded-2xl"
+        isMobile ? "inset-x-0 top-0 h-[100dvh] rounded-none pt-safe pb-safe" : "rounded-2xl"
       )}
       style={isMobile
         ? { background: "var(--surface-raised)", userSelect: "none" }

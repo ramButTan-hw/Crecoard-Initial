@@ -607,7 +607,7 @@ function AppShellInner() {
 
 
   return (
-    <div className="flex h-[100dvh] w-screen flex-col overflow-hidden" style={{ background: "var(--surface)" }}>
+    <div className="flex h-[100dvh] w-screen flex-col overflow-hidden pt-safe" style={{ background: "var(--surface)" }}>
       {/* App background layer */}
       {mounted && appBg.image && (
         <>

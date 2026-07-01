@@ -159,7 +159,7 @@ export function ChatDrawer({ boardId, onClose }: { boardId: string; onClose: () 
 
   return (
     <div
-      className="fixed right-0 top-0 z-[1100] flex h-full w-full flex-col border-l border-[var(--border)] shadow-2xl md:w-[380px]"
+      className="fixed right-0 top-0 z-[1100] flex h-full w-full flex-col border-l border-[var(--border)] shadow-2xl pt-safe md:w-[380px]"
       style={{ background: "var(--surface-raised)", ...(isMobile && vvHeight ? { height: vvHeight } : {}) }}
     >
       {/* Header */}
