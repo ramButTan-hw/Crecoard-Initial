@@ -125,6 +125,7 @@ function ItemCard({
   const { resizeExpandedItem, updateItem } = useBoardStore();
   const { serverId, viewerRole, viewerRoleIds } = useServerBoard();
   const isMobile = useIsMobile();
+  const [cardMenu, setCardMenu] = useState<{ x: number; y: number } | null>(null);
   const box = useBoardStore((s) =>
     s.boards.find((b) => b.id === boardId)?.boxes.find((bx) => bx.id === boxId) ??
     s.serverBoards[boardId]?.boxes.find((bx) => bx.id === boxId)
@@ -208,6 +209,28 @@ function ItemCard({
 
   const dimmed = anyFocused && !isFocused;
 
+  // Standard item actions — passed to renderers that build their own menu, and
+  // shown as a fallback card-level right-click menu for items that don't.
+  const menuItems: ContextMenuEntry[] | undefined = !isFinished ? ([
+    { label: isFocused ? "Unfocus" : "Focus", icon: isFocused ? <EyeOff size={14} /> : <Eye size={14} />, onClick: onToggleFocus },
+    { label: item.settingsLocked ? "Unlock settings" : "Lock settings", icon: item.settingsLocked ? <LockOpen size={14} /> : <Lock size={14} />, onClick: onToggleSettingsLock },
+    "separator" as const,
+    { label: item.showInCollapsed ? "Unpin from summary" : "Pin to summary", icon: <Pin size={14} />, onClick: onTogglePin },
+    "separator" as const,
+    { label: "Duplicate", icon: <CopyPlus size={14} />, onClick: onDuplicate },
+    { label: "Move up", icon: <ArrowUp size={14} />, onClick: onMoveUp },
+    { label: "Move down", icon: <ArrowDown size={14} />, onClick: onMoveDown },
+    "separator" as const,
+    { label: "Reset size", icon: <RefreshCw size={14} />, onClick: () => { const sz = DEFAULT_SIZES[item.type] ?? { w: 280, h: 120 }; resizeExpandedItem(boardId, boxId, item.id, sz.w, sz.h); } },
+    { label: "Reset position", icon: <LayoutGrid size={14} />, onClick: onResetLayout },
+    "separator" as const,
+    { label: "Delete item", icon: <Trash2 size={14} />, danger: true, onClick: onDelete },
+    ...(serverId && viewerRole === "owner" ? [
+      "separator" as const,
+      { label: "Set permissions", icon: <ShieldCheck size={14} />, onClick: () => setPermModalOpen(true) },
+    ] : []),
+  ] as ContextMenuEntry[]) : undefined;
+
   return (
     <div
       ref={setDragRef}
@@ -234,6 +257,14 @@ function ItemCard({
         if (isFinished) return;
         e.preventDefault();
         onSelect();
+      }}
+      onContextMenu={(e) => {
+        // Fallback menu for items whose renderer has none (image, community,
+        // twitch, external, embed-card, chat, filebank). Renderers with their own
+        // menu call stopPropagation, so this never fires for them.
+        if (isFinished || !menuItems) return;
+        e.preventDefault();
+        setCardMenu({ x: e.clientX, y: e.clientY });
       }}
     >
 
@@ -291,25 +322,7 @@ function ItemCard({
           collapsed={false} isFinished={isFinished}
           containerW={displayW} containerH={displayH}
           canInteract={canInteract} canInput={canInput} canContribute={canContribute}
-          extraContextItems={!isFinished ? ([
-            { label: isFocused ? "Unfocus" : "Focus", icon: isFocused ? <EyeOff size={14} /> : <Eye size={14} />, onClick: onToggleFocus },
-            { label: item.settingsLocked ? "Unlock settings" : "Lock settings", icon: item.settingsLocked ? <LockOpen size={14} /> : <Lock size={14} />, onClick: onToggleSettingsLock },
-            "separator" as const,
-            { label: item.showInCollapsed ? "Unpin from summary" : "Pin to summary", icon: <Pin size={14} />, onClick: onTogglePin },
-            "separator" as const,
-            { label: "Duplicate", icon: <CopyPlus size={14} />, onClick: onDuplicate },
-            { label: "Move up", icon: <ArrowUp size={14} />, onClick: onMoveUp },
-            { label: "Move down", icon: <ArrowDown size={14} />, onClick: onMoveDown },
-            "separator" as const,
-            { label: "Reset size", icon: <RefreshCw size={14} />, onClick: () => { const sz = DEFAULT_SIZES[item.type] ?? { w: 280, h: 120 }; resizeExpandedItem(boardId, boxId, item.id, sz.w, sz.h); } },
-            { label: "Reset position", icon: <LayoutGrid size={14} />, onClick: onResetLayout },
-            "separator" as const,
-            { label: "Delete item", icon: <Trash2 size={14} />, danger: true, onClick: onDelete },
-            ...(serverId && viewerRole === "owner" ? [
-              "separator" as const,
-              { label: "Set permissions", icon: <ShieldCheck size={14} />, onClick: () => setPermModalOpen(true) },
-            ] : []),
-          ] as ContextMenuEntry[]) : undefined}
+          extraContextItems={menuItems}
         />
         {permModalOpen && (
           <ItemPermissionModal
@@ -324,6 +337,11 @@ function ItemCard({
       {/* Resize handle */}
       {!isFinished && (
         <ResizeHandle onPointerDown={onResizeMouseDown} isText={isText} big={isMobile} />
+      )}
+
+      {/* Fallback right-click menu for renderer-less items */}
+      {cardMenu && menuItems && (
+        <ContextMenu x={cardMenu.x} y={cardMenu.y} items={menuItems} onClose={() => setCardMenu(null)} />
       )}
     </div>
   );
