@@ -172,7 +172,6 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     case "list":     return <ListItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} canInput={canInput} canContribute={canContribute} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
     case "embed":    return <EmbedItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "timer":    return <TimerItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} containerH={containerH} extraContextItems={extraContextItems} />;
-    case "image":    return <ImageItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} />;
     case "graph":    return <GraphItem item={item} collapsed={collapsed} containerW={containerW} containerH={containerH} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
     case "api":      return <ApiItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "calendar": return <CalendarItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
@@ -180,14 +179,17 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "playlist": return <PlaylistItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "kanban":   return <KanbanItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
-    case "chat":     return <ChatBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} />;
-    case "filebank":    return <FileBankBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} />;
-    case "embed-card":  return <EmbedCardItem item={item} collapsed={collapsed} />;
-    case "external":    return <ExternalItem item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} onUpdate={onUpdate} />;
-    case "suggestion":  return <SuggestionItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} />;
-    case "guestbook":   return <GuestbookItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} />;
-    case "poll":        return <PollItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} />;
-    case "twitch":      return <TwitchItem item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} onUpdate={onUpdate} />;
+    // Items whose renderer builds no context menu of its own — wrap so right-click
+    // opens the standard item menu (Duplicate/Delete/…) right at the block.
+    case "chat":     return <WithItemMenu items={extraContextItems}><ChatBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} /></WithItemMenu>;
+    case "filebank":    return <WithItemMenu items={extraContextItems}><FileBankBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} /></WithItemMenu>;
+    case "embed-card":  return <WithItemMenu items={extraContextItems}><EmbedCardItem item={item} collapsed={collapsed} /></WithItemMenu>;
+    case "external":    return <WithItemMenu items={extraContextItems}><ExternalItem item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} onUpdate={onUpdate} /></WithItemMenu>;
+    case "image":       return <WithItemMenu items={extraContextItems}><ImageItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} /></WithItemMenu>;
+    case "suggestion":  return <WithItemMenu items={extraContextItems}><SuggestionItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} /></WithItemMenu>;
+    case "guestbook":   return <WithItemMenu items={extraContextItems}><GuestbookItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} /></WithItemMenu>;
+    case "poll":        return <WithItemMenu items={extraContextItems}><PollItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} /></WithItemMenu>;
+    case "twitch":      return <WithItemMenu items={extraContextItems}><TwitchItem item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} onUpdate={onUpdate} /></WithItemMenu>;
     default:            return null;
   }})();
 
@@ -195,6 +197,25 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     return <div style={{ pointerEvents: "none", width: "100%", height: "100%" }}>{rendered}</div>;
   }
   return rendered;
+}
+
+/**
+ * Wraps items whose renderer has no context menu (chat, filebank, image, embed-card,
+ * external, community items, twitch) so a right-click opens the standard item menu.
+ * stopPropagation keeps the box/canvas-level menu from also firing.
+ */
+function WithItemMenu({ items, children }: { items?: ContextMenuEntry[]; children: React.ReactNode }) {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  if (!items || items.length === 0) return <>{children}</>;
+  return (
+    <div
+      className="h-full w-full"
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY }); }}
+    >
+      {children}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={items} onClose={() => setMenu(null)} />}
+    </div>
+  );
 }
 
 // ─── Chat + File bank item renderers (thin wrappers) ─────────────────────────
