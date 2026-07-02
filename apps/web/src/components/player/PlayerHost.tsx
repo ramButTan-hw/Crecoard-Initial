@@ -96,15 +96,32 @@ export function PlayerHost() {
     const tick = () => {
       const el = boxRef.current;
       if (el) {
-        const slot = usePlayerStore.getState().slots[claimKey];
+        const ps = usePlayerStore.getState();
+        const slot = ps.slots[claimKey];
         const vw = window.innerWidth;
         const vh = window.innerHeight;
+        // Clip the pinned media to the canvas area so it never paints over
+        // side panels, headers or bars (fixed elements ignore DOM overflow).
+        const canvasHost = document.querySelector("[data-board-canvas]")?.parentElement;
+        const clipRect = canvasHost?.getBoundingClientRect() ?? null;
         let pinned = false;
         if (slot?.el.isConnected) {
           const r = slot.el.getBoundingClientRect();
-          const offscreen = r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw || r.width < 8 || r.height < 8;
+          const bounds = clipRect ?? { left: 0, top: 0, right: vw, bottom: vh };
+          const noOverlap =
+            r.bottom <= bounds.top || r.top >= bounds.bottom ||
+            r.right <= bounds.left || r.left >= bounds.right;
+          const offscreen = noOverlap || r.width < 8 || r.height < 8;
           if (!offscreen) {
             pinned = true;
+            const cutTop = Math.max(0, bounds.top - r.top);
+            const cutLeft = Math.max(0, bounds.left - r.left);
+            const cutRight = Math.max(0, r.right - bounds.right);
+            const cutBottom = Math.max(0, r.bottom - bounds.bottom);
+            el.style.clipPath = (cutTop || cutLeft || cutRight || cutBottom)
+              ? `inset(${cutTop}px ${cutRight}px ${cutBottom}px ${cutLeft}px)`
+              : "";
+            el.style.visibility = "visible";
             // Sit just above the slot's outermost stacking ancestor (the board
             // item/box root carries an unbounded bring-to-front z-index that
             // competes at root level — a static z would end up underneath and
@@ -132,6 +149,11 @@ export function PlayerHost() {
           }
         }
         if (!pinned) {
+          // Dock only while there is actually something to control: playing,
+          // or an app-started session on a platform that can't report state.
+          // Idle claims stay invisible — with several servers each holding a
+          // paused playlist, a permanent zombie widget would be wrong.
+          const showMini = ps.playing === true || (ps.playing === null && ps.userStarted);
           const mobile = vw < 768;
           el.style.left = "auto";
           el.style.top = "auto";
@@ -141,7 +163,9 @@ export function PlayerHost() {
           el.style.height = "auto";
           el.style.zIndex = "850";
           el.style.borderRadius = "12px";
-          el.style.pointerEvents = "auto";
+          el.style.clipPath = "";
+          el.style.visibility = showMini ? "visible" : "hidden";
+          el.style.pointerEvents = showMini ? "auto" : "none";
         }
         if (dockedRef.current === pinned) {
           dockedRef.current = !pinned;
@@ -415,7 +439,8 @@ export function PlayerHost() {
         position: "fixed",
         overflow: "hidden",
         background: "black",
-        // start docked; the pin loop takes over immediately
+        // start hidden; the pin loop decides pinned/docked/hidden on first tick
+        visibility: "hidden",
         right: 12, bottom: 12, width: 272, zIndex: 850, borderRadius: 12,
         boxShadow: docked ? "0 8px 32px rgba(0,0,0,0.55)" : undefined,
         border: docked ? "1px solid var(--border)" : undefined,
