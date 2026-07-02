@@ -453,6 +453,12 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           display: "flex",
           flexDirection: "column",
         }}
+        onDoubleClick={(e) => {
+          const el = e.target as HTMLElement;
+          if (el.closest('button,a,input,textarea,select,[contenteditable="true"]')) return;
+          e.stopPropagation();
+          window.dispatchEvent(new CustomEvent("crecoard:focus-box", { detail: { boxId: box.id } }));
+        }}
         onClick={(e) => {
           e.stopPropagation();
           if (draggedRef.current) { draggedRef.current = false; return; } // ignore click after a drag

@@ -221,9 +221,19 @@ export function BoardCanvas() {
     setBoardCtx({ screenX: e.clientX, screenY: e.clientY, canvasX, canvasY });
   }, [isFinished, canEditBoard, selectBox, clientToCanvas]);
 
+  // Ease programmatic camera moves (fit / focus) — direct manipulation like
+  // wheel-zoom and panning stays immediate.
+  const animateViewChange = useCallback(() => {
+    const el = document.querySelector("[data-board-canvas]") as HTMLElement | null;
+    if (!el) return;
+    el.style.transition = "transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)";
+    window.setTimeout(() => { el.style.transition = ""; }, 400);
+  }, []);
+
   // ── Fit content to viewport ───────────────────────────────────────────────
   const handleFitContent = useCallback(() => {
     if (!viewportRef.current) return;
+    animateViewChange();
     const boxes = board?.boxes ?? [];
     const items = board?.boardItems ?? [];
     const vw = viewportRef.current.clientWidth;
@@ -258,7 +268,7 @@ export function BoardCanvas() {
       x: vw / 2 - (minX + contentW / 2) * newZoom,
       y: vh / 2 - (minY + contentH / 2) * newZoom,
     });
-  }, [board, setZoom, setPanOffset]);
+  }, [board, setZoom, setPanOffset, animateViewChange]);
 
   // Restore this board's remembered view (zoom + pan) when switching boards, so
   // moving in and out of boards preserves where you were. Only auto-fit the first
@@ -288,6 +298,7 @@ export function BoardCanvas() {
 
   // Center the canvas on a box or board-level item and select it (chat links).
   const handleFocusBox = useCallback((targetId: string) => {
+    animateViewChange();
     if (!viewportRef.current) return;
     const box = (board?.boxes ?? []).find((x) => x.id === targetId);
     const item = box ? undefined : (board?.boardItems ?? []).find((x) => x.id === targetId);

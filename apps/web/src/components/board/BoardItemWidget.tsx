@@ -317,6 +317,12 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
             bringBoardItemToFront(boardId, item.id);
           }
         }}
+        onDoubleClick={(e) => {
+          const el = e.target as HTMLElement;
+          if (el.closest('button,a,input,textarea,select,[contenteditable="true"],iframe')) return;
+          e.stopPropagation();
+          window.dispatchEvent(new CustomEvent("crecoard:focus-box", { detail: { boxId: item.id } }));
+        }}
         onPointerDown={(e) => {
           // One interaction grammar with boxes: items drag from the body too.
           // Interactive elements and scrollable content win; [data-item-drag]

@@ -34,6 +34,8 @@ import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/boardConstants";
 import { applyThemeVars, applyAppFont, CSS_VAR_NAMES, ThemeVarMap } from "@/lib/appThemes";
 import { CollabContext, useCollabSessionSetup } from "@/lib/useCollabSession";
 import { PlayerHost } from "@/components/player/PlayerHost";
+import { CommandPalette, type PaletteCommand } from "@/components/ui/CommandPalette";
+import { AppToaster, appToast } from "@/components/ui/AppToast";
 import { getSelfIdentity } from "@/lib/collaboration";
 import { logServerAction } from "@/lib/serverAudit";
 import { ServerBoardContext } from "@/contexts/ServerBoardContext";
@@ -89,6 +91,7 @@ function AppShellInner() {
   const [viewingUser, setViewingUser] = useState<ViewableUser | null>(null);
   const [isDesktopApp, setIsDesktopApp] = useState(false);
   const [storageError, setStorageError] = useState(false);
+  const [cmdOpen, setCmdOpen] = useState(false);
   // Gate localStorage-derived UI (appBg) until after mount so SSR markup and the
   // first client render match — otherwise React throws a hydration error.
   const [mounted, setMounted] = useState(false);
@@ -105,6 +108,7 @@ function AppShellInner() {
   const intentionalLivePreview = useRef(false);
 
   const { servers: realServers, serverMembers, serverRoles: savedServerRoles, loadMembers } = useServers();
+  const personalBoards = useBoardStore((s) => s.boards);
   const { identity, loading: userLoading, isLoggedIn } = useUser();
   const { online: presenceMap, myStatus } = usePresence();
   const { loadServerBoard, loadLiveBoard, publishServerBoard } = useBoardSync();
@@ -198,6 +202,52 @@ function AppShellInner() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [activeView, activeServerId, activeServerBoardId, isDraftMode, viewerRole]);
+
+  // ⌘K command palette
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const canAddItems = activeView !== "server" || (isDraftMode && (viewerRole === "owner" || viewerRole === "admin"));
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const cmds: PaletteCommand[] = [];
+    if (canAddItems) {
+      for (const def of ITEM_DEFINITIONS) {
+        if (def.serverOnly && activeView !== "server") continue;
+        cmds.push({ id: `add-${def.type}`, label: `Add ${def.label}`, section: "Add to board", keywords: def.description, icon: def.icon, run: () => addItemAtCenter(def) });
+      }
+    }
+    for (const b of personalBoards) {
+      cmds.push({
+        id: `board-${b.id}`, label: b.name || "Untitled board", section: "Boards", keywords: "switch open board",
+        run: () => { setActiveServerId(null); setActiveServerBoardId(null); setActiveView("board"); setActiveBoard(b.id); },
+      });
+    }
+    for (const sv of realServers) {
+      cmds.push({ id: `server-${sv.id}`, label: sv.name, section: "Servers", keywords: "switch open server", run: () => handleServerSelect(sv.id) });
+    }
+    cmds.push(
+      { id: "toggle-grid", label: "Toggle grid & snapping", section: "View", keywords: "grid snap magnetic dots", run: () => { useBoardStore.getState().toggleGrid(); appToast(useBoardStore.getState().showGrid ? "Grid & snapping on" : "Grid & snapping off"); } },
+      { id: "fit", label: "Fit content to view", section: "View", keywords: "zoom fit center camera", run: () => window.dispatchEvent(new CustomEvent("plancraft:fit-board")) },
+      { id: "zoom-100", label: "Zoom to 100%", section: "View", keywords: "reset zoom", run: () => useBoardStore.getState().setZoom(1) },
+      { id: "undo", label: "Undo", section: "Edit", hint: "\u2318Z", run: () => useBoardStore.getState().undo() },
+      { id: "redo", label: "Redo", section: "Edit", hint: "\u21e7\u2318Z", run: () => useBoardStore.getState().redo() },
+      { id: "friends", label: showFriends ? "Hide friends" : "Show friends", section: "App", keywords: "dm people", run: () => setShowFriends((v) => !v) },
+      { id: "templates", label: "Templates", section: "App", run: () => setShowTemplates(true) },
+      { id: "profile", label: "Edit profile", section: "App", run: () => setShowProfile(true) },
+      { id: "settings", label: "Settings", section: "App", run: () => setShowUserSettings(true) },
+    );
+    return cmds;
+    // handleServerSelect/addItemAtCenter are stable enough for palette purposes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAddItems, activeView, personalBoards, realServers, showFriends]);
   const selectedBoardItemId = useBoardStore((s) => s.selectedBoardItemId);
   const boardThemeVars = useBoardStore((s) => {
     if (activeView === "server" && activeServerBoardId) {
@@ -687,7 +737,9 @@ function AppShellInner() {
       setPublishMessage("");
       setPublishModalOpen(false);
       setPublishError(null);
+      appToast("Published to the live board", "success");
     } else {
+      appToast("Publish failed", "error");
       setPublishError(
         result.error === "migration_missing"
           ? "Run 20260629000002_server_publishes.sql in your Supabase SQL editor first."
@@ -761,7 +813,7 @@ function AppShellInner() {
                 <BoardTabs />
                 <TopBar />
                 <div className="flex flex-1 overflow-hidden">
-                  {!isMobile && <ItemPalette />}
+                  {!isMobile && <ItemPalette onPick={addItemAtCenter} desktop />}
                   <BoardCanvas />
                   {!isMobile && selectedBoxId && !isFinished && !expandedBoxId && !selectedBoardItemId && <StylePanel boxId={selectedBoxId} />}
                   {!isMobile && selectedBoardItemId && !isFinished && !expandedBoxId && <BoardItemPanel />}
@@ -829,7 +881,7 @@ function AppShellInner() {
                 <CollabContext.Provider value={collabSession}>
                   <DndContext id="dnd-server-canvas" sensors={sensors} modifiers={[snapToGrid]} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragEnd={handleDragEnd}>
                     <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}>
-                      {!isMobile && isDraftMode && canEdit && <ItemPalette />}
+                      {!isMobile && isDraftMode && canEdit && <ItemPalette onPick={addItemAtCenter} desktop />}
                       <BoardCanvas />
                       {!isMobile && selectedBoxId && !expandedBoxId && !selectedBoardItemId && isDraftMode && canEdit && <StylePanel boxId={selectedBoxId} />}
                       {!isMobile && selectedBoardItemId && !expandedBoxId && isDraftMode && canEdit && <BoardItemPanel />}
@@ -967,6 +1019,8 @@ function AppShellInner() {
 
       {/* Global media host — owns the playlist <iframe>/<audio> so music survives board switches */}
       <PlayerHost />
+      <AppToaster />
+      {cmdOpen && <CommandPalette commands={paletteCommands} onClose={() => setCmdOpen(false)} />}
 
       {storageError && (
         <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 rounded-lg border border-red-500/40 bg-[var(--surface)] px-4 py-2.5 shadow-xl text-sm text-red-400">
