@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PARA_STYLES } from "@/components/items/ItemRenderer";
+import { applyImageUpload } from "@/lib/storage";
 import {
   DndContext, DragEndEvent, MouseSensor, TouchSensor,
   useSensor, useSensors, useDraggable,
@@ -1183,9 +1184,7 @@ export function TextStylePanel({ item, upd, hideCollapsed }: { item: BlockItem; 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => upd({ textBgImage: ev.target?.result as string });
-    reader.readAsDataURL(file);
+    applyImageUpload(file, (url) => upd({ textBgImage: url }));
     e.target.value = "";
   };
 
@@ -1422,9 +1421,7 @@ function BlockStyleEditor({ boxId, boardId, style, onUpdate }: {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => onUpdate({ wallpaperUrl: ev.target?.result as string });
-    reader.readAsDataURL(file);
+    applyImageUpload(file, (url) => onUpdate({ wallpaperUrl: url }));
     e.target.value = "";
   };
 

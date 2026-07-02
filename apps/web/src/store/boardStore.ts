@@ -1838,10 +1838,14 @@ export const useBoardStore = create<BoardState>()(
 
     persistBoards: () => {
       try {
-        const { boards, activeBoardId, serverBoards, currentUserId } = get();
+        const { boards, activeBoardId, currentUserId } = get();
         const uid = currentUserId ?? getLastUserId();
         localStorage.setItem(boardsStorageKey(uid), JSON.stringify({ boards, activeBoardId }));
-        localStorage.setItem("plancraft-server-boards-v1", JSON.stringify(serverBoards));
+        // Server boards are NEVER hydrated from localStorage (M10: injectServerBoards
+        // owns them, sourced from the DB) — mirroring them here only burned quota:
+        // one draft + its :live twin with an inline wallpaper filled all ~10MB and
+        // made every other save fail ("Storage is full"). Drop the legacy key too.
+        localStorage.removeItem("plancraft-server-boards-v1");
       } catch {
         if (typeof window !== "undefined")
           window.dispatchEvent(new CustomEvent("plancraft:storage-error"));

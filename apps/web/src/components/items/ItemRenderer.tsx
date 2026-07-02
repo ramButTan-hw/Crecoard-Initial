@@ -47,7 +47,7 @@ import { resolveEmbed, PLATFORM_COLORS, getStaticThumbnail, advancePlaylistIndex
 import { usePlayerStore } from "@/store/playerStore";
 import { usePlayerSession, announceSessionState } from "@/lib/playerSession";
 import { useBoardContributions } from "@/contexts/BoardContributionsContext";
-import { uploadFile } from "@/lib/storage";
+import { uploadFile, applyImageUpload } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import { buildIcs } from "@/lib/ics";
 import { REMINDER_LEADS, eventStartDate, createReminder } from "@/lib/reminders";
@@ -973,9 +973,7 @@ function TextItem({ item, upd, collapsed, isFinished, canInput, extraContextItem
   const handleBgImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => upd({ textBgImage: ev.target?.result as string });
-    reader.readAsDataURL(file);
+    applyImageUpload(file, (url) => upd({ textBgImage: url }));
     e.target.value = "";
   };
 
@@ -1467,9 +1465,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => upd({ listWallpaperUrl: ev.target?.result as string });
-    reader.readAsDataURL(file);
+    applyImageUpload(file, (url) => upd({ listWallpaperUrl: url }));
     e.target.value = "";
   };
 
@@ -1826,9 +1822,7 @@ function IconUploadBtn({ onUpload }: { onUpload: (url: string) => void }) {
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => onUpload(ev.target?.result as string);
-    reader.readAsDataURL(file);
+    applyImageUpload(file, onUpload, "icons");
     e.target.value = "";
   };
   return (
@@ -1890,9 +1884,7 @@ export function ChatStylePanel({ item, upd, usedChannels = [] }: { item: BlockIt
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => upd({ chatBgImage: ev.target?.result as string });
-    reader.readAsDataURL(file);
+    applyImageUpload(file, (url) => upd({ chatBgImage: url }));
     e.target.value = "";
   };
 
@@ -3707,9 +3699,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
                 <input ref={bgFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = (ev) => upd({ timerBgImage: ev.target?.result as string });
-                  reader.readAsDataURL(file);
+                  applyImageUpload(file, (url) => upd({ timerBgImage: url }));
                   e.target.value = "";
                 }} />
               </label>
@@ -4502,9 +4492,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                     <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = (ev) => upd({ graphBgImage: ev.target?.result as string });
-                      reader.readAsDataURL(file);
+                      applyImageUpload(file, (url) => upd({ graphBgImage: url }));
                       e.target.value = "";
                     }} />
                   </label>
@@ -6133,9 +6121,8 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
   const handleBgFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => upd({ calendarBgImage: ev.target?.result as string });
-    reader.readAsDataURL(file); e.target.value = "";
+    applyImageUpload(file, (url) => upd({ calendarBgImage: url }));
+    e.target.value = "";
   };
 
   return (
@@ -6347,7 +6334,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
           </div>
           <input ref={headerFileRef} type="file" accept="image/*" className="hidden" onChange={e => {
             const f = e.target.files?.[0]; if (!f) return;
-            const r = new FileReader(); r.onload = ev => upd({ calendarHeaderBgImage: ev.target?.result as string }); r.readAsDataURL(f); e.target.value = "";
+            applyImageUpload(f, (url) => upd({ calendarHeaderBgImage: url })); e.target.value = "";
           }} />
           {item.calendarHeaderBgImage && (
             <div className="flex flex-col gap-1">
@@ -6390,7 +6377,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
               </div>
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => {
                 const f = e.target.files?.[0]; if (!f) return;
-                const r = new FileReader(); r.onload = ev => upd({ [imgKey]: ev.target?.result as string }); r.readAsDataURL(f); e.target.value = "";
+                applyImageUpload(f, (url) => upd({ [imgKey]: url })); e.target.value = "";
               }} />
               {item[imgKey] && (
                 <div className="flex flex-col gap-1">
@@ -7880,9 +7867,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => upd({ tableBgImage: ev.target?.result as string });
-    reader.readAsDataURL(file);
+    applyImageUpload(file, (url) => upd({ tableBgImage: url }));
     e.target.value = "";
   };
 
@@ -9254,7 +9239,7 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
                 </button>
                 <input ref={bgImgFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
                   const f = e.target.files?.[0]; if (!f) return;
-                  const r = new FileReader(); r.onload = (ev) => upd({ playlistBgImage: ev.target?.result as string }); r.readAsDataURL(f);
+                  applyImageUpload(f, (url) => upd({ playlistBgImage: url }));
                   e.target.value = "";
                 }} />
               </div>

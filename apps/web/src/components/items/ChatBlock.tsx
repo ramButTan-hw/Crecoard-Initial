@@ -9,7 +9,8 @@ import { useBoardChatItem } from "@/contexts/BoardChatContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useUser } from "@/contexts/UserContext";
 import { useProfiles } from "@/contexts/ProfilesContext";
-import { uploadFile } from "@/lib/storage";
+import { uploadFile, uploadDataUrl } from "@/lib/storage";
+import { useCanEditBoard } from "@/contexts/ServerBoardContext";
 import { cn } from "@/lib/utils";
 import { EmojiPicker } from "@/components/messaging/EmojiPicker";
 import { GifPicker } from "@/components/messaging/GifPicker";
@@ -134,6 +135,31 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const { serverMembers } = useServers();
   const roster = serverId ? (serverMembers[serverId] ?? []) : [];
   const { messages, send, chatKey, loadOlder, reactions, toggleReaction, togglePin } = useBoardChatItem(item.id, chatBoardId, channelName);
+
+  // One-time heal: legacy chat backgrounds were stored as inline data URLs — a
+  // single wallpaper could fill the whole localStorage quota ("Storage is full")
+  // and bloat every publish. Editors upload it to storage and swap in the URL.
+  const canEditBoardForHeal = useCanEditBoard();
+  useEffect(() => {
+    const img = item.chatBgImage;
+    if (!img?.startsWith("data:") || !canEditBoardForHeal || boardId.endsWith(":live")) return;
+    let cancelled = false;
+    void uploadDataUrl(img, identity.userId, "wallpapers", "chat-bg.png").then((url) => {
+      if (cancelled || !url) return;
+      const s = useBoardStore.getState();
+      const board = s.boards.find((b) => b.id === boardId) ?? s.serverBoards[boardId];
+      if (!board) return;
+      if (board.boardItems?.some((i) => i.id === item.id)) {
+        s.updateBoardItem(boardId, item.id, { chatBgImage: url });
+      } else {
+        const box = board.boxes.find((bx) => bx.items.some((i) => i.id === item.id));
+        if (box) s.updateItem(boardId, box.id, item.id, { chatBgImage: url });
+      }
+      s.persistBoards();
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.chatBgImage, canEditBoardForHeal, boardId, item.id]);
   const [allLoaded, setAllLoaded] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   // Which message currently has its reaction emoji-picker open.

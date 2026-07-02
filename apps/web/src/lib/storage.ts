@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { getSelfIdentity } from "./collaboration";
 
 const BUCKET = "uploads";
 
@@ -28,6 +29,31 @@ export async function uploadFile(
   if (error) return null;
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
   return data.publicUrl;
+}
+
+/**
+ * Image-picker helper for style panels: apply an instant data-URL preview,
+ * then upload to storage and re-apply the durable public URL.
+ *
+ * Inline data URLs must never STAY in board state — a single chat wallpaper
+ * once consumed the entire localStorage quota ("Storage is full" banner) and
+ * bloats every publish/share. The data URL only survives in guest/local mode
+ * where uploads are unavailable.
+ */
+export function applyImageUpload(
+  file: File,
+  apply: (url: string) => void,
+  folder = "wallpapers"
+): void {
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const dataUrl = ev.target?.result as string;
+    apply(dataUrl);
+    void uploadFile(file, getSelfIdentity().userId, folder, file.name).then((url) => {
+      if (url) apply(url);
+    });
+  };
+  reader.readAsDataURL(file);
 }
 
 /**
