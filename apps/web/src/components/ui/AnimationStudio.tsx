@@ -28,6 +28,13 @@ export function AnimationStudio({ serverId, initial, onApply, onClose }: {
     return () => { cancelled = true; };
   }, [serverId, view]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const previewClass = useMemo(() => ensureAnimClass(draft), [draft]);
   const previewKey = specHash(draft);
 

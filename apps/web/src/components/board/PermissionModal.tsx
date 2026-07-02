@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Crown, X } from "lucide-react";
 import type { BoxPerms, ItemPerms } from "@/store/boardStore";
 import { useServerBoard } from "@/contexts/ServerBoardContext";
@@ -207,6 +207,12 @@ function PermModalShell({
   onSave: () => void;
   children: React.ReactNode;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <div
       className="fixed inset-0 z-[300] flex items-center justify-center"

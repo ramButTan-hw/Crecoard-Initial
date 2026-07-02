@@ -203,6 +203,13 @@ function AppShellInner() {
     return () => window.removeEventListener("keydown", onKey);
   }, [activeView, activeServerId, activeServerBoardId, isDraftMode, viewerRole]);
 
+  // Empty-board CTA → templates modal
+  useEffect(() => {
+    const handler = () => setShowTemplates(true);
+    window.addEventListener("crecoard:open-templates", handler);
+    return () => window.removeEventListener("crecoard:open-templates", handler);
+  }, []);
+
   // ⌘K command palette
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

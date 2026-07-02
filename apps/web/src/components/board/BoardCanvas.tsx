@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   LayoutGrid, Palette, Share2, Clipboard,
-  ScanSearch, SquarePlus, Layers, Package,
+  ScanSearch, SquarePlus, Layers, Package, X,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useBoardStore, useActiveBoard, DEFAULT_BOX_STYLE } from "@/store/boardStore";
@@ -15,7 +15,7 @@ import type { CursorState } from "@/lib/collaboration";
 import { BoardBox } from "./BoardBox";
 import { cn } from "@/lib/utils";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/boardConstants";
-import { useCanEditBoard, useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
+import { useCanEditBoard, useServerBoard, useServerBoardData, roleAllowed } from "@/contexts/ServerBoardContext";
 
 // ─── Remote cursor overlay ────────────────────────────────────────────────────
 
@@ -103,12 +103,87 @@ function AlignmentGuides({ boxes, items }: { boxes: import("@/store/boardStore")
   );
 }
 
+// ─── Empty board first-run ────────────────────────────────────────────────────
+
+function EmptyBoardState({ canEdit }: { canEdit: boolean }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+      <div className="pointer-events-auto flex w-[340px] flex-col items-center gap-3 rounded-2xl border border-[var(--border)] px-6 py-7 text-center shadow-2xl"
+        style={{ background: "var(--surface-raised)" }}>
+        <p className="text-sm font-semibold text-[var(--text-primary)]">
+          {canEdit ? "This board is empty" : "Nothing here yet"}
+        </p>
+        {canEdit ? (
+          <>
+            <p className="text-xs text-[var(--text-muted)]">
+              Drag items in from the left palette, or press
+              <kbd className="mx-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px]">⌘K</kbd>
+              to add anything.
+            </p>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent("crecoard:open-templates"))}
+              className="rounded-lg bg-[var(--accent)] px-3.5 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+            >
+              Start from a template
+            </button>
+          </>
+        ) : (
+          <p className="text-xs text-[var(--text-muted)]">The owner hasn't published anything to this board.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Member capability strip ──────────────────────────────────────────────────
+// Members land on live boards with no idea what they may touch — surface it
+// once per server (dismissible), derived from the actual items + permissions.
+
+function MemberCapabilities({ board, serverId, viewerRole, viewerRoleIds }: {
+  board: import("@/store/boardStore").Board;
+  serverId: string;
+  viewerRole: import("@/types/server").MemberRole | null;
+  viewerRoleIds: string[];
+}) {
+  const [dismissed, setDismissed] = useState(() =>
+    typeof window !== "undefined" && localStorage.getItem(`crecoard-caps-seen-${serverId}`) === "1");
+  if (dismissed || viewerRole !== "member") return null;
+
+  const allItems = [
+    ...(board.boardItems ?? []),
+    ...board.boxes.flatMap((bx) => bx.items),
+  ];
+  const caps: string[] = [];
+  if (allItems.some((i) => i.type === "chat")) caps.push("chat");
+  if (allItems.some((i) => i.type === "playlist" && roleAllowed(viewerRole, viewerRoleIds, i.perms?.fns?.["queue-add"]))) caps.push("add songs");
+  if (allItems.some((i) => ["suggestion", "guestbook", "poll"].includes(i.type) && roleAllowed(viewerRole, viewerRoleIds, i.perms?.contribute))) caps.push("post ideas & vote");
+  if (caps.length === 0) return null;
+
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-[var(--border)] py-1.5 pl-3.5 pr-1.5 text-xs shadow-lg"
+        style={{ background: "var(--surface-raised)" }}>
+        <span className="text-[var(--text-secondary)]">
+          You can {caps.length > 1 ? caps.slice(0, -1).join(", ") + " and " + caps[caps.length - 1] : caps[0]} here
+        </span>
+        <button
+          onClick={() => { setDismissed(true); try { localStorage.setItem(`crecoard-caps-seen-${serverId}`, "1"); } catch {} }}
+          className="flex h-5 w-5 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
+          aria-label="Dismiss"
+        >
+          <X size={11} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Canvas ───────────────────────────────────────────────────────────────────
 
 export function BoardCanvas() {
   const personalBoard = useActiveBoard();
   const serverBoard = useServerBoardData();
-  const { serverId, boardId: serverBoardId } = useServerBoard();
+  const { serverId, boardId: serverBoardId, viewerRole, viewerRoleIds } = useServerBoard();
   // In server context use the server board; in personal context use the personal board
   const board = serverId ? serverBoard : personalBoard;
   const {
@@ -769,6 +844,11 @@ export function BoardCanvas() {
           <CollabCursors cursors={cursors} zoom={zoom} />
         </div>
       </div>
+
+      {board.boxes.length === 0 && (board.boardItems?.length ?? 0) === 0 && (
+        <EmptyBoardState canEdit={canEditBoard} />
+      )}
+      {serverId && <MemberCapabilities board={board} serverId={serverId} viewerRole={viewerRole} viewerRoleIds={viewerRoleIds} />}
 
       {/* Fit-to-content button */}
       <button

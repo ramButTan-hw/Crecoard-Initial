@@ -173,3 +173,16 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   [class^="cr-cust-"], [class*=" cr-cust-"] { animation: none !important; }
   .cr-anim-glitch { text-shadow: none; }
 }
+
+
+/* ── Accessibility floor ────────────────────────────────────────────────────
+   Visible keyboard-focus ring app-wide; mouse clicks stay ring-free via
+   :focus-visible. Inputs keep their border-color focus styles. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+input:focus-visible, textarea:focus-visible, [contenteditable]:focus-visible {
+  outline: none;
+}

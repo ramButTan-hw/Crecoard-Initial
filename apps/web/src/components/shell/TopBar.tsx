@@ -231,10 +231,11 @@ export function TopBar() {
         {isFinished ? (
           <button
             onClick={() => editBoard(activeBoardId)}
+            title="Unlock the board for editing"
             className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border)] transition-colors"
             style={isDesktop ? { WebkitAppRegion: "no-drag" } as React.CSSProperties : undefined}
           >
-            <Edit3 size={14} /> Edit
+            <Edit3 size={14} /> Unlock
           </button>
         ) : confirmFinish ? (
           <div className="flex items-center gap-1" style={isDesktop ? { WebkitAppRegion: "no-drag" } as React.CSSProperties : undefined}>
@@ -242,7 +243,7 @@ export function TopBar() {
               onClick={() => { finishBoard(activeBoardId); setConfirmFinish(false); }}
               className="flex items-center gap-2 rounded-lg bg-red-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-600 transition-colors shadow-sm"
             >
-              <CheckCircle2 size={14} /> Confirm Finish?
+              <CheckCircle2 size={14} /> Lock board?
             </button>
             <button
               onClick={() => setConfirmFinish(false)}
@@ -255,10 +256,11 @@ export function TopBar() {
         ) : (
           <button
             onClick={() => setConfirmFinish(true)}
+            title="Lock the board — view-only until unlocked"
             className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors shadow-sm"
             style={isDesktop ? { WebkitAppRegion: "no-drag" } as React.CSSProperties : undefined}
           >
-            <CheckCircle2 size={14} /> Finish
+            <CheckCircle2 size={14} /> Lock
           </button>
         )}
 
