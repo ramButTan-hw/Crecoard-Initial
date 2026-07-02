@@ -77,15 +77,22 @@ export async function POST(req: NextRequest) {
   const chatKey = `${msg.board_id}::${(msg.channel as string) ?? "general"}`;
   const channelLabel = `#${(msg.channel as string) ?? "general"}`;
 
-  // Per-channel notification preferences (default 'all' when no row).
+  // Notification preferences: channel pref wins, then the user's server-wide
+  // default (`server::<id>`), then 'all'.
+  const prefKeys = board.server_id ? [chatKey, `server::${board.server_id}`] : [chatKey];
   const { data: prefRows } = await db
     .from("chat_notification_prefs")
-    .select("user_id, level")
-    .eq("chat_key", chatKey)
+    .select("user_id, chat_key, level")
+    .in("chat_key", prefKeys)
     .in("user_id", recipientIds);
-  const prefOf = new Map((prefRows ?? []).map((r) => [r.user_id as string, r.level as string]));
+  const channelPref = new Map<string, string>();
+  const serverPref = new Map<string, string>();
+  for (const r of prefRows ?? []) {
+    if (r.chat_key === chatKey) channelPref.set(r.user_id as string, r.level as string);
+    else serverPref.set(r.user_id as string, r.level as string);
+  }
   recipientIds = recipientIds.filter((id) => {
-    const level = prefOf.get(id) ?? "all";
+    const level = channelPref.get(id) ?? serverPref.get(id) ?? "all";
     if (level === "mute") return false;
     if (level === "mentions") return mentioned.has(id);
     return true;

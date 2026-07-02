@@ -201,9 +201,17 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  /** True when a notification for this key/mention state should fire. */
+  /** True when a notification for this key/mention state should fire.
+      Resolution: channel pref → server-wide pref (`server::<id>`) → 'all'. */
   const notifAllowed = useCallback((chatKey: string, isMention: boolean) => {
-    const level = notifPrefsRef.current[chatKey] ?? "all";
+    let level = notifPrefsRef.current[chatKey];
+    if (!level) {
+      const boardId = chatKey.split("::")[0];
+      const st = useBoardStore.getState();
+      const serverId = (st.serverBoards[boardId] ?? st.boards.find((b) => b.id === boardId))?.serverId;
+      if (serverId) level = notifPrefsRef.current[`server::${serverId}`];
+    }
+    level ??= "all";
     if (level === "mute") return false;
     if (level === "mentions") return isMention;
     return true;

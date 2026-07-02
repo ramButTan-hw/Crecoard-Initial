@@ -5,7 +5,7 @@ import { Send, Smile, ImageIcon, X, Pin, Search, Plus, Bell, BellOff, AtSign, Ch
 import type { BlockItem, Board } from "@/store/boardStore";
 import { useBoardStore } from "@/store/boardStore";
 import { useServers } from "@/contexts/ServersContext";
-import { useBoardChatItem } from "@/contexts/BoardChatContext";
+import { useBoardChatItem, useBoardChat } from "@/contexts/BoardChatContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useUser } from "@/contexts/UserContext";
 import { useProfiles } from "@/contexts/ProfilesContext";
@@ -136,6 +136,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const roster = serverId ? (serverMembers[serverId] ?? []) : [];
   const { messages, loading: chatLoading, send, chatKey, loadOlder, reactions, toggleReaction, togglePin, notifPref, setNotifPref } = useBoardChatItem(item.id, chatBoardId, channelName);
   const [notifMenuOpen, setNotifMenuOpen] = useState(false);
+  const serverPref = useBoardChat().notifPrefs[`server::${serverId}`];
 
   // One-time heal: legacy chat backgrounds were stored as inline data URLs — a
   // single wallpaper could fill the whole localStorage quota ("Storage is full")
@@ -512,7 +513,10 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                       {notifPref === opt.v && <Check size={12} className="text-[var(--accent)]" />}
                     </button>
                   ))}
-                  <p className="border-t border-[var(--border)] px-3 pb-1 pt-1.5 text-[10px] text-[var(--text-muted)]">Applies to toasts and push, on all your devices.</p>
+                  <p className="border-t border-[var(--border)] px-3 pb-1 pt-1.5 text-[10px] text-[var(--text-muted)]">
+                    Applies to toasts and push, on all your devices.
+                    {serverId && serverPref && serverPref !== "all" && ` Server default: ${serverPref === "mute" ? "muted" : "mentions only"}.`}
+                  </p>
                 </div>
               </>
             )}

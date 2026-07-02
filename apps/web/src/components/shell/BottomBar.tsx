@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import { Users, Plus, Layers, X, Pencil, Settings, Layout, LogOut, Trash2, RotateCcw } from "lucide-react";
 import { LogoMark } from "@/components/ui/LogoMark";
 import { cn } from "@/lib/utils";
+import { useBoardChat } from "@/contexts/BoardChatContext";
+import { ContextMenu } from "@/components/ui/ContextMenu";
+import { Bell, BellOff, AtSign } from "lucide-react";
 import { MOCK_SERVERS } from "@/lib/mockServerData";
 import { useUser } from "@/contexts/UserContext";
 import { useServers } from "@/contexts/ServersContext";
@@ -441,6 +444,11 @@ function ServerBtn({
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: () => void;
 }) {
+  const { notifPrefs, setNotifPref } = useBoardChat();
+  const serverKey = `server::${srv.id}`;
+  const serverLevel = notifPrefs[serverKey] ?? "all";
+  const [notifMenu, setNotifMenu] = useState<{ x: number; y: number } | null>(null);
+
   return (
     <div
       className="group relative flex-shrink-0"
@@ -449,6 +457,7 @@ function ServerBtn({
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setNotifMenu({ x: e.clientX, y: e.clientY }); }}
       style={{ opacity: isDragging ? 0.35 : 1, transition: "opacity 0.15s" }}
     >
       {/* Drop target indicator */}
@@ -477,8 +486,29 @@ function ServerBtn({
 
       {/* Tooltip */}
       <div className="pointer-events-none absolute bottom-full left-1/2 mb-3 -translate-x-1/2 whitespace-nowrap rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-2 py-1 text-xs text-[var(--text-primary)] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 z-50">
-        {srv.name}
+        {srv.name}{serverLevel === "mute" ? " · muted" : serverLevel === "mentions" ? " · mentions only" : ""}
       </div>
+
+      {/* Server-wide notification state badge */}
+      {serverLevel !== "all" && (
+        <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 flex h-[14px] w-[14px] items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-raised)] text-[var(--text-muted)]">
+          {serverLevel === "mute" ? <BellOff size={8} /> : <AtSign size={8} />}
+        </span>
+      )}
+
+      {/* Right-click: per-user server-wide notification default */}
+      {notifMenu && (
+        <ContextMenu
+          x={notifMenu.x}
+          y={notifMenu.y}
+          onClose={() => setNotifMenu(null)}
+          items={[
+            { label: "All messages", icon: <Bell size={14} />, onClick: () => setNotifPref(serverKey, "all") },
+            { label: "Mentions only", icon: <AtSign size={14} />, onClick: () => setNotifPref(serverKey, "mentions") },
+            { label: serverLevel === "mute" ? "Unmute server" : "Mute server", icon: <BellOff size={14} />, onClick: () => setNotifPref(serverKey, serverLevel === "mute" ? "all" : "mute") },
+          ]}
+        />
+      )}
     </div>
   );
 }
