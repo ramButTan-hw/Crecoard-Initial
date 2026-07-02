@@ -14,6 +14,25 @@ import {
  * Owner always retains access regardless of the set.
  * Empty array [] = owner-only.
  */
+// ─── Undo history ─────────────────────────────────────────────────────────────
+// Snapshot-based per-board undo for structural edits. Programmatic writers
+// (remote collab ops, session sync, webhooks, heals) run inside suppressUndo
+// so only user actions enter history.
+
+export interface UndoEntry {
+  boardId: string;
+  label: string;
+  ts: number;
+  boxes: Box[];
+  boardItems: BoardLevelItem[];
+}
+
+let undoSuppressed = false;
+export function suppressUndo<T>(fn: () => T): T {
+  undoSuppressed = true;
+  try { return fn(); } finally { undoSuppressed = false; }
+}
+
 export interface ItemPerms {
   edit?: string[];       // ServerRole IDs that can change settings/style
   input?: string[];      // ServerRole IDs that can type/enter text
@@ -932,6 +951,12 @@ interface BoardState {
   resizeState: { id: string; x: number; y: number; width: number; height: number } | null;
   /** Live rect of a board-level item being moved — drives alignment guides. */
   itemDragRect: { id: string; x: number; y: number; width: number; height: number } | null;
+  undoPast: UndoEntry[];
+  undoFuture: UndoEntry[];
+  /** Snapshot a board's content before a user mutation (coalesces rapid same-label edits). */
+  recordUndo: (boardId: string, label: string) => void;
+  undo: () => void;
+  redo: () => void;
   showGrid: boolean;
   zoom: number;
   minZoom: number;
@@ -1115,6 +1140,8 @@ export const useBoardStore = create<BoardState>()(
     dragPos: null,
     resizeState: null,
     itemDragRect: null,
+    undoPast: [],
+    undoFuture: [],
     copiedBox: null,
     selectedBoardItemId: null,
     showGrid: false,
@@ -1693,6 +1720,64 @@ export const useBoardStore = create<BoardState>()(
     selectBox: (id) => set((s) => { s.selectedBoxId = id; }),
     setExpandedBox: (id) => set((s) => { s.expandedBoxId = id; }),
     setDraggingBlock: (id) => set((s) => { s.draggingBlockId = id; }),
+    recordUndo: (boardId, label) => {
+      if (undoSuppressed) return;
+      set((s) => {
+        const last = s.undoPast[s.undoPast.length - 1];
+        if (last && last.boardId === boardId && last.label === label && Date.now() - last.ts < 800) {
+          last.ts = Date.now(); // rapid same-kind edits (slider drags, typing) coalesce
+          return;
+        }
+        const board = s.boards.find((b) => b.id === boardId) ?? s.serverBoards[boardId];
+        if (!board) return;
+        s.undoPast.push({
+          boardId, label, ts: Date.now(),
+          boxes: JSON.parse(JSON.stringify(board.boxes)),
+          boardItems: JSON.parse(JSON.stringify(board.boardItems ?? [])),
+        });
+        if (s.undoPast.length > 50) s.undoPast.shift();
+        s.undoFuture = [];
+      });
+    },
+
+    undo: () => {
+      if (get().undoPast.length === 0) return;
+      set((s) => {
+        const e = s.undoPast.pop();
+        if (!e) return;
+        const board = s.boards.find((b) => b.id === e.boardId) ?? s.serverBoards[e.boardId];
+        if (!board) return;
+        s.undoFuture.push({
+          boardId: e.boardId, label: e.label, ts: Date.now(),
+          boxes: JSON.parse(JSON.stringify(board.boxes)),
+          boardItems: JSON.parse(JSON.stringify(board.boardItems ?? [])),
+        });
+        if (s.undoFuture.length > 50) s.undoFuture.shift();
+        board.boxes = e.boxes;
+        board.boardItems = e.boardItems;
+      });
+      get().persistBoards();
+    },
+
+    redo: () => {
+      if (get().undoFuture.length === 0) return;
+      set((s) => {
+        const e = s.undoFuture.pop();
+        if (!e) return;
+        const board = s.boards.find((b) => b.id === e.boardId) ?? s.serverBoards[e.boardId];
+        if (!board) return;
+        s.undoPast.push({
+          boardId: e.boardId, label: e.label, ts: Date.now(),
+          boxes: JSON.parse(JSON.stringify(board.boxes)),
+          boardItems: JSON.parse(JSON.stringify(board.boardItems ?? [])),
+        });
+        if (s.undoPast.length > 50) s.undoPast.shift();
+        board.boxes = e.boxes;
+        board.boardItems = e.boardItems;
+      });
+      get().persistBoards();
+    },
+
     setDragPos: (pos) => set((s) => { s.dragPos = pos; }),
     setItemDragRect: (v) => set((s) => { s.itemDragRect = v; }),
     setResizeState: (v) => set((s) => { s.resizeState = v; }),
@@ -1914,6 +1999,30 @@ if (typeof window !== "undefined") {
   const state = useBoardStore.getState();
   applyThemeVars(state.themeVars);
   applyAppFont(state.appFont);
+}
+
+// ─── Undo wiring ──────────────────────────────────────────────────────────────
+// Wrap the user-driven structural actions so each snapshots the board before
+// mutating. Content edits (updateItem / updateBoardItem) are deliberately NOT
+// undoable: they're also written programmatically (live sessions, webhooks,
+// contribution merges, heals) and text editing has native undo.
+const UNDOABLE_ACTIONS = [
+  "addBox", "removeBox", "updateBox", "moveBox", "resizeBox", "updateBoxStyle",
+  "duplicateBox", "pasteBox", "createDeck", "addToDeck",
+  "addItem", "removeItem",
+  "addBoardItem", "removeBoardItem", "moveBoardItem", "resizeBoardItem", "duplicateBoardItem",
+] as const;
+{
+  const base = useBoardStore.getState();
+  const wrapped: Record<string, (...args: unknown[]) => unknown> = {};
+  for (const name of UNDOABLE_ACTIONS) {
+    const fn = base[name] as unknown as (...args: unknown[]) => unknown;
+    wrapped[name] = (...args: unknown[]) => {
+      useBoardStore.getState().recordUndo(String(args[0]), name);
+      return fn(...args);
+    };
+  }
+  useBoardStore.setState(wrapped as unknown as Partial<BoardState>);
 }
 
 /** Returns the active personal board. Never returns a server board. */

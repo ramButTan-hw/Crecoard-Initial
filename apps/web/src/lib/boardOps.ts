@@ -1,13 +1,18 @@
 "use client";
 
 import type { BoardOp } from "./collaboration";
-import { useBoardStore } from "@/store/boardStore";
+import { useBoardStore, suppressUndo } from "@/store/boardStore";
 
 /**
  * Apply a board op received from a remote collaborator to the local store.
  * All type assertions here are intentional — ops arrive as unknown-typed JSON.
  */
 export function applyBoardOp(op: BoardOp): void {
+  // A peer's edits must not enter THIS client's undo history.
+  suppressUndo(() => applyBoardOpInner(op));
+}
+
+function applyBoardOpInner(op: BoardOp): void {
   const store = useBoardStore.getState();
   const { boardId } = op;
 

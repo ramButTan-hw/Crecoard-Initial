@@ -128,6 +128,25 @@ function AppShellInner() {
     window.addEventListener("crecoard:focus-box", handler);
     return () => window.removeEventListener("crecoard:focus-box", handler);
   }, [activeBoardId, activeView, setActiveBoard]);
+
+  // Global undo/redo: ⌘Z / ⇧⌘Z (Ctrl on Windows, Ctrl+Y redo alias).
+  // Skipped while typing — inputs and rich text keep their native undo.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      if (key !== "z" && key !== "y") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault();
+      const st = useBoardStore.getState();
+      if (key === "y" || (key === "z" && e.shiftKey)) st.redo();
+      else st.undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const selectedBoardItemId = useBoardStore((s) => s.selectedBoardItemId);
   const boardThemeVars = useBoardStore((s) => {
     if (activeView === "server" && activeServerBoardId) {
