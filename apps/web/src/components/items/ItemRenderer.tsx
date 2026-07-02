@@ -8547,6 +8547,20 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
   }, [contribTracksJson, serverId, item.playlistTracks]);
   /** Adds go into the item only when curating the draft; everywhere else they're contributions. */
   const addsAreContributions = !!serverId && !(canEditQueueBase && isDraftMode);
+  /** Moderator adds skip the approval queue; member adds honor the item setting. */
+  const addApproved = !item.requireContributionApproval || canEditQueueBase;
+  // Tracks awaiting approval — shown only to moderators and their author, and
+  // kept OUT of the playable queue so live-session track indexes stay aligned
+  // across viewers until approval.
+  const pendingTracks: PlaylistTrack[] = !serverId ? [] : contributions
+    .filter((c) => c.kind === "track" && !c.approved && (canEditQueueBase || c.authorId === identity.userId))
+    .flatMap((c): PlaylistTrack[] => {
+      try {
+        const d = JSON.parse(c.content) as { url?: string; title?: string };
+        if (!d.url) return [];
+        return [{ id: `p-${c.id}`, url: d.url, title: d.title || "Track", contribId: c.id, addedBy: c.authorName, authorId: c.authorId }];
+      } catch { return []; }
+    });
 
   // ── Global player claim: media lives in PlayerHost so playback survives board
   //    switches; this item registers its embed slot and PlayerHost pins over it.
@@ -8650,7 +8664,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
     const detected = resolveEmbed(url, false);
     const title = titleInput.trim() || detected.platform + " track";
     if (addsAreContributions) {
-      void contribCtx.addContribution(item.id, boardId, JSON.stringify({ url, title }), { kind: "track", approved: true });
+      void contribCtx.addContribution(item.id, boardId, JSON.stringify({ url, title }), { kind: "track", approved: addApproved });
     } else {
       const track: PlaylistTrack = { id: nanoid(), url, title };
       // keep the curated base list ahead of contributed tracks
@@ -8698,7 +8712,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
       const newTracks: PlaylistTrack[] = (data.tracks ?? []).map((t) => ({ id: nanoid(), url: t.url, title: t.title }));
       if (addsAreContributions) {
         for (const t of newTracks) {
-          void contribCtx.addContribution(item.id, boardId, JSON.stringify({ url: t.url, title: t.title }), { kind: "track", approved: true });
+          void contribCtx.addContribution(item.id, boardId, JSON.stringify({ url: t.url, title: t.title }), { kind: "track", approved: addApproved });
         }
       } else {
         upd({ playlistTracks: [...tracks.filter((t) => !t.contribId), ...newTracks, ...tracks.filter((t) => t.contribId)] });
@@ -8857,9 +8871,9 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
     </div>
   ) : null;
 
-  const trackListEl = showList ? (
+  const trackListEl = (showList || pendingTracks.length > 0) ? (
     <div className="flex-1 overflow-y-auto flex flex-col gap-0.5 min-h-0">
-      {tracks.map((track, i) => {
+      {showList && tracks.map((track, i) => {
         const trackEmbed = resolveEmbed(track.url, false);
         const active = i === currentIdx;
         return (
@@ -8880,6 +8894,37 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
           </div>
         );
       })}
+      {pendingTracks.length > 0 && (
+        <div className="mt-1 flex flex-col gap-0.5">
+          <p className="px-2 text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            Pending approval · {pendingTracks.length}
+          </p>
+          {pendingTracks.map((t) => (
+            <div key={t.id} className="group flex items-center gap-2 rounded-lg px-2 py-1.5 opacity-80">
+              <PlatformBadge platform={resolveEmbed(t.url, false).platform} />
+              <span className="flex-1 text-[11px] truncate text-[var(--text-secondary)]" title={t.addedBy ? `Added by ${t.addedBy}` : undefined}>
+                {t.title}
+                {t.addedBy && <span className="text-[var(--text-muted)]"> · {t.addedBy}</span>}
+              </span>
+              {canEditQueueBase && t.contribId && (
+                <button onClick={() => void contribCtx.setApproved(t.contribId!, item.id, true)} title="Approve"
+                  className="p-0.5 rounded text-[var(--text-muted)] hover:text-green-400 transition-colors">
+                  <Check size={11} />
+                </button>
+              )}
+              {t.contribId && (t.authorId === identity.userId || canEditQueueBase) && (
+                <button onClick={() => {
+                  if (t.authorId === identity.userId) void contribCtx.removeOwn(t.contribId!, item.id);
+                  else void contribCtx.moderateRemove(t.contribId!, item.id);
+                }} title="Reject"
+                  className="p-0.5 rounded text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                  <XIcon size={11} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   ) : null;
 
@@ -9190,6 +9235,16 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
             <span className="text-[var(--text-secondary)]">Autoplay on switch</span>
           </label>
         </div>
+      </section>
+
+      {/* Member additions (server boards) */}
+      <section>
+        <SLabel>Added tracks</SLabel>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={!!item.requireContributionApproval} onChange={(e) => upd({ requireContributionApproval: e.target.checked })} className="accent-[var(--accent)]" />
+          <span className="text-[var(--text-secondary)]">Require approval for member-added tracks</span>
+        </label>
+        <p className="mt-1 text-[10px] text-[var(--text-muted)]">Pending tracks are only visible to admins and their author until approved.</p>
       </section>
 
       {/* Volume */}
