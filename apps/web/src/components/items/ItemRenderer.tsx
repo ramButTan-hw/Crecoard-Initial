@@ -47,6 +47,8 @@ import { resolveEmbed, PLATFORM_COLORS, getStaticThumbnail, advancePlaylistIndex
 import { usePlayerStore } from "@/store/playerStore";
 import { usePlayerSession, announceSessionState } from "@/lib/playerSession";
 import { useBoardContributions } from "@/contexts/BoardContributionsContext";
+import { animClassFor, type AnimSpec } from "@/lib/animSpec";
+import { AnimationStudio } from "@/components/ui/AnimationStudio";
 import { uploadFile, applyImageUpload } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import { buildIcs } from "@/lib/ics";
@@ -995,7 +997,7 @@ function TextItem({ item, upd, collapsed, isFinished, canInput, extraContextItem
 
   return (
     <div ref={containerRef}
-      className={cn("relative w-full h-full", item.textAnimation && ITEM_ANIM_CLASS[item.textAnimation])}
+      className={cn("relative w-full h-full", animClassFor(item.textAnimation, item.textAnimationCustom))}
       style={item.textAnimation ? itemAnimStyle(item.textAnimationSpeed) : undefined}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {/* Hidden file input for bg image */}
@@ -8478,10 +8480,7 @@ function PlatformBadge({ platform }: { platform: string }) {
 
 // ─── Animations (shared) ──────────────────────────────────────────────────────
 
-export const ITEM_ANIM_CLASS: Record<string, string> = {
-  fade: "cr-anim-fade", rise: "cr-anim-rise", scale: "cr-anim-scale",
-  wipe: "cr-anim-wipe", pulse: "cr-anim-pulse", float: "cr-anim-float",
-};
+export { ITEM_ANIM_CLASS } from "@/lib/animSpec";
 const ANIM_SPEED_DUR: Record<string, string> = { slow: "1.1s", normal: "0.6s", fast: "0.35s" };
 
 export function itemAnimStyle(speed?: string): React.CSSProperties {
@@ -8490,6 +8489,8 @@ export function itemAnimStyle(speed?: string): React.CSSProperties {
 
 /** Text-item animation preset picker (shared by the text style panels). */
 export function TextAnimationSection({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const { serverId } = useServerBoard();
+  const [studioOpen, setStudioOpen] = useState(false);
   const presets: { v: BlockItem["textAnimation"] | undefined; label: string }[] = [
     { v: undefined, label: "None" }, { v: "fade", label: "Fade in" }, { v: "rise", label: "Rise" },
     { v: "wipe", label: "Wipe" }, { v: "pulse", label: "Pulse" }, { v: "float", label: "Float" },
@@ -8506,8 +8507,18 @@ export function TextAnimationSection({ item, upd }: { item: BlockItem; upd: (p: 
             {pr.label}
           </button>
         ))}
+        <button onClick={() => setStudioOpen(true)}
+          className={cn("rounded border px-2 py-1.5 text-[10px] transition-colors",
+            cur === "custom" ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/40")}>
+          {cur === "custom" ? (item.textAnimationCustom?.name ?? "Custom") : "Custom…"}
+        </button>
       </div>
-      {cur && (
+      {studioOpen && (
+        <AnimationStudio serverId={serverId} initial={cur === "custom" ? item.textAnimationCustom : undefined}
+          onApply={(spec: AnimSpec) => { upd({ textAnimation: "custom", textAnimationCustom: spec }); setStudioOpen(false); }}
+          onClose={() => setStudioOpen(false)} />
+      )}
+      {cur && cur !== "custom" && (
         <div className="mt-2 flex gap-1.5">
           {(["slow", "normal", "fast"] as const).map((sp) => (
             <button key={sp} onClick={() => upd({ textAnimationSpeed: sp === "normal" ? undefined : sp })}
@@ -8525,6 +8536,8 @@ export function TextAnimationSection({ item, upd }: { item: BlockItem; upd: (p: 
 
 /** Entrance-effect picker — works for every item type (shown in item settings panels). */
 export function ItemEntranceSection({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const { serverId } = useServerBoard();
+  const [studioOpen, setStudioOpen] = useState(false);
   const presets: { v: BlockItem["itemEntrance"] | undefined; label: string }[] = [
     { v: undefined, label: "None" }, { v: "fade", label: "Fade" }, { v: "scale", label: "Scale" }, { v: "rise", label: "Rise" },
   ];
@@ -8540,6 +8553,16 @@ export function ItemEntranceSection({ item, upd }: { item: BlockItem; upd: (p: P
           </button>
         ))}
       </div>
+      <button onClick={() => setStudioOpen(true)}
+        className={cn("mt-1.5 w-full rounded border px-2 py-1.5 text-[10px] transition-colors",
+          item.itemEntrance === "custom" ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/40")}>
+        {item.itemEntrance === "custom" ? (item.itemEntranceCustom?.name ?? "Custom") : "Custom / library…"}
+      </button>
+      {studioOpen && (
+        <AnimationStudio serverId={serverId} initial={item.itemEntrance === "custom" ? item.itemEntranceCustom : undefined}
+          onApply={(spec: AnimSpec) => { upd({ itemEntrance: "custom", itemEntranceCustom: spec }); setStudioOpen(false); }}
+          onClose={() => setStudioOpen(false)} />
+      )}
       <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">Plays once when the item appears on screen.</p>
     </div>
   );

@@ -132,5 +132,6 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .cr-glow-pulse-layer { animation: cr-glow-pulse 2.6s ease-in-out infinite; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
   .cr-anim-fade, .cr-anim-rise, .cr-anim-scale, .cr-anim-wipe,
-  .cr-anim-pulse, .cr-anim-float, .cr-glow-pulse-layer { animation: none; }
+  .cr-anim-pulse, .cr-anim-float, .cr-glow-pulse-layer,
+  [class^="cr-cust-"], [class*=" cr-cust-"] { animation: none !important; }
 }

@@ -7,7 +7,8 @@ import {
 import { BoardLevelItem, useBoardStore, isContributableType } from "@/store/boardStore";
 import { useCanEditBoard, useServerBoard, roleAllowed } from "@/contexts/ServerBoardContext";
 import { ItemPermissionModal } from "./PermissionModal";
-import { ITEM_ANIM_CLASS, ItemRenderer } from "@/components/items/ItemRenderer";
+import { ItemRenderer } from "@/components/items/ItemRenderer";
+import { animClassFor } from "@/lib/animSpec";
 import { ContextMenu, type ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -260,7 +261,7 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
   return (
     <>
       <div
-        className={cn("board-item-widget absolute group/biw", isSelected && "ring-2 ring-[var(--accent)] ring-offset-1 ring-offset-transparent", item.itemEntrance && ITEM_ANIM_CLASS[item.itemEntrance])}
+        className={cn("board-item-widget absolute group/biw", isSelected && "ring-2 ring-[var(--accent)] ring-offset-1 ring-offset-transparent", animClassFor(item.itemEntrance, item.itemEntranceCustom))}
         style={{
           left: displayX,
           top: displayY,

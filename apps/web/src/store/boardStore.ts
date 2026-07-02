@@ -315,10 +315,13 @@ export interface BlockItem {
   textBgColor?: string;
   textBgImage?: string;
   /** Decorative animation preset — fade/rise/wipe play once, pulse/float loop (CSS-only, honors reduced-motion) */
-  textAnimation?: "fade" | "rise" | "wipe" | "pulse" | "float";
+  textAnimation?: "fade" | "rise" | "wipe" | "pulse" | "float" | "custom";
   textAnimationSpeed?: "slow" | "normal" | "fast";
+  /** Embedded custom animation spec (copied from the library on apply — see lib/animSpec) */
+  textAnimationCustom?: import("@/lib/animSpec").AnimSpec;
   /** Entrance effect when the item mounts on screen */
-  itemEntrance?: "fade" | "scale" | "rise";
+  itemEntrance?: "fade" | "scale" | "rise" | "custom";
+  itemEntranceCustom?: import("@/lib/animSpec").AnimSpec;
   textBorderStyle?: "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset" | "outset" | "glow";
   textBorderColor?: string;
   textBorderWidth?: number;
