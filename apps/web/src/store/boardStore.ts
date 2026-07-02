@@ -314,6 +314,11 @@ export interface BlockItem {
   textColor?: string;
   textBgColor?: string;
   textBgImage?: string;
+  /** Decorative animation preset — fade/rise/wipe play once, pulse/float loop (CSS-only, honors reduced-motion) */
+  textAnimation?: "fade" | "rise" | "wipe" | "pulse" | "float";
+  textAnimationSpeed?: "slow" | "normal" | "fast";
+  /** Entrance effect when the item mounts on screen */
+  itemEntrance?: "fade" | "scale" | "rise";
   textBorderStyle?: "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset" | "outset" | "glow";
   textBorderColor?: string;
   textBorderWidth?: number;
@@ -693,6 +698,8 @@ export interface BoxStyle {
   borderWidth: number;
   borderRadius: number;
   borderStyle: "none" | "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset" | "outset" | "glow";
+  /** Pulse the glow border (only applies when borderStyle is "glow") */
+  glowAnimate?: boolean;
   shadow: "none" | "sm" | "md" | "lg";
   fontFamily: string;
   fontSize: number;

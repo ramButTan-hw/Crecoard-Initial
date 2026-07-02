@@ -8,6 +8,7 @@ import {
   ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, ChatStylePanel, ImageStylePanel, chatChannelsInUse,
 } from "@/components/items/ItemRenderer";
 import { TextStylePanel } from "@/components/board/ExpandedBlock";
+import { ItemEntranceSection } from "@/components/items/ItemRenderer";
 import { EmbedCardStylePanel } from "@/components/items/EmbedCardItem";
 import { ExternalStylePanel } from "@/components/items/ExternalItem";
 import { SuggestionStylePanel, GuestbookStylePanel, PollStylePanel } from "@/components/items/CommunityItems";
@@ -114,6 +115,7 @@ export function BoardItemPanel() {
         {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","external","chat","suggestion","guestbook","poll","twitch","image"].includes(item.type) && (
           <div className="p-4 text-xs text-[var(--text-muted)]">No style options for this item type.</div>
         )}
+        <ItemEntranceSection item={item} upd={upd} />
         {item.settingsLocked && (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 backdrop-blur-[2px]" style={{ background: "rgba(26,27,30,0.85)" }}>
             <Lock size={28} className="text-amber-400" />

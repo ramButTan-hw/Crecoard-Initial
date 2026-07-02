@@ -994,7 +994,10 @@ function TextItem({ item, upd, collapsed, isFinished, canInput, extraContextItem
   }
 
   return (
-    <div ref={containerRef} className="relative w-full h-full" onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
+    <div ref={containerRef}
+      className={cn("relative w-full h-full", item.textAnimation && ITEM_ANIM_CLASS[item.textAnimation])}
+      style={item.textAnimation ? itemAnimStyle(item.textAnimationSpeed) : undefined}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {/* Hidden file input for bg image */}
       <input ref={bgImageFileRef} type="file" accept="image/*" className="hidden" onChange={handleBgImageFile} />
 
@@ -8470,6 +8473,75 @@ function PlatformBadge({ platform }: { platform: string }) {
     >
       {platform}
     </span>
+  );
+}
+
+// ─── Animations (shared) ──────────────────────────────────────────────────────
+
+export const ITEM_ANIM_CLASS: Record<string, string> = {
+  fade: "cr-anim-fade", rise: "cr-anim-rise", scale: "cr-anim-scale",
+  wipe: "cr-anim-wipe", pulse: "cr-anim-pulse", float: "cr-anim-float",
+};
+const ANIM_SPEED_DUR: Record<string, string> = { slow: "1.1s", normal: "0.6s", fast: "0.35s" };
+
+export function itemAnimStyle(speed?: string): React.CSSProperties {
+  return { "--cr-dur": ANIM_SPEED_DUR[speed ?? "normal"] } as React.CSSProperties;
+}
+
+/** Text-item animation preset picker (shared by the text style panels). */
+export function TextAnimationSection({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const presets: { v: BlockItem["textAnimation"] | undefined; label: string }[] = [
+    { v: undefined, label: "None" }, { v: "fade", label: "Fade in" }, { v: "rise", label: "Rise" },
+    { v: "wipe", label: "Wipe" }, { v: "pulse", label: "Pulse" }, { v: "float", label: "Float" },
+  ];
+  const cur = item.textAnimation;
+  return (
+    <div className="px-4 py-4">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Animation</p>
+      <div className="grid grid-cols-3 gap-1.5">
+        {presets.map((pr) => (
+          <button key={pr.label} onClick={() => upd({ textAnimation: pr.v })}
+            className={cn("rounded border px-2 py-1.5 text-[10px] transition-colors",
+              cur === pr.v ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/40")}>
+            {pr.label}
+          </button>
+        ))}
+      </div>
+      {cur && (
+        <div className="mt-2 flex gap-1.5">
+          {(["slow", "normal", "fast"] as const).map((sp) => (
+            <button key={sp} onClick={() => upd({ textAnimationSpeed: sp === "normal" ? undefined : sp })}
+              className={cn("flex-1 rounded border px-2 py-1 text-[10px] capitalize transition-colors",
+                (item.textAnimationSpeed ?? "normal") === sp ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)]")}>
+              {sp}
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">Fade, Rise and Wipe play once; Pulse and Float loop gently. Skipped for viewers with reduced motion enabled.</p>
+    </div>
+  );
+}
+
+/** Entrance-effect picker — works for every item type (shown in item settings panels). */
+export function ItemEntranceSection({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const presets: { v: BlockItem["itemEntrance"] | undefined; label: string }[] = [
+    { v: undefined, label: "None" }, { v: "fade", label: "Fade" }, { v: "scale", label: "Scale" }, { v: "rise", label: "Rise" },
+  ];
+  return (
+    <div className="border-t border-[var(--border)] px-4 py-4">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Entrance</p>
+      <div className="grid grid-cols-4 gap-1.5">
+        {presets.map((pr) => (
+          <button key={pr.label} onClick={() => upd({ itemEntrance: pr.v })}
+            className={cn("rounded border px-1 py-1.5 text-[10px] transition-colors",
+              item.itemEntrance === pr.v ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/40")}>
+            {pr.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">Plays once when the item appears on screen.</p>
+    </div>
   );
 }
 

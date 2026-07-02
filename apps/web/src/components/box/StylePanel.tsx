@@ -141,6 +141,12 @@ export function StylePanel({ boxId }: StylePanelProps) {
                   width={s.borderWidth}
                   onChange={(v) => upd({ borderStyle: v as BoxStyle["borderStyle"] })}
                 />
+                {s.borderStyle === "glow" && (
+                  <label className="mt-2 flex items-center gap-2 cursor-pointer text-xs text-[var(--text-secondary)]">
+                    <input type="checkbox" checked={!!s.glowAnimate} onChange={(e) => upd({ glowAnimate: e.target.checked })} className="accent-[var(--accent)]" />
+                    Animate glow
+                  </label>
+                )}
               </div>
             </Section>
 

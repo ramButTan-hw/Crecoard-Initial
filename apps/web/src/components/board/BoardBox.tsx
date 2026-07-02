@@ -481,6 +481,11 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
         {/* Wallpaper layer */}
         {!box.isDeck && <div aria-hidden style={{ position: "absolute", inset: 0, borderRadius: "inherit", pointerEvents: "none", zIndex: 0, ...wallpaperStyle }} />}
 
+        {/* Animated glow — extra shadow layer pulsing its opacity (compositor-safe) */}
+        {isGlow && s.glowAnimate && glowCSS && (
+          <div aria-hidden className="cr-glow-pulse-layer" style={{ position: "absolute", inset: 0, borderRadius: "inherit", boxShadow: glowCSS, zIndex: 0 }} />
+        )}
+
         {/* Hover inner ring */}
         {isHovered && !isDragging && (
           <div aria-hidden className="absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/10 pointer-events-none z-10" />

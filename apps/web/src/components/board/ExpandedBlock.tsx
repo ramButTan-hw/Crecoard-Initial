@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PARA_STYLES } from "@/components/items/ItemRenderer";
+import { PARA_STYLES, TextAnimationSection, ItemEntranceSection, ITEM_ANIM_CLASS, itemAnimStyle } from "@/components/items/ItemRenderer";
 import { applyImageUpload } from "@/lib/storage";
 import {
   DndContext, DragEndEvent, MouseSensor, TouchSensor,
@@ -236,7 +236,7 @@ function ItemCard({
     <div
       ref={setDragRef}
       data-item-card
-      className={cn("absolute group flex flex-col cursor-grab active:cursor-grabbing", isDragging && "opacity-40 z-50")}
+      className={cn("absolute group flex flex-col cursor-grab active:cursor-grabbing", isDragging && "opacity-40 z-50", !isDragging && item.itemEntrance && ITEM_ANIM_CLASS[item.itemEntrance])}
       style={{
         left: layout.x, top: layout.y,
         width: displayW, height: displayH,
@@ -1208,6 +1208,10 @@ export function TextStylePanel({ item, upd, hideCollapsed }: { item: BlockItem; 
           ))}
         </div>
       </div>
+
+      <Divider_ />
+
+      <TextAnimationSection item={item} upd={upd} />
 
       <Divider_ />
 
