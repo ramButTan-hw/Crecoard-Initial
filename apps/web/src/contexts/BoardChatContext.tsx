@@ -6,6 +6,7 @@ import {
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { useUser } from "@/contexts/UserContext";
+import { useBoardStore } from "@/store/boardStore";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { playPing } from "@/lib/sound";
 import type { ChatMessage } from "@/store/boardStore";
@@ -149,6 +150,8 @@ function rowToMessage(row: Record<string, unknown>): ChatMessage {
 export function BoardChatProvider({ children }: { children: React.ReactNode }) {
   const { identity } = useUser();
   const { push: pushNotification, isActive } = useNotifications();
+  const identityRef = useRef(identity);
+  useEffect(() => { identityRef.current = identity; }, [identity]);
   const [messagesByItem, setMessagesByItem] = useState<Record<string, ChatMessage[]>>({});
   const [reactionsByMessage, setReactionsByMessage] = useState<Record<string, ChatReaction[]>>({});
   // Mirror of reactionsByMessage so toggleReaction can read current state without
@@ -189,6 +192,62 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   }, []);
+
+  // ── Global message watcher ──────────────────────────────────────────────────
+  // The per-item subscriptions above only exist while a chat item is MOUNTED,
+  // so they can never notify about messages on other boards — which is the
+  // whole point of notifications. This one channel watches inserts across all
+  // boards the user belongs to (personal + server drafts) and raises the same
+  // toast/unread/ping; keys with a live per-item subscription are skipped so
+  // nothing double-fires.
+  const watchedBoardsKey = useBoardStore((s) =>
+    [...s.boards.map((b) => b.id), ...Object.keys(s.serverBoards).filter((k) => !k.endsWith(":live"))].sort().join(",")
+  );
+  useEffect(() => {
+    if (!watchedBoardsKey || !identityRef.current.userId) return;
+    const ids = watchedBoardsKey.split(",").filter(Boolean);
+    if (ids.length === 0) return;
+    const ch = supabase
+      .channel("board-chat-watch")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "board_chat_messages",
+          filter: `board_id=in.(${ids.join(",")})`,
+        },
+        (payload) => {
+          const row = payload.new as Record<string, unknown>;
+          const boardId = row.board_id as string;
+          const channel = ((row.channel as string) ?? "general");
+          const key = chatKeyFor(boardId, channel);
+          if (channels.current[key]) return; // a mounted chat item already handles this key
+          const msg = rowToMessage(row);
+          const me = identityRef.current;
+          if (msg.authorId === me.userId) return;
+          const isMention = Boolean(
+            msg.content && (
+              msg.content.includes(`<@${me.userId}>`) ||
+              (me.displayName && msg.content.toLowerCase().includes(`@${me.displayName.toLowerCase()}`))
+            )
+          );
+          playPing(isMention ? "mention" : "message");
+          pushNotification({
+            itemId: key,
+            channelName: channel,
+            authorName: msg.authorName,
+            authorAvatar: msg.authorAvatar,
+            content: msg.content ?? "",
+            isMention,
+          });
+        }
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(ch); };
+    // pushNotification is a stable useCallback from the provider above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedBoardsKey]);
 
   const loadAndSubscribe = useCallback((itemId: string, boardId: string, channel: string): () => void => {
     if (!isSupabaseReady()) return () => {};
