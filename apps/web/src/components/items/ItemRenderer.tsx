@@ -45,6 +45,7 @@ import { useItemContributions } from "@/contexts/BoardContributionsContext";
 import { useCanEditBoard, useServerBoard, roleAllowed } from "@/contexts/ServerBoardContext";
 import { resolveEmbed, PLATFORM_COLORS, getStaticThumbnail, advancePlaylistIndex, playerKeyOf } from "@/lib/playlist";
 import { usePlayerStore } from "@/store/playerStore";
+import { usePlayerSession, announceSessionState } from "@/lib/playerSession";
 import { uploadFile } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import { buildIcs } from "@/lib/ics";
@@ -8508,7 +8509,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
   const vol = item.playlistVolume ?? 80;
 
   // ── Granular per-function permissions (item.perms.fns — see lib/playlist) ──
-  const { viewerRole, viewerRoleIds } = useServerBoard();
+  const { serverId, viewerRole, viewerRoleIds } = useServerBoard();
   const canFn = (fn: string) => roleAllowed(viewerRole, viewerRoleIds, item.perms?.fns?.[fn]);
   const canPlayback = canFn("playback");
   const canQueueAdd = canFn("queue-add");
@@ -8516,6 +8517,13 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
   const canImport = canFn("import");
   const canVolume = canFn("volume");
   const canModes = canFn("modes");
+  const canHost = canFn("session-host");
+
+  // ── Live session (server boards): host broadcasts track/play/position ──────
+  const session = usePlayerSession(serverId, item.id);
+  // While listening to someone else's session, playback follows the host.
+  const playbackLocked = session.joined && !session.isHost;
+  const canPlaybackUI = canPlayback && !playbackLocked;
 
   // ── Global player claim: media lives in PlayerHost so playback survives board
   //    switches; this item registers its embed slot and PlayerHost pins over it.
@@ -8525,11 +8533,16 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
   const playerPlaying = usePlayerStore((s) => s.playing);
   const ownsPlayer = activeClaimKey === playerKey;
   const playingElsewhere = !ownsPlayer && activeClaimKey !== null && playerPlaying === true;
+  const claimShape = { boardId, boxId: boxId ?? "", itemId: item.id, canPlayback, canVolume };
   const claimSelf = (opts?: { steal?: boolean; userIntent?: boolean }) =>
-    usePlayerStore.getState().claimPlayer(
-      { boardId, boxId: boxId ?? "", itemId: item.id, canPlayback, canVolume },
-      opts
-    );
+    usePlayerStore.getState().claimPlayer(claimShape, opts);
+
+  // Host: push state immediately on local track/play changes (heartbeat covers drift)
+  useEffect(() => {
+    if (session.isHost) announceSessionState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.isHost, currentIdx, playerPlaying]);
+
   const hasPlayableEmbed = !!embed && embed.kind !== "link";
   useEffect(() => {
     // claim if free/idle so simply opening the board pins the player here
@@ -8589,21 +8602,21 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
   }, [currentTrack?.url]);
 
   const goNext = () => {
-    if (tracks.length === 0 || !canPlayback) return;
+    if (tracks.length === 0 || !canPlaybackUI) return;
     claimSelf({ steal: true, userIntent: true });
     const next = advancePlaylistIndex(item, 1);
     upd({ playlistCurrentIndex: next ?? Math.min(currentIdx + 1, tracks.length - 1) });
   };
 
   const goPrev = () => {
-    if (tracks.length === 0 || !canPlayback) return;
+    if (tracks.length === 0 || !canPlaybackUI) return;
     claimSelf({ steal: true, userIntent: true });
     const next = advancePlaylistIndex(item, -1);
     upd({ playlistCurrentIndex: next ?? 0 });
   };
 
   const goTo = (idx: number) => {
-    if (!canPlayback) return;
+    if (!canPlaybackUI) return;
     claimSelf({ steal: true, userIntent: true });
     upd({ playlistCurrentIndex: idx });
   };
@@ -8658,7 +8671,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
       <div className="flex items-center gap-2">
         <Music size={13} className="text-[var(--text-muted)]" />
         <span className="text-sm text-[var(--text-secondary)] truncate">{currentTrack?.title ?? "No tracks"}</span>
-        {tracks.length > 1 && canPlayback && (
+        {tracks.length > 1 && canPlaybackUI && (
           <div className="flex gap-1 ml-auto">
             <button onClick={(e) => { e.stopPropagation(); goPrev(); }} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"><SkipBack size={11} /></button>
             <button onClick={(e) => { e.stopPropagation(); goNext(); }} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"><SkipForward size={11} /></button>
@@ -8689,7 +8702,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
         {playingElsewhere && (
           <p className="text-[10px] text-[var(--text-muted)] text-center px-3">Another playlist is playing</p>
         )}
-        {canPlayback && (
+        {canPlaybackUI && (
           <button
             onClick={() => claimSelf({ steal: true, userIntent: true })}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-[11px] font-medium hover:opacity-90 transition-opacity"
@@ -8714,7 +8727,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
   const transportEl = tracks.length > 0 ? (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1">
-        {canPlayback && (
+        {canPlaybackUI && (
           <button onClick={goPrev} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shrink-0">
             <SkipBack size={14} />
           </button>
@@ -8723,7 +8736,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
           <p className="text-[11px] font-medium text-[var(--text-primary)] truncate">{currentTrack?.title}</p>
           <p className="text-[9px] text-[var(--text-muted)]">{currentIdx + 1} / {tracks.length} · {embed?.platform}</p>
         </div>
-        {canPlayback && (
+        {canPlaybackUI && (
           <button onClick={goNext} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shrink-0">
             <SkipForward size={14} />
           </button>
@@ -8760,6 +8773,40 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
           <span className="text-[9px] text-[var(--text-muted)] w-6 text-right tabular-nums">{vol}%</span>
         </div>
       )}
+      {/* Live session row — server boards only */}
+      {serverId && (session.active || canHost) && (
+        <div className="flex items-center gap-1.5 text-[10px] min-w-0">
+          {session.active ? (
+            <>
+              <span className="flex items-center gap-1 font-semibold shrink-0" style={{ color: accent }}>
+                <Radio size={10} /> LIVE
+              </span>
+              <span className="truncate text-[var(--text-muted)]">
+                {session.isHost ? "you're hosting" : session.hostName || "session"} · {session.participants} in
+              </span>
+              <span className="ml-auto" />
+              {session.joined ? (
+                <button onClick={session.leave}
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                  {session.isHost ? "End" : "Leave"}
+                </button>
+              ) : (
+                <button onClick={() => session.join(claimShape)}
+                  className="shrink-0 rounded px-2 py-0.5 text-white font-medium hover:opacity-90 transition-opacity"
+                  style={{ backgroundColor: accent }}>
+                  Join
+                </button>
+              )}
+            </>
+          ) : (
+            <button onClick={() => session.start(claimShape)}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              title="Start a synced listening session — everyone who joins hears the same thing">
+              <Radio size={10} /> Go live
+            </button>
+          )}
+        </div>
+      )}
     </div>
   ) : null;
 
@@ -8770,7 +8817,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
         const active = i === currentIdx;
         return (
           <div key={track.id}
-            className={cn("group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors", canPlayback && "cursor-pointer", !active && canPlayback && "hover:bg-white/5")}
+            className={cn("group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors", canPlaybackUI && "cursor-pointer", !active && canPlaybackUI && "hover:bg-white/5")}
             style={active ? { backgroundColor: accent + "25" } : undefined}
             onClick={() => goTo(i)}>
             <span className="text-[10px] tabular-nums w-4 shrink-0 text-center" style={{ color: active ? accent : "var(--text-muted)" }}>{i + 1}</span>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Music, Pause, Play, SkipBack, SkipForward, Volume1, Volume2, VolumeX, X } from "lucide-react";
+import { Music, Pause, Play, Radio, SkipBack, SkipForward, Volume1, Volume2, VolumeX, X } from "lucide-react";
 import { useBoardStore, type BlockItem, type BoardLevelItem } from "@/store/boardStore";
 import { usePlayerStore } from "@/store/playerStore";
 import { advancePlaylistIndex, PLATFORM_COLORS, platformControllable, playerKeyOf, resolveEmbed } from "@/lib/playlist";
@@ -21,6 +21,7 @@ export function PlayerHost() {
   const playing = usePlayerStore((s) => s.playing);
   const setPlaying = usePlayerStore((s) => s.setPlaying);
   const releasePlayer = usePlayerStore((s) => s.releasePlayer);
+  const sessionInfo = usePlayerStore((s) => s.session);
 
   const item = useBoardStore((s): BlockItem | BoardLevelItem | undefined => {
     if (!claim) return undefined;
@@ -66,8 +67,11 @@ export function PlayerHost() {
   const ytReadyRef = useRef(false);
   const scWidgetRef = useRef<{
     setVolume: (v: number) => void;
-    bind: (ev: string, cb: () => void) => void;
+    bind: (ev: string, cb: (data?: { currentPosition?: number }) => void) => void;
     toggle: () => void;
+    play: () => void;
+    pause: () => void;
+    seekTo: (ms: number) => void;
   } | null>(null);
   const volRef = useRef(vol);
   volRef.current = vol;
@@ -172,6 +176,9 @@ export function PlayerHost() {
         if (state === 1) usePlayerStore.getState().setPlaying(true);
         else if (state === 2) usePlayerStore.getState().setPlaying(false);
         else if (state === 0) advanceRef.current(1, true);
+        if (typeof d?.info?.currentTime === "number") {
+          usePlayerStore.getState().setPosition({ sec: d.info.currentTime, at: Date.now() });
+        }
       } catch {}
     };
     window.addEventListener("message", onMsg);
@@ -199,6 +206,11 @@ export function PlayerHost() {
       w.bind(SC.Widget.Events.PLAY, () => usePlayerStore.getState().setPlaying(true));
       w.bind(SC.Widget.Events.PAUSE, () => usePlayerStore.getState().setPlaying(false));
       w.bind(SC.Widget.Events.FINISH, () => advanceRef.current(1, true));
+      w.bind(SC.Widget.Events.PLAY_PROGRESS, (d?: { currentPosition?: number }) => {
+        if (typeof d?.currentPosition === "number") {
+          usePlayerStore.getState().setPosition({ sec: d.currentPosition / 1000, at: Date.now() });
+        }
+      });
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((window as any).SC) {
@@ -228,6 +240,39 @@ export function PlayerHost() {
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = vol / 100;
   }, [vol, embed?.url]);
+
+  // ── Imperative controls registry (used by mini-player + live sessions) ─────
+  useEffect(() => {
+    if (!embed || embed.kind === "link") return;
+    const store = usePlayerStore.getState();
+    const post = (func: string, args: unknown[] = []) => iframeRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: "command", func, args }), "*"
+    );
+    if (embed.kind === "audio") {
+      store.setControls({
+        play: () => { void audioRef.current?.play(); },
+        pause: () => audioRef.current?.pause(),
+        seek: (sec) => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, sec); },
+      });
+    } else if (embed.platform === "YouTube") {
+      store.setControls({
+        play: () => post("playVideo"),
+        pause: () => post("pauseVideo"),
+        seek: (sec) => post("seekTo", [Math.max(0, sec), true]),
+      });
+    } else if (embed.platform === "SoundCloud") {
+      store.setControls({
+        play: () => { try { scWidgetRef.current?.play(); } catch {} },
+        pause: () => { try { scWidgetRef.current?.pause(); } catch {} },
+        seek: (sec) => { try { scWidgetRef.current?.seekTo(Math.max(0, sec) * 1000); } catch {} },
+      });
+    } else {
+      store.setControls(null);
+    }
+    store.setPosition(null);
+    return () => { usePlayerStore.getState().setControls(null); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embed?.url, embed?.kind, embed?.platform]);
 
   if (!claim || !item || !currentTrack || !embed || embed.kind === "link") return null;
 
@@ -272,6 +317,7 @@ export function PlayerHost() {
       onPlay={() => setPlaying(true)}
       onPause={() => setPlaying(false)}
       onEnded={() => advance(1, true)}
+      onTimeUpdate={(e) => usePlayerStore.getState().setPosition({ sec: e.currentTarget.currentTime, at: Date.now() })}
       className="w-full block"
       style={{ colorScheme: "dark", height: docked ? 40 : "100%" }}
     />
@@ -296,6 +342,11 @@ export function PlayerHost() {
         <div className="flex flex-col gap-1 px-2.5 py-2" style={{ background: "var(--surface-raised)" }}>
           <div className="flex items-center gap-2 min-w-0">
             <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: platformColor }} />
+            {sessionInfo && (
+              <span className="flex items-center gap-0.5 shrink-0 text-[8px] font-bold" style={{ color: "var(--accent)" }}>
+                <Radio size={8} /> LIVE
+              </span>
+            )}
             <span className="flex-1 truncate text-[11px] font-medium text-[var(--text-primary)]" title={currentTrack.title}>
               {currentTrack.title}
             </span>

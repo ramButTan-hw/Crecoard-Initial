@@ -161,7 +161,7 @@ export const ITEM_FN_SCHEMAS: Record<string, ItemFnDef[]> = {
     { id: "import",       label: "Import playlists", description: "Bulk-import externals (YouTube playlists)" },
     { id: "volume",       label: "Volume",         description: "Change the player volume" },
     { id: "modes",        label: "Loop & shuffle", description: "Toggle loop and shuffle modes" },
-    { id: "session-host", label: "Host live session", description: "Start and control a synced listening session (upcoming)" },
+    { id: "session-host", label: "Host live session", description: "Start and control a synced listening session" },
   ],
 };
 

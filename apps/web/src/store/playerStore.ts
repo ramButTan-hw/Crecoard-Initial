@@ -26,6 +26,12 @@ interface SlotEntry {
   interactive: boolean;
 }
 
+export interface PlayerControls {
+  play: () => void;
+  pause: () => void;
+  seek: (sec: number) => void;
+}
+
 interface PlayerStore {
   claim: PlayerClaim | null;
   /** True once the user explicitly started playback via app controls — from then on track changes autoplay. */
@@ -34,6 +40,12 @@ interface PlayerStore {
   playing: boolean | null;
   /** On-screen embed slots keyed by playerKeyOf(...) — PlayerHost pins media over the claimed one. */
   slots: Record<string, SlotEntry>;
+  /** Last reported playback position of the current media (registered by PlayerHost bridges). */
+  position: { sec: number; at: number } | null;
+  /** Imperative controls for the current media — null for platforms without an API (Spotify et al.). */
+  controls: PlayerControls | null;
+  /** Mirror of the live-session participation (set by lib/playerSession) — for LIVE badges. */
+  session: { itemId: string; role: "host" | "listener" } | null;
 
   /**
    * Take ownership of the player. Without `steal`, only succeeds when the
@@ -45,6 +57,9 @@ interface PlayerStore {
   registerSlot: (key: string, el: HTMLElement, interactive: boolean) => void;
   unregisterSlot: (key: string, el: HTMLElement) => void;
   setPlaying: (v: boolean | null) => void;
+  setPosition: (p: { sec: number; at: number } | null) => void;
+  setControls: (c: PlayerControls | null) => void;
+  setSession: (s: { itemId: string; role: "host" | "listener" } | null) => void;
 }
 
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
@@ -52,6 +67,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   userStarted: false,
   playing: null,
   slots: {},
+  position: null,
+  controls: null,
+  session: null,
 
   claimPlayer: (claim, opts) => {
     const { claim: cur, playing } = get();
@@ -80,4 +98,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     }),
 
   setPlaying: (v) => set({ playing: v }),
+  setPosition: (p) => set({ position: p }),
+  setControls: (c) => set({ controls: c }),
+  setSession: (s) => set({ session: s }),
 }));
