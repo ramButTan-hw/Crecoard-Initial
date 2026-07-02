@@ -147,6 +147,57 @@ function AppShellInner() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // One keyboard grammar for boxes and board items: Delete removes, ⌘D
+  // duplicates, arrows nudge (⇧ = 10px), Escape clears selection. All the
+  // mutations route through undoable store actions, so ⌘Z reverses them.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const st = useBoardStore.getState();
+      if (st.expandedBoxId) return; // expanded view has its own editing context
+      if (activeView === "server" && (!isDraftMode || (viewerRole !== "owner" && viewerRole !== "admin"))) return;
+      const itemId = st.selectedBoardItemId;
+      const boxId = st.selectedBoxId;
+      if (e.key === "Escape") {
+        if (itemId) st.selectBoardItem(null);
+        if (boxId) st.selectBox(null);
+        return;
+      }
+      if (!itemId && !boxId) return;
+      const boardId = (activeView === "server" && activeServerId)
+        ? (activeServerBoardId ?? st.activeBoardId)
+        : st.activeBoardId;
+      const board = st.boards.find((b) => b.id === boardId) ?? st.serverBoards[boardId];
+      if (!board) return;
+      const mod = e.metaKey || e.ctrlKey;
+
+      if ((e.key === "Delete" || e.key === "Backspace") && !mod) {
+        e.preventDefault();
+        if (itemId) { st.removeBoardItem(boardId, itemId); st.selectBoardItem(null); }
+        else if (boxId) { st.removeBox(boardId, boxId); st.selectBox(null); }
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        if (itemId) st.duplicateBoardItem(boardId, itemId);
+        else if (boxId) st.duplicateBox(boardId, boxId);
+      } else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && !mod) {
+        e.preventDefault();
+        const d = e.shiftKey ? 10 : 1;
+        const dx = e.key === "ArrowLeft" ? -d : e.key === "ArrowRight" ? d : 0;
+        const dy = e.key === "ArrowUp" ? -d : e.key === "ArrowDown" ? d : 0;
+        if (itemId) {
+          const it = board.boardItems?.find((i) => i.id === itemId);
+          if (it && !it.locked) st.moveBoardItem(boardId, itemId, Math.max(0, it.boardX + dx), Math.max(0, it.boardY + dy));
+        } else if (boxId) {
+          const bx = board.boxes.find((b) => b.id === boxId);
+          if (bx && !bx.locked) st.moveBox(boardId, boxId, Math.max(0, bx.x + dx), Math.max(0, bx.y + dy));
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeView, activeServerId, activeServerBoardId, isDraftMode, viewerRole]);
   const selectedBoardItemId = useBoardStore((s) => s.selectedBoardItemId);
   const boardThemeVars = useBoardStore((s) => {
     if (activeView === "server" && activeServerBoardId) {

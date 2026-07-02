@@ -71,13 +71,9 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
   const displayH = liveSize?.h ?? item.boardH;
 
   // ── Drag ────────────────────────────────────────────────────────────────────
-  const handleDragStart = useCallback((e: React.PointerEvent) => {
+  const beginMove = useCallback((startX: number, startY: number) => {
     if (isFinished || !canEditBoard || item.locked) return;
-    e.stopPropagation();
-    e.preventDefault();
     isDragging.current = false;
-    const startX = e.clientX;
-    const startY = e.clientY;
     const origX = item.boardX;
     const origY = item.boardY;
     // Align to neighbors (boxes + other items) — captured once, positions are
@@ -121,7 +117,15 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
     dragCleanupRef.current = cleanup;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
-  }, [isFinished, item.boardX, item.boardY, item.id, boardId, zoom, moveBoardItem]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFinished, canEditBoard, item.boardX, item.boardY, item.boardW, item.boardH, item.locked, item.id, boardId, zoom, moveBoardItem]);
+
+  const handleDragStart = useCallback((e: React.PointerEvent) => {
+    if (isFinished || !canEditBoard || item.locked) return;
+    e.stopPropagation();
+    e.preventDefault();
+    beginMove(e.clientX, e.clientY);
+  }, [isFinished, canEditBoard, item.locked, beginMove]);
 
   // ── Resize ───────────────────────────────────────────────────────────────────
   const makeResizeHandler = useCallback(
@@ -195,6 +199,11 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
       label: item.settingsLocked ? "Unlock settings" : "Lock settings",
       icon: item.settingsLocked ? <LockOpen size={14} /> : <Lock size={14} />,
       onClick: () => updateBoardItem(boardId, item.id, { settingsLocked: !item.settingsLocked } as Partial<BoardLevelItem>),
+    },
+    {
+      label: item.locked ? "Unlock position" : "Lock position",
+      icon: item.locked ? <LockOpen size={14} /> : <Lock size={14} />,
+      onClick: () => updateBoardItem(boardId, item.id, { locked: !item.locked } as Partial<BoardLevelItem>),
     },
     "separator" as const,
     {
@@ -309,17 +318,42 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
           }
         }}
         onPointerDown={(e) => {
-          // Header-drag: item chrome tagged [data-item-drag] moves the whole item,
-          // so users can grab e.g. a chat channel's title bar instead of hunting
-          // for the thin top handle. Interactive elements inside headers still win.
+          // One interaction grammar with boxes: items drag from the body too.
+          // Interactive elements and scrollable content win; [data-item-drag]
+          // chrome (headers) drags immediately; anywhere else arms a 6px
+          // movement threshold so plain clicks still just select.
           if (e.button !== 0 || isFinished || !canEditBoard || item.locked) return;
           const el = e.target as HTMLElement;
-          if (el.closest('button,a,input,textarea,select,[contenteditable="true"],[data-nodrag]')) return;
+          if (el.closest('button,a,input,textarea,select,[contenteditable="true"],[data-nodrag],iframe,video,audio')) return;
           if (el.closest("[data-item-drag]")) {
             selectBoardItem(item.id);
             bringBoardItemToFront(boardId, item.id);
             handleDragStart(e);
+            return;
           }
+          // Presses inside genuinely scrollable content belong to the content.
+          let n: HTMLElement | null = el;
+          while (n && n !== e.currentTarget) {
+            const cs = getComputedStyle(n);
+            if (/(auto|scroll)/.test(cs.overflowY + cs.overflowX) &&
+                (n.scrollHeight > n.clientHeight + 2 || n.scrollWidth > n.clientWidth + 2)) return;
+            n = n.parentElement;
+          }
+          const sx = e.clientX, sy = e.clientY;
+          const arm = (ev: PointerEvent) => {
+            if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+            disarm();
+            document.getSelection()?.removeAllRanges();
+            selectBoardItem(item.id);
+            bringBoardItemToFront(boardId, item.id);
+            beginMove(sx, sy);
+          };
+          const disarm = () => {
+            window.removeEventListener("pointermove", arm);
+            window.removeEventListener("pointerup", disarm);
+          };
+          window.addEventListener("pointermove", arm);
+          window.addEventListener("pointerup", disarm);
         }}
         onContextMenuCapture={(e) => {
           if (isFinished || !canEditBoard) return;

@@ -512,6 +512,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
       {/* Message list */}
       <div
         ref={scrollContainerRef}
+        data-nodrag
         className="relative z-10 flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2"
         style={{ minHeight: 0, scrollbarWidth: "thin" }}
       >
