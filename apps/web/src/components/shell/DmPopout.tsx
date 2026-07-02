@@ -324,10 +324,14 @@ export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutPro
                   >
                     {!isConsecutive ? (
                       <div
-                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-[11px] font-bold text-white"
                         style={{ background: msg.isYou ? "#16a34a" : avatarColor }}
                       >
-                        {msg.authorAvatar}
+                        {/^(https?:|data:|\/)/.test(msg.authorAvatar ?? "") ? (
+                          <img src={msg.authorAvatar} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          ((msg.authorAvatar || msg.authorName || "?").trim().slice(0, 1) || "?").toUpperCase()
+                        )}
                       </div>
                     ) : (
                       <div className="w-6 flex-shrink-0" />

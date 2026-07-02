@@ -57,12 +57,17 @@ function ToastCard({ toast, onDismiss }: { toast: ChatToast; onDismiss: () => vo
       )}
 
       <div className="flex items-start gap-2.5 p-3">
-        {/* Avatar */}
+        {/* Avatar — image URL or a single initial (never raw text: uploaded
+            avatars are full storage URLs and would paint across the card) */}
         <div
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white"
           style={{ background: toast.isMention ? "var(--accent)" : "#4f5882" }}
         >
-          {toast.authorAvatar}
+          {/^(https?:|data:|\/)/.test(toast.authorAvatar ?? "") ? (
+            <img src={toast.authorAvatar} alt="" className="h-full w-full object-cover" />
+          ) : (
+            ((toast.authorAvatar || toast.authorName || "?").trim().slice(0, 1) || "?").toUpperCase()
+          )}
         </div>
 
         {/* Body */}
