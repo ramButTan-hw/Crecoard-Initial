@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Users, Shield, Crown, Eye, Edit3, X, CheckCircle2, Settings, ZoomIn, ZoomOut, Grid3X3, UserPlus, Copy, Check, Link2, Upload, RotateCcw } from "lucide-react";
+import { Users, Shield, Crown, Eye, Edit3, X, Settings, ZoomIn, ZoomOut, Grid3X3, UserPlus, Copy, Check, Link2, Upload, RotateCcw } from "lucide-react";
 import { useServers } from "@/contexts/ServersContext";
 import { usePresence } from "@/contexts/PresenceContext";
 import { useBoardSync } from "@/contexts/BoardSyncContext";
@@ -63,7 +63,7 @@ export function ServerBoardHeader({
   const canInviteMembers = useCanInviteMembers();
   const canManageMembers = useCanManageMembers();
 
-  const { finishBoard, editBoard, activeBoardId, showGrid, zoom, toggleGrid, zoomAtCanvasCenter } = useBoardStore();
+  const { editBoard, activeBoardId, showGrid, zoom, toggleGrid, zoomAtCanvasCenter } = useBoardStore();
   const serverDraft = useServerDraftData();
   const isFinished = serverDraft?.isFinished ?? false;
   const { boardId: serverBoardId, viewerId, isDraftMode, hasLiveVersion, onToggleMode, onPublish } = useServerBoard();
@@ -221,25 +221,19 @@ export function ServerBoardHeader({
             <Users size={12} />
           </button>
 
-          {/* Edit Mode / Finish — admins only, draft mode only */}
-          {canEdit && isDraftMode && (
+          {/* Locking is a personal-board concept — server boards already have
+              draft/publish, and a third state only confused people. Offer only
+              the recovery path for boards locked before this was removed. */}
+          {canEdit && isDraftMode && isFinished && (
             <>
               <div className="h-4 w-px bg-[var(--border)]" />
-              {isFinished ? (
-                <button
-                  onClick={() => editBoard(serverBoardId ?? activeBoardId)}
-                  className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border)] transition-colors"
-                >
-                  <Edit3 size={12} /> Edit Mode
-                </button>
-              ) : (
-                <button
-                  onClick={() => finishBoard(serverBoardId ?? activeBoardId)}
-                  className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors shadow-sm"
-                >
-                  <CheckCircle2 size={12} /> Finish
-                </button>
-              )}
+              <button
+                onClick={() => editBoard(serverBoardId ?? activeBoardId)}
+                title="This board was locked with the old Finish button — unlock to edit"
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border)] transition-colors"
+              >
+                <Edit3 size={12} /> Unlock board
+              </button>
             </>
           )}
 
