@@ -532,7 +532,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
             </span>
             {rollupTotal > 0 && (
               <span
-                className="flex items-center gap-1 text-[10px] font-semibold flex-shrink-0 ml-2"
+                className="flex items-center gap-1 text-[11px] font-semibold flex-shrink-0 ml-2"
                 style={{ color: rollupPct === 100 ? "var(--accent)" : s.fontColor, opacity: rollupPct === 100 ? 0.9 : 0.55 }}
               >
                 <CheckCircle2 size={10} />
@@ -555,7 +555,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
             aria-hidden
             className="absolute top-2 right-2 z-20 pointer-events-none opacity-0 group-hover:opacity-80 transition-opacity duration-150"
           >
-            <div className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium text-white" style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}>
+            <div className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white" style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}>
               <Maximize2 size={9} />
               Open
             </div>
@@ -605,7 +605,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
                 ))}
                 {box.items.length > summaryItems.length && (
                   <div className="absolute bottom-2 right-2 pointer-events-none">
-                    <span className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold opacity-65" style={{ background: "rgba(255,255,255,0.08)" }}>
+                    <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold opacity-65" style={{ background: "rgba(255,255,255,0.08)" }}>
                       +{box.items.length - summaryItems.length} more
                     </span>
                   </div>

@@ -166,11 +166,11 @@ export function TwitchItem({ item, boardId, boxId, collapsed, isFinished, onUpda
         <Twitch size={13} style={{ color: purple }} className="flex-shrink-0" />
         <span className="flex-1 truncate text-xs font-bold">{data?.displayName ?? channel}</span>
         {data?.isLive ? (
-          <span className="flex items-center gap-1 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-black tracking-wide text-red-500">
+          <span className="flex items-center gap-1 rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-black tracking-wide text-red-500">
             <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" /> LIVE
           </span>
         ) : (
-          <span className="rounded bg-[var(--surface-overlay)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">OFFLINE</span>
+          <span className="rounded bg-[var(--surface-overlay)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">OFFLINE</span>
         )}
         {!isFinished && (
           <button onClick={() => { setDraft(channel); setShowSetup(true); }} title="Change channel" className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
@@ -193,7 +193,7 @@ export function TwitchItem({ item, boardId, boxId, collapsed, isFinished, onUpda
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={`${data.thumbnailUrl}?t=${Math.floor(data.fetchedAt / 60000)}`} alt="" className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" />
                 {data.viewerCount != null && (
-                  <span className="absolute bottom-1 left-1 flex items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  <span className="absolute bottom-1 left-1 flex items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-[11px] font-semibold text-white">
                     <Users size={9} /> {fmtViewers(data.viewerCount)}
                   </span>
                 )}
@@ -240,7 +240,7 @@ export function TwitchStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
   return (
     <div className="flex flex-col gap-4 p-3 text-xs">
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Channel</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Channel</p>
         <input
           className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] transition-colors"
           placeholder="channel name"
@@ -250,7 +250,7 @@ export function TwitchStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
         <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">The board shows live/offline status and refreshes automatically.</p>
       </div>
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Behaviour</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Behaviour</p>
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={item.twitchShowSchedule !== false} onChange={(e) => upd({ twitchShowSchedule: e.target.checked })} className="accent-[var(--accent)]" />
           <span className="text-[var(--text-secondary)]">Show next scheduled stream when offline</span>

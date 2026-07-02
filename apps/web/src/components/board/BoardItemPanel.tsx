@@ -44,7 +44,7 @@ export function BoardItemPanel() {
           <span className="text-sm font-semibold text-[var(--text-primary)] truncate">
             {def?.label ?? item.type}
           </span>
-          <span className="text-[10px] text-[var(--text-muted)] shrink-0">on canvas</span>
+          <span className="text-[11px] text-[var(--text-muted)] shrink-0">on canvas</span>
         </div>
         <button
           onClick={() => selectBoardItem(null)}
@@ -127,7 +127,7 @@ export function BoardItemPanel() {
 
       {/* Size + position controls */}
       <div className="border-t border-[var(--border)] p-4 flex flex-col gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Position &amp; Size</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Position &amp; Size</p>
         <div className="grid grid-cols-2 gap-2 text-xs">
           {[
             { label: "X", value: item.boardX, key: "boardX" as const },

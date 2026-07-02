@@ -350,17 +350,25 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
     background: item.chatBgColor || undefined,
   };
   const bgLayer = item.chatBgImage ? (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute inset-0 z-0"
-      style={{
-        backgroundImage: `url(${item.chatBgImage})`,
-        backgroundSize: item.chatBgSize ?? "cover",
-        backgroundPosition: item.chatBgPosition ?? "center",
-        backgroundRepeat: "no-repeat",
-        opacity: item.chatBgOpacity ?? 1,
-      }}
-    />
+    <>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          backgroundImage: `url(${item.chatBgImage})`,
+          backgroundSize: item.chatBgSize ?? "cover",
+          backgroundPosition: item.chatBgPosition ?? "center",
+          backgroundRepeat: "no-repeat",
+          opacity: item.chatBgOpacity ?? 1,
+        }}
+      />
+      {/* Legibility scrim — background images must never make messages unreadable */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{ background: "linear-gradient(rgba(10, 11, 15, 0.38), rgba(10, 11, 15, 0.6))" }}
+      />
+    </>
   ) : null;
 
   const handleSend = async () => {
@@ -412,35 +420,35 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
           <span className="text-[11px] font-semibold text-[var(--text-primary)]">{channelName}</span>
           <div className="ml-auto flex items-center gap-1.5">
             {unreadCount > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white"
                 style={{ background: accent }}>
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
-            <span className="text-[9px] text-[var(--text-muted)]">{messages.length} msg</span>
+            <span className="text-[10px] text-[var(--text-muted)]">{messages.length} msg</span>
           </div>
         </div>
         <div className="relative z-10 flex flex-1 items-start gap-1.5 overflow-hidden px-2 py-1.5">
           {latest ? (
             <>
-              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-[9px] font-bold text-white" style={{ background: accent }}>
+              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white" style={{ background: accent }}>
                 {(profiles.get(latest.authorId)?.avatarUrl ?? latest.authorAvatar)?.startsWith("http")
                   ? <img src={profiles.get(latest.authorId)?.avatarUrl ?? latest.authorAvatar} alt="" className="h-full w-full object-cover" />
                   : (profiles.get(latest.authorId)?.avatarUrl ?? latest.authorAvatar)}
               </span>
               <div className="min-w-0 flex-1">
-                <span className="text-[10px] font-semibold text-[var(--text-primary)]">{profiles.get(latest.authorId)?.displayName ?? latest.authorName} </span>
+                <span className="text-[11px] font-semibold text-[var(--text-primary)]">{profiles.get(latest.authorId)?.displayName ?? latest.authorName} </span>
                 {latest.gif ? (
-                  <span className="text-[10px] italic text-[var(--text-muted)]">sent a GIF</span>
+                  <span className="text-[11px] italic text-[var(--text-muted)]">sent a GIF</span>
                 ) : latest.image ? (
-                  <span className="text-[10px] italic text-[var(--text-muted)]">sent an image</span>
+                  <span className="text-[11px] italic text-[var(--text-muted)]">sent an image</span>
                 ) : (
-                  <span className="truncate text-[10px] text-[var(--text-secondary)]">{latest.content}</span>
+                  <span className="truncate text-[11px] text-[var(--text-secondary)]">{latest.content}</span>
                 )}
               </div>
             </>
           ) : (
-            <span className="text-[10px] italic text-[var(--text-muted)]">No messages yet</span>
+            <span className="text-[11px] italic text-[var(--text-muted)]">No messages yet</span>
           )}
         </div>
       </div>
@@ -467,12 +475,12 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
           </span>
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-primary)]">{channelName}</span>
           {unreadCount > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white"
               style={{ background: accent }}>
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
-          <span className="text-[10px] text-[var(--text-muted)]">{messages.length}</span>
+          <span className="text-[11px] text-[var(--text-muted)]">{messages.length}</span>
           <button
             onClick={() => setSearchOpen((v) => { if (v) setChatSearch(""); return !v; })}
             title="Search this channel"
@@ -497,7 +505,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
             placeholder="Search messages…"
             className="min-w-0 flex-1 bg-transparent text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
           />
-          {searchTerm && <span className="flex-shrink-0 text-[10px] text-[var(--text-muted)]">{displayed.length} found</span>}
+          {searchTerm && <span className="flex-shrink-0 text-[11px] text-[var(--text-muted)]">{displayed.length} found</span>}
         </div>
       )}
 
@@ -537,7 +545,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
             const dateDivider = showDate ? (
               <div className="my-2 flex items-center gap-2 px-1">
                 <div className="h-px flex-1 bg-[var(--border)]" />
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">{formatDateDivider(msg.timestamp)}</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">{formatDateDivider(msg.timestamp)}</span>
                 <div className="h-px flex-1 bg-[var(--border)]" />
               </div>
             ) : null;
@@ -610,14 +618,14 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
 
                 <div className="min-w-0 flex-1">
                   {msg.pinned && (
-                    <div className="flex items-center gap-1 text-[10px] font-medium text-[var(--accent)]">
+                    <div className="flex items-center gap-1 text-[11px] font-medium text-[var(--accent)]">
                       <Pin size={9} /> Pinned
                     </div>
                   )}
                   {!consecutive && (
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-xs font-semibold text-[var(--text-primary)]">{liveName}</span>
-                      <span className="text-[10px] text-[var(--text-muted)]">
+                      <span className="text-[11px] text-[var(--text-muted)]">
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </div>
@@ -715,7 +723,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                 onMouseDown={(e) => { e.preventDefault(); pickMention(c); }}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
               >
-                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)] text-[9px] font-bold text-white">
+                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)] text-[10px] font-bold text-white">
                   {c.avatar ? <img src={c.avatar} alt="" className="h-full w-full object-cover" /> : c.name[0]?.toUpperCase()}
                 </span>
                 <span className="min-w-0 flex-1 truncate">
@@ -749,7 +757,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
               alt="preview"
               className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
             />
-            <span className="min-w-0 flex-1 truncate text-[10px] text-[var(--text-secondary)]">
+            <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
               {pendingImage.name}
             </span>
             <button
@@ -785,7 +793,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                     onClick={() => { setShowAttach(false); setShowGif(true); setShowEmoji(false); }}
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
                   >
-                    <span className="flex h-4 w-7 items-center justify-center rounded border border-[var(--border)] text-[9px] font-bold">GIF</span>
+                    <span className="flex h-4 w-7 items-center justify-center rounded border border-[var(--border)] text-[10px] font-bold">GIF</span>
                     Send a GIF
                   </button>
                   <button

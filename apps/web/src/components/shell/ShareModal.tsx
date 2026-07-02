@@ -202,12 +202,12 @@ export function ShareModal({ onClose }: Props) {
                 </button>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] text-[var(--text-muted)]">
+                <p className="text-[11px] text-[var(--text-muted)]">
                   {canEdit ? "New people who open this link can edit." : "New people who open this link can view only."}
                   {collaborators.length > 0 ? " Set individuals below." : ""}
                 </p>
                 {shareUrl && (
-                  <button onClick={resetLink} className="shrink-0 text-[10px] text-[var(--text-muted)] underline hover:text-[var(--text-primary)]">Reset link</button>
+                  <button onClick={resetLink} className="shrink-0 text-[11px] text-[var(--text-muted)] underline hover:text-[var(--text-primary)]">Reset link</button>
                 )}
               </div>
             </section>
@@ -222,7 +222,7 @@ export function ShareModal({ onClose }: Props) {
                   <div key={c.userId} className="group flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-[var(--surface-overlay)] transition-colors">
                     <Avatar name={c.name} color={c.color} size={28} />
                     <span className="flex-1 min-w-0 truncate text-sm text-[var(--text-primary)]">{c.name}</span>
-                    <div className="flex items-center rounded-full bg-[var(--surface-overlay)] p-0.5 text-[10px] font-medium shrink-0">
+                    <div className="flex items-center rounded-full bg-[var(--surface-overlay)] p-0.5 text-[11px] font-medium shrink-0">
                       <button onClick={() => setCollaboratorPermission(c.userId, true)} className={cn("rounded-full px-2 py-0.5 transition-colors", c.canEdit ? "bg-[var(--accent)] text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]")}>Edit</button>
                       <button onClick={() => setCollaboratorPermission(c.userId, false)} className={cn("rounded-full px-2 py-0.5 transition-colors", !c.canEdit ? "bg-[var(--accent)] text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]")}>View</button>
                     </div>
@@ -293,7 +293,7 @@ export function ShareModal({ onClose }: Props) {
                       <p className="text-sm text-[var(--text-primary)] truncate">{m.displayName}</p>
                     </div>
                     {m.isYou && (
-                      <span className="text-[10px] rounded-full bg-[var(--accent)]/15 text-[var(--accent)] px-2 py-0.5 font-semibold">You</span>
+                      <span className="text-[11px] rounded-full bg-[var(--accent)]/15 text-[var(--accent)] px-2 py-0.5 font-semibold">You</span>
                     )}
                   </div>
                 ))}
@@ -326,7 +326,7 @@ export function ShareModal({ onClose }: Props) {
                 Save
               </button>
             </div>
-            <p className="text-[10px] text-[var(--text-muted)]">Shown to collaborators when Live collaboration is on.</p>
+            <p className="text-[11px] text-[var(--text-muted)]">Shown to collaborators when Live collaboration is on.</p>
           </section>
 
         </div>

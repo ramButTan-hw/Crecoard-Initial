@@ -218,7 +218,7 @@ function BorderStylePicker({ value, color, width, onChange }: {
                 background: isNone ? "repeating-linear-gradient(45deg,var(--border) 0,var(--border) 1px,transparent 0,transparent 50%) 0/6px 6px" : "transparent",
               }}
             />
-            <span className={cn("text-[9px] leading-none", active ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>
+            <span className={cn("text-[10px] leading-none", active ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>
               {bs.label}
             </span>
           </button>
@@ -268,7 +268,7 @@ function DeckStylePanel({ box, boardId }: { box: any; boardId: string }) {
               className={cn("flex flex-col items-start rounded-lg border p-2.5 text-left transition-colors",
                 transition === t.id ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] hover:border-[var(--accent)]/50")}>
               <span className="text-xs font-semibold text-[var(--text-primary)]">{t.label}</span>
-              <span className="text-[10px] text-[var(--text-muted)] mt-0.5">{t.desc}</span>
+              <span className="text-[11px] text-[var(--text-muted)] mt-0.5">{t.desc}</span>
             </button>
           ))}
         </div>
@@ -282,30 +282,30 @@ function DeckStylePanel({ box, boardId }: { box: any; boardId: string }) {
               className={cn("flex items-center gap-3 rounded-lg border p-2.5 text-left transition-colors",
                 layout === l.id ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] hover:border-[var(--accent)]/50")}>
               <span className="text-xs font-semibold text-[var(--text-primary)] w-16 shrink-0">{l.label}</span>
-              <span className="text-[10px] text-[var(--text-muted)]">{l.desc}</span>
+              <span className="text-[11px] text-[var(--text-muted)]">{l.desc}</span>
             </button>
           ))}
 
           {showPeek && layout !== "flat" && (
             <div className="mt-1 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
-              <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Side slides</p>
+              <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Side slides</p>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-[var(--text-muted)] w-14 shrink-0">Scale</span>
+                <span className="text-[11px] text-[var(--text-muted)] w-14 shrink-0">Scale</span>
                 <input type="range" min={0.5} max={1} step={0.01} value={peekScale}
                   onChange={e => upd({ deckPeekScale: Number(e.target.value) })}
                   className="flex-1" />
-                <span className="text-[10px] text-[var(--text-muted)] w-8 text-right">{Math.round(peekScale * 100)}%</span>
+                <span className="text-[11px] text-[var(--text-muted)] w-8 text-right">{Math.round(peekScale * 100)}%</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-[var(--text-muted)] w-14 shrink-0">Opacity</span>
+                <span className="text-[11px] text-[var(--text-muted)] w-14 shrink-0">Opacity</span>
                 <input type="range" min={0} max={1} step={0.01} value={peekOpacity}
                   onChange={e => upd({ deckPeekOpacity: Number(e.target.value) })}
                   className="flex-1" />
-                <span className="text-[10px] text-[var(--text-muted)] w-8 text-right">{Math.round(peekOpacity * 100)}%</span>
+                <span className="text-[11px] text-[var(--text-muted)] w-8 text-right">{Math.round(peekOpacity * 100)}%</span>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={peekBlur} onChange={e => upd({ deckPeekBlur: e.target.checked })} className="rounded" />
-                <span className="text-[10px] text-[var(--text-muted)]">Blur side slides</span>
+                <span className="text-[11px] text-[var(--text-muted)]">Blur side slides</span>
               </label>
             </div>
           )}
@@ -318,11 +318,11 @@ function DeckStylePanel({ box, boardId }: { box: any; boardId: string }) {
           <Toggle label="Auto-play" value={autoPlay} onChange={v => upd({ deckAutoPlay: v })} />
           {autoPlay && (
             <div className="flex items-center gap-2 pl-0">
-              <span className="text-[10px] text-[var(--text-muted)] w-12 shrink-0">Speed</span>
+              <span className="text-[11px] text-[var(--text-muted)] w-12 shrink-0">Speed</span>
               <input type="range" min={1000} max={8000} step={500} value={autoMs}
                 onChange={e => upd({ deckAutoPlayMs: Number(e.target.value) })}
                 className="min-w-0 flex-1" />
-              <span className="text-[10px] text-[var(--text-muted)] w-8 shrink-0 text-right">{(autoMs / 1000).toFixed(1)}s</span>
+              <span className="text-[11px] text-[var(--text-muted)] w-8 shrink-0 text-right">{(autoMs / 1000).toFixed(1)}s</span>
             </div>
           )}
           <Toggle label="Show arrows"      value={showArrows} onChange={v => upd({ deckShowArrows: v })} />
@@ -344,7 +344,7 @@ function ExpertPanel({ box, boardId }: { box: any; boardId: string }) {
         <label className="text-xs font-medium text-[var(--text-secondary)]">Custom CSS</label>
         <textarea className="min-h-[140px] rounded border border-[var(--border)] bg-[var(--surface)] p-2 font-mono text-xs text-[var(--text-primary)] outline-none resize-y" placeholder={"/* inject any CSS */\nborder: 2px solid red;\n"} value={css} onChange={(e) => setCss(e.target.value)} onBlur={() => updateBoxStyle(boardId, box.id, { customCss: css })} />
       </div>
-      <pre className="overflow-auto rounded border border-[var(--border)] bg-[var(--surface)] p-2 text-[10px] text-[var(--text-muted)] max-h-[200px]">{JSON.stringify(box.style, null, 2)}</pre>
+      <pre className="overflow-auto rounded border border-[var(--border)] bg-[var(--surface)] p-2 text-[11px] text-[var(--text-muted)] max-h-[200px]">{JSON.stringify(box.style, null, 2)}</pre>
     </div>
   );
 }

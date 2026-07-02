@@ -842,7 +842,7 @@ function AppShellInner() {
               >
                 <MessageSquare size={16} className="text-[var(--text-secondary)]" />
                 {totalUnread > 0 && (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[9px] font-bold text-white">
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[10px] font-bold text-white">
                     {totalUnread > 99 ? "99+" : totalUnread}
                   </span>
                 )}

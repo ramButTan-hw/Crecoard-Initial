@@ -346,7 +346,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
                     }
                     <div className="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
                       <Camera size={16} className="text-white" />
-                      <span className="text-white text-[10px] font-medium">Change</span>
+                      <span className="text-white text-[11px] font-medium">Change</span>
                     </div>
                     <input
                       ref={iconFileRef}
@@ -558,7 +558,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
 
               {/* ── Theme Background (outer — behind canvas) ── */}
               <div className="rounded-lg border border-[var(--border)] p-4 flex flex-col gap-4">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">
                   Theme Background <span className="normal-case text-[var(--text-muted)] font-normal tracking-normal">· behind canvas</span>
                 </p>
 
@@ -630,7 +630,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
 
               {/* ── Board Background (inner — part of canvas) ── */}
               <div className="rounded-lg border border-[var(--border)] p-4 flex flex-col gap-4">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">
                   Board Background <span className="normal-case text-[var(--text-muted)] font-normal tracking-normal">· moves with canvas</span>
                 </p>
 
@@ -706,10 +706,10 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
                           <input type="color" value={overlayColor} onChange={(e) => upd({ backgroundOverlayColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
                         </span>
                         <span className="flex-1 text-xs text-[var(--text-secondary)]">Tint color</span>
-                        <span className="font-mono text-[10px] text-[var(--text-muted)]">{overlayColor}</span>
+                        <span className="font-mono text-[11px] text-[var(--text-muted)]">{overlayColor}</span>
                       </label>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] text-[var(--text-muted)]">Intensity</span>
+                        <span className="text-[11px] text-[var(--text-muted)]">Intensity</span>
                         <span className="text-xs text-[var(--text-muted)]">{Math.round(overlayOpacity * 100)}%</span>
                       </div>
                       <input type="range" min={0} max={1} step={0.01} value={overlayOpacity} onChange={(e) => upd({ backgroundOverlayOpacity: parseFloat(e.target.value) })} className="w-full accent-[var(--accent)]" />
@@ -736,7 +736,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
                       <span className="h-3 w-3 rounded-full flex-shrink-0" style={{ background: role.color }} />
                       <span className="flex-1 text-sm font-medium text-[var(--text-primary)]">{role.name}</span>
                       {role.isDefault && (
-                        <span className="text-[10px] text-[var(--text-muted)] border border-[var(--border)] rounded px-1.5 py-0.5">
+                        <span className="text-[11px] text-[var(--text-muted)] border border-[var(--border)] rounded px-1.5 py-0.5">
                           default
                         </span>
                       )}
@@ -760,7 +760,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
                       <div className="border-t border-[var(--border)] px-4 py-4 flex flex-col gap-4">
                         <div className="flex gap-3">
                           <div className="flex-1">
-                            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                               Role Name
                             </label>
                             <input
@@ -770,7 +770,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
                             />
                           </div>
                           <div>
-                            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                               Color
                             </label>
                             <input
@@ -783,7 +783,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
                         </div>
 
                         <div>
-                          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                             Permissions
                           </p>
                           <div className="flex flex-col gap-2">
@@ -871,7 +871,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-[var(--text-primary)] truncate">
                           {member.username}
-                          {isMe && <span className="ml-1.5 text-[10px] text-[var(--text-muted)]">(You)</span>}
+                          {isMe && <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">(You)</span>}
                         </p>
                         {member.status && (
                           <p className="text-[11px] text-[var(--text-muted)] truncate">{member.status}</p>
@@ -914,13 +914,13 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
                           <div className="flex items-center gap-1">
                             <button
                               onClick={async () => { await transferOwnership(serverId, member.userId); setConfirmTransferId(null); }}
-                              className="rounded px-2 py-1 text-[10px] font-semibold bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors"
+                              className="rounded px-2 py-1 text-[11px] font-semibold bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors"
                             >
                               Confirm
                             </button>
                             <button
                               onClick={() => setConfirmTransferId(null)}
-                              className="rounded px-1.5 py-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                              className="rounded px-1.5 py-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                             >
                               Cancel
                             </button>
@@ -949,13 +949,13 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
                               });
                               setConfirmKickId(null);
                             }}
-                              className="rounded px-2 py-1 text-[10px] font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                              className="rounded px-2 py-1 text-[11px] font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
                             >
                               Kick
                             </button>
                             <button
                               onClick={() => setConfirmKickId(null)}
-                              className="rounded px-1.5 py-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                              className="rounded px-1.5 py-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                             >
                               Cancel
                             </button>
@@ -1030,7 +1030,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
       {children}
     </p>
   );
@@ -1051,7 +1051,7 @@ function ColorPickerRow({ label, value, onChange }: { label: string; value: stri
         />
       </span>
       <span className="flex-1 text-xs text-[var(--text-secondary)] truncate">{label}</span>
-      <span className="font-mono text-[10px] text-[var(--text-muted)] flex-shrink-0">{value}</span>
+      <span className="font-mono text-[11px] text-[var(--text-muted)] flex-shrink-0">{value}</span>
     </label>
   );
 }
@@ -1286,14 +1286,14 @@ function PublishHistoryList({ serverId, canRollback }: { serverId: string; canRo
                   <span className="font-semibold text-[var(--text-primary)]">{entry.publisherName}</span>
                   {" published"}
                   {isLatest && (
-                    <span className="ml-1.5 rounded px-1 py-0.5 text-[9px] font-bold bg-green-500/20 text-green-400">LIVE</span>
+                    <span className="ml-1.5 rounded px-1 py-0.5 text-[10px] font-bold bg-green-500/20 text-green-400">LIVE</span>
                   )}
                 </p>
                 {entry.message && (
                   <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">"{entry.message}"</p>
                 )}
               </div>
-              <span className="flex-shrink-0 text-[10px] text-[var(--text-muted)] mr-1">
+              <span className="flex-shrink-0 text-[11px] text-[var(--text-muted)] mr-1">
                 {formatRelativeTime(entry.publishedAt)}
               </span>
               <button
@@ -1359,7 +1359,7 @@ function PublishHistoryList({ serverId, canRollback }: { serverId: string; canRo
                     <p className="text-xs text-[var(--text-muted)] animate-pulse">Loading…</p>
                   ) : diff && (diff.added.length > 0 || diff.removed.length > 0 || diff.moved.length > 0 || diff.modified.length > 0) ? (
                     <div className="flex flex-col gap-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] mb-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] mb-1">
                         Draft changes since this publish
                       </p>
                       <DiffLine type="added"    items={diff.added} />
@@ -1382,7 +1382,7 @@ function PublishHistoryList({ serverId, canRollback }: { serverId: string; canRo
                   <p className="text-xs text-[var(--text-muted)] animate-pulse">Loading current version…</p>
                 ) : (
                   <div className="flex flex-col gap-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] mb-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] mb-1">
                       Changes from this version → current live
                     </p>
                     {diff && (diff.added.length > 0 || diff.removed.length > 0 || diff.moved.length > 0 || diff.modified.length > 0) ? (
@@ -1658,7 +1658,7 @@ function BackupsTab({ serverId, boardId }: { serverId: string; boardId: string |
                     <p className="text-sm font-medium text-[var(--text-primary)] truncate">
                       {backup.label ?? `Backup ${slot}`}
                     </p>
-                    <p className="text-[10px] text-[var(--text-muted)]">
+                    <p className="text-[11px] text-[var(--text-muted)]">
                       {backup.creatorName} · {formatRelativeTime(backup.createdAt)}
                     </p>
                   </>

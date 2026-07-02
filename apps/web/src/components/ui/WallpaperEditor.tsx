@@ -100,7 +100,7 @@ export function WallpaperEditor({
           }}
         />
         <div className="absolute bottom-1.5 inset-x-0 flex justify-center pointer-events-none">
-          <span className="rounded bg-black/50 px-1.5 py-0.5 text-[9px] text-white/60 backdrop-blur-sm">
+          <span className="rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-white/60 backdrop-blur-sm">
             Drag · Scroll to zoom
           </span>
         </div>
@@ -108,14 +108,14 @@ export function WallpaperEditor({
 
       {/* Zoom slider */}
       <div className="flex items-center gap-2">
-        <span className="w-9 shrink-0 text-[10px] text-[var(--text-muted)]">Zoom</span>
+        <span className="w-9 shrink-0 text-[11px] text-[var(--text-muted)]">Zoom</span>
         <input
           type="range" min={10} max={500} step={5}
           value={zoomValue}
           onChange={(e) => onSizeChange(`${e.target.value}%`)}
           className="flex-1 accent-[var(--accent)]"
         />
-        <span className="w-10 text-right text-[10px] text-[var(--text-muted)]">{zoomValue}%</span>
+        <span className="w-10 text-right text-[11px] text-[var(--text-muted)]">{zoomValue}%</span>
       </div>
 
       {/* Preset buttons + reset position */}
@@ -125,7 +125,7 @@ export function WallpaperEditor({
             key={p.id}
             onClick={() => { onSizeChange(p.id); onPositionChange("center"); }}
             className={cn(
-              "flex-1 rounded border py-1 text-[10px] transition-colors",
+              "flex-1 rounded border py-1 text-[11px] transition-colors",
               isPreset && size === p.id
                 ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
                 : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]"
@@ -137,7 +137,7 @@ export function WallpaperEditor({
         <button
           title="Reset position to center"
           onClick={() => onPositionChange("50% 50%")}
-          className="rounded border border-[var(--border)] px-2.5 py-1 text-[10px] text-[var(--text-muted)] hover:border-[var(--text-muted)] transition-colors"
+          className="rounded border border-[var(--border)] px-2.5 py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--text-muted)] transition-colors"
         >
           ⌖
         </button>
@@ -145,14 +145,14 @@ export function WallpaperEditor({
 
       {/* Opacity */}
       <div className="flex items-center gap-2">
-        <span className="w-9 shrink-0 text-[10px] text-[var(--text-muted)]">Opacity</span>
+        <span className="w-9 shrink-0 text-[11px] text-[var(--text-muted)]">Opacity</span>
         <input
           type="range" min={0} max={1} step={0.01}
           value={opacity}
           onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
           className="flex-1 accent-[var(--accent)]"
         />
-        <span className="w-10 text-right text-[10px] text-[var(--text-muted)]">{Math.round(opacity * 100)}%</span>
+        <span className="w-10 text-right text-[11px] text-[var(--text-muted)]">{Math.round(opacity * 100)}%</span>
       </div>
     </div>
   );

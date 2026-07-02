@@ -190,7 +190,7 @@ export function TopBar() {
               ))}
               {members.length > 3 && (
                 <div
-                  className="h-6 w-6 rounded-full flex items-center justify-center text-[9px] font-bold text-[var(--text-secondary)] ring-2"
+                  className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-[var(--text-secondary)] ring-2"
                   style={{ background: "var(--surface-overlay)", zIndex: 0 }}
                   title={`${members.length - 3} more`}
                 >

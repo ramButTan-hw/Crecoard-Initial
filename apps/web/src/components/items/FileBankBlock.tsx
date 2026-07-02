@@ -111,7 +111,7 @@ export function FileBankBlock({ item, boardId, expanded = false }: FileBankBlock
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
         <FolderOpen size={14} className="flex-shrink-0 text-[var(--accent)]" />
         <span className="flex-1 truncate text-sm font-semibold text-[var(--text-primary)]">{title}</span>
-        <span className="text-[10px] text-[var(--text-muted)]">{files.length} file{files.length !== 1 ? "s" : ""}</span>
+        <span className="text-[11px] text-[var(--text-muted)]">{files.length} file{files.length !== 1 ? "s" : ""}</span>
         {canEdit && (
           <>
             <button
@@ -169,7 +169,7 @@ function FileRow({ file, expanded }: { file: FileBankEntry; expanded: boolean })
         <p className={cn("truncate font-medium text-[var(--text-primary)]", expanded ? "text-sm" : "text-xs")}>
           {file.name}
         </p>
-        <p className="text-[10px] text-[var(--text-muted)]">
+        <p className="text-[11px] text-[var(--text-muted)]">
           {formatBytes(file.sizeBytes)} · {file.uploadedBy} · {timeAgo(file.uploadedAt)}
         </p>
       </div>

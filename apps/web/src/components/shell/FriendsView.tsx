@@ -131,7 +131,7 @@ export function FriendsView({
                 {t.label}
                 {counts[t.id] > 0 && (
                   <span className={cn(
-                    "rounded-full px-1.5 py-0.5 text-[10px] font-semibold transition-colors",
+                    "rounded-full px-1.5 py-0.5 text-[11px] font-semibold transition-colors",
                     tab === t.id
                       ? "bg-[var(--accent)]/15 text-[var(--accent)]"
                       : "bg-[var(--surface-overlay)] text-[var(--text-muted)]"
@@ -177,7 +177,7 @@ export function FriendsView({
               />
               {addFriendStatus && (
                 <span className={cn(
-                  "text-[10px] font-medium",
+                  "text-[11px] font-medium",
                   ADD_FRIEND_MSG[addFriendStatus]?.ok ? "text-green-400" : "text-red-400"
                 )}>
                   {ADD_FRIEND_MSG[addFriendStatus]?.text ?? "Unknown error."}
@@ -431,7 +431,7 @@ function PendingCard({
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-[var(--text-primary)]">{request.displayName}</p>
-        <p className="text-[10px] text-[var(--text-muted)]">
+        <p className="text-[11px] text-[var(--text-muted)]">
           {request.direction === "received" ? "Incoming request" : "Request sent"}
         </p>
       </div>

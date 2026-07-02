@@ -117,7 +117,7 @@ export function FontPicker({ value, onChange, compact }: FontPickerProps) {
                 key={cat}
                 onClick={() => setCategory(cat)}
                 className={cn(
-                  "flex-shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors",
+                  "flex-shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors",
                   category === cat
                     ? "bg-[var(--accent)] text-white"
                     : "bg-[var(--surface-overlay)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -185,7 +185,7 @@ function FontRow({ font, selected, onSelect }: { font: { name: string; category:
       )}
     >
       <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-        <span className="text-[10px] text-[var(--text-muted)] leading-none">{font.name}</span>
+        <span className="text-[11px] text-[var(--text-muted)] leading-none">{font.name}</span>
         <span
           className="text-sm text-[var(--text-primary)] leading-snug truncate"
           style={{ fontFamily: font.name }}

@@ -43,7 +43,7 @@ export function communityStyle(item: BlockItem, defaultAccent = "var(--accent)")
 /** Small pending / author line shared by suggestion + guestbook entries. */
 function Attribution({ name, pending }: { name: string; pending?: boolean }) {
   return (
-    <span className="text-[10px] text-[var(--text-muted)] whitespace-nowrap">
+    <span className="text-[11px] text-[var(--text-muted)] whitespace-nowrap">
       {name || "Anonymous"}{pending && <span className="italic"> · pending</span>}
     </span>
   );
@@ -125,7 +125,7 @@ export function SuggestionItem({ item, boardId, collapsed, canContribute }: Rend
                     !canContribute && "opacity-50 cursor-default")}
                 >
                   <ArrowBigUp size={14} fill={upvoted ? "currentColor" : "none"} />
-                  <span className="text-[10px] tabular-nums">{count}</span>
+                  <span className="text-[11px] tabular-nums">{count}</span>
                 </button>
               )}
               <div className="min-w-0 flex-1">
@@ -224,7 +224,7 @@ export function GuestbookItem({ item, boardId, collapsed, canContribute }: Rende
                 )}
               </div>
               <div className="mt-0.5">
-                <span className="text-[10px] text-[var(--text-muted)]">— <span className="font-medium">{c.authorName || "Anonymous"}</span>{!c.approved && <span className="italic"> · pending</span>}</span>
+                <span className="text-[11px] text-[var(--text-muted)]">— <span className="font-medium">{c.authorName || "Anonymous"}</span>{!c.approved && <span className="italic"> · pending</span>}</span>
               </div>
             </div>
           );
@@ -316,7 +316,7 @@ export function PollItem({ item, boardId, collapsed, isFinished, canContribute }
         })}
       </div>
 
-      <div className="shrink-0 text-[10px] text-[var(--text-muted)]">
+      <div className="shrink-0 text-[11px] text-[var(--text-muted)]">
         {total} vote{total === 1 ? "" : "s"}
         {myVote && !collapsed && canContribute && <span> · tap your choice to remove it</span>}
         {!canContribute && !collapsed && <span> · voting disabled</span>}
@@ -328,7 +328,7 @@ export function PollItem({ item, boardId, collapsed, isFinished, canContribute }
 // ─── Style panels ───────────────────────────────────────────────────────────
 
 const INPUT_CLS = "w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] transition-colors";
-const LABEL_CLS = "mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]";
+const LABEL_CLS = "mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]";
 
 function ApprovalToggle({ item, upd }: { item: BlockItem; upd: Upd }) {
   return (
@@ -349,7 +349,7 @@ function ColorRow({ label, value, fallback, onChange, onClear }: {
       </span>
       <span className="flex-1 text-[var(--text-secondary)]">{label}</span>
       {value && onClear && (
-        <button onClick={(e) => { e.preventDefault(); onClear(); }} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset</button>
+        <button onClick={(e) => { e.preventDefault(); onClear(); }} className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset</button>
       )}
     </label>
   );

@@ -108,7 +108,7 @@ export function ServerBoardHeader({
             <>
               <span
                 className={cn(
-                  "select-none rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide",
+                  "select-none rounded px-1.5 py-0.5 text-[11px] font-bold tracking-wide",
                   isDraftMode
                     ? "bg-[var(--surface-overlay)] text-[var(--text-muted)]"
                     : "bg-green-500/20 text-green-400",
@@ -164,7 +164,7 @@ export function ServerBoardHeader({
             </>
           ) : (
             <>
-              <span className="select-none rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide bg-green-500/20 text-green-400">
+              <span className="select-none rounded px-1.5 py-0.5 text-[11px] font-bold tracking-wide bg-green-500/20 text-green-400">
                 LIVE
               </span>
               <div className="h-4 w-px bg-[var(--border)]" />
@@ -308,21 +308,21 @@ export function ServerBoardHeader({
               {/* Leave server */}
               <div className="mt-2 pt-2 border-t border-[var(--border)]">
                 {viewerRole === "owner" ? (
-                  <p className="px-2 py-1 text-[10px] text-[var(--text-muted)]">
+                  <p className="px-2 py-1 text-[11px] text-[var(--text-muted)]">
                     Transfer ownership to leave
                   </p>
                 ) : confirmLeave ? (
                   <div className="flex items-center gap-1.5 px-2 py-1">
-                    <span className="text-[10px] text-[var(--text-muted)] flex-1">Leave {serverName}?</span>
+                    <span className="text-[11px] text-[var(--text-muted)] flex-1">Leave {serverName}?</span>
                     <button
                       onClick={async () => { await leaveServer(serverId); onToggleMembers(); }}
-                      className="rounded px-2 py-1 text-[10px] font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                      className="rounded px-2 py-1 text-[11px] font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
                     >
                       Leave
                     </button>
                     <button
                       onClick={() => setConfirmLeave(false)}
-                      className="rounded px-1.5 py-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                      className="rounded px-1.5 py-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                     >
                       Cancel
                     </button>
@@ -425,7 +425,7 @@ function InviteModal({ serverId, serverName, onClose }: { serverId: string; serv
                 {copied ? <><Check size={11} /> Copied!</> : <><Copy size={11} /> Copy</>}
               </button>
             </div>
-            <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">Link expires in 7 days · Max 10 uses</p>
+            <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">Link expires in 7 days · Max 10 uses</p>
           </div>
 
           {/* Email invite */}
@@ -506,7 +506,7 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
 
   return (
     <>
-      <p className="mt-2 mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+      <p className="mt-2 mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
         {label} — {members.length}
       </p>
       {members.map((m) => {
@@ -532,12 +532,12 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-medium text-[var(--text-primary)]">{m.username}</p>
-                {m.status && <p className="truncate text-[10px] text-[var(--text-muted)]">{m.status}</p>}
+                {m.status && <p className="truncate text-[11px] text-[var(--text-muted)]">{m.status}</p>}
               </div>
               {m.userId === viewerId ? (
-                <span className="ml-auto text-[9px] font-semibold text-[var(--accent)] bg-[var(--accent)]/10 rounded px-1.5 py-0.5">You</span>
+                <span className="ml-auto text-[10px] font-semibold text-[var(--accent)] bg-[var(--accent)]/10 rounded px-1.5 py-0.5">You</span>
               ) : (
-                <span className={cn("text-[10px]", ROLE_COLORS[m.role])}>{m.role === "owner" ? "👑" : m.role === "admin" ? "🛡" : ""}</span>
+                <span className={cn("text-[11px]", ROLE_COLORS[m.role])}>{m.role === "owner" ? "👑" : m.role === "admin" ? "🛡" : ""}</span>
               )}
             </button>
 
@@ -563,7 +563,7 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
                   {customRoles.length > 0 && (
                     <>
                       <div className="my-1 h-px bg-[var(--border)]" />
-                      <p className="px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Roles</p>
+                      <p className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Roles</p>
                       {customRoles.map((r) => {
                         const has = (m.roleIds ?? []).includes(r.id);
                         return (

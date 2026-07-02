@@ -191,13 +191,13 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
             className="flex w-14 md:w-[220px] flex-shrink-0 flex-col gap-1 overflow-y-auto py-5 px-2 md:px-3"
             style={{ background: "var(--sidebar)", borderRight: "1px solid var(--border)" }}
           >
-            <p className="mb-2 hidden px-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] md:block">
+            <p className="mb-2 hidden px-2 text-[11px] font-bold uppercase tracking-widest text-[var(--text-muted)] md:block">
               Settings
             </p>
 
             {GROUPS.map((group) => (
               <div key={group} className="mb-3">
-                <p className="mb-1 hidden px-2 text-[9px] font-semibold uppercase tracking-widest text-[var(--text-muted)] md:block">
+                <p className="mb-1 hidden px-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] md:block">
                   {group}
                 </p>
                 {SECTIONS.filter((s) => s.group === group).map((s) => (
@@ -288,7 +288,7 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
                       className="flex w-full items-center justify-between rounded-xl border border-[var(--border)] px-4 py-3 text-left transition-colors hover:border-[var(--text-muted)]"
                       style={{ background: "var(--surface)" }}
                     >
-                      <span className="text-sm text-[var(--text-muted)]">User ID <span className="text-[10px]">· for support</span></span>
+                      <span className="text-sm text-[var(--text-muted)]">User ID <span className="text-[11px]">· for support</span></span>
                       <span className="font-mono text-xs text-[var(--text-secondary)]">{copiedId ? "Copied!" : "Copy"}</span>
                     </button>
                   </SGroup>
@@ -801,7 +801,7 @@ function IntegrationsSection() {
               <p className="text-sm font-semibold text-[var(--text-primary)]">{name}</p>
               <p className="text-xs text-[var(--text-muted)]">{desc}</p>
             </div>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
+            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
               available
                 ? "text-green-400 bg-green-400/10"
                 : "text-[var(--text-muted)] border border-[var(--border)]"
@@ -820,7 +820,7 @@ function IntegrationsSection() {
 function SGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{label}</p>
+      <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{label}</p>
       <div className="flex flex-col gap-2">{children}</div>
     </div>
   );
@@ -965,7 +965,7 @@ function ColorPickerRow({ label, value, onChange }: { label: string; value: stri
         <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
       </span>
       <span className="flex-1 text-xs text-[var(--text-secondary)] truncate">{label}</span>
-      <span className="font-mono text-[10px] text-[var(--text-muted)]">{value}</span>
+      <span className="font-mono text-[11px] text-[var(--text-muted)]">{value}</span>
     </label>
   );
 }

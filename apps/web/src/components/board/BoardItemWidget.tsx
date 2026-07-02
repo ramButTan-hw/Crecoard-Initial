@@ -17,6 +17,9 @@ import { magnetize, snapPosition } from "@/lib/snapToGrid";
 const MIN_W = 80;
 const MIN_H = 40;
 
+// Types whose content is primarily read — they get the auto wallpaper backdrop.
+const SCRIM_TYPES = new Set(["list", "table", "calendar", "kanban", "suggestion", "guestbook", "poll"]);
+
 interface Props {
   item: BoardLevelItem;
   boardId: string;
@@ -33,6 +36,13 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
   const isMobile = useIsMobile();
   const zoom = useBoardStore((s) => s.zoom);
   const canEditBoard = useCanEditBoard();
+  // Reading-surface items get a readable backdrop when the board wears a
+  // wallpaper (beta feedback: content unreadable over busy art). Items with
+  // their own opaque background simply cover it; itemScrim=false opts out.
+  const boardHasWallpaper = useBoardStore((s) => {
+    const b = s.boards.find((x) => x.id === boardId) ?? s.serverBoards[boardId];
+    return !!(b?.themeBgImage || b?.backgroundImage);
+  });
   const anyBoardFocused = useBoardStore((s) =>
     (s.boards.find((b) => b.id === boardId) ?? s.serverBoards[boardId])?.boardItems?.some((i) => i.isFocused) ?? false
   );
@@ -359,14 +369,19 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
         {/* Settings lock badge */}
         {item.settingsLocked && (
           <div className="absolute top-1 right-1 z-30 pointer-events-none">
-            <span className="flex items-center gap-0.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-amber-400 leading-none">
+            <span className="flex items-center gap-0.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 leading-none">
               <Lock size={8} />
             </span>
           </div>
         )}
 
+        {/* Readable backdrop (auto over wallpapers for reading surfaces) */}
+        {(item.itemScrim ?? (boardHasWallpaper && SCRIM_TYPES.has(item.type))) && (
+          <div aria-hidden style={{ position: "absolute", inset: 0, background: "rgba(13, 14, 18, 0.58)", borderRadius: 6 }} />
+        )}
+
         {/* Item content */}
-        <div style={{ width: "100%", height: "100%", overflow: "hidden" }}>
+        <div style={{ width: "100%", height: "100%", overflow: "hidden", position: "relative" }}>
           <ItemRenderer
             item={item}
             boardId={boardId}

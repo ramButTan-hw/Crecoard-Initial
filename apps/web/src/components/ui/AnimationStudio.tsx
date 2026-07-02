@@ -53,7 +53,7 @@ export function AnimationStudio({ serverId, initial, onApply, onClose }: {
   };
 
   const slider = (label: string, value: number, min: number, max: number, step: number, onChange: (v: number) => void, suffix = "") => (
-    <label className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+    <label className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
       <span className="w-11 shrink-0">{label}</span>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
@@ -98,12 +98,12 @@ export function AnimationStudio({ serverId, initial, onApply, onClose }: {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-[var(--text-primary)]">{p.name}</p>
-                    <p className="text-[9px] text-[var(--text-muted)]">
+                    <p className="text-[10px] text-[var(--text-muted)]">
                       {p.spec.duration}s · {p.spec.loop ? "loop" : "once"}{p.serverId ? " · shared to server" : ""}
                     </p>
                   </div>
                   <button onClick={() => { setDraft(p.spec); setView("builder"); }}
-                    className="rounded px-1.5 py-0.5 text-[10px] text-[var(--text-muted)] opacity-0 transition-all group-hover:opacity-100 hover:text-[var(--text-primary)]">
+                    className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-muted)] opacity-0 transition-all group-hover:opacity-100 hover:text-[var(--text-primary)]">
                     Edit
                   </button>
                   {p.mine && (
@@ -113,7 +113,7 @@ export function AnimationStudio({ serverId, initial, onApply, onClose }: {
                     </button>
                   )}
                   <button onClick={() => onApply(p.spec)}
-                    className="rounded bg-[var(--accent)] px-2 py-1 text-[10px] font-medium text-white hover:opacity-90 transition-opacity">
+                    className="rounded bg-[var(--accent)] px-2 py-1 text-[11px] font-medium text-white hover:opacity-90 transition-opacity">
                     Apply
                   </button>
                 </div>
@@ -144,7 +144,7 @@ export function AnimationStudio({ serverId, initial, onApply, onClose }: {
               {draft.steps.map((s, i) => (
                 <div key={i} className="rounded-lg border border-[var(--border)] p-2.5 flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                       {i === 0 ? "Start" : i === draft.steps.length - 1 ? "End" : `Step · ${s.at}%`}
                     </p>
                     {i > 0 && i < draft.steps.length - 1 && (
@@ -161,7 +161,7 @@ export function AnimationStudio({ serverId, initial, onApply, onClose }: {
                 </div>
               ))}
               {draft.steps.length < 6 && (
-                <button onClick={addStep} className="flex items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1.5 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+                <button onClick={addStep} className="flex items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1.5 text-[11px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
                   <Plus size={11} /> Add step
                 </button>
               )}
@@ -169,20 +169,20 @@ export function AnimationStudio({ serverId, initial, onApply, onClose }: {
               {/* Timing */}
               <div className="rounded-lg border border-[var(--border)] p-2.5 flex flex-col gap-1.5">
                 {slider("Duration", draft.duration, 0.1, 6, 0.1, (v) => setDraft((d) => ({ ...d, duration: v })), "s")}
-                <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+                <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
                   <span className="w-11 shrink-0">Easing</span>
                   <select value={draft.easing} onChange={(e) => setDraft((d) => ({ ...d, easing: e.target.value as AnimSpec["easing"] }))}
-                    className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-[10px] text-[var(--text-primary)] outline-none">
+                    className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-[11px] text-[var(--text-primary)] outline-none">
                     {["linear", "ease", "ease-in", "ease-out", "ease-in-out", "bounce"].map((e) => <option key={e} value={e}>{e}</option>)}
                   </select>
                 </div>
                 <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-1.5 cursor-pointer text-[10px] text-[var(--text-secondary)]">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-[var(--text-secondary)]">
                     <input type="checkbox" checked={draft.loop} onChange={(e) => setDraft((d) => ({ ...d, loop: e.target.checked }))} className="accent-[var(--accent)]" />
                     Loop
                   </label>
                   {draft.loop && (
-                    <label className="flex items-center gap-1.5 cursor-pointer text-[10px] text-[var(--text-secondary)]">
+                    <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-[var(--text-secondary)]">
                       <input type="checkbox" checked={!!draft.alternate} onChange={(e) => setDraft((d) => ({ ...d, alternate: e.target.checked }))} className="accent-[var(--accent)]" />
                       Alternate direction
                     </label>
@@ -195,7 +195,7 @@ export function AnimationStudio({ serverId, initial, onApply, onClose }: {
             <div className="flex items-center gap-2 border-t border-[var(--border)] p-3">
               {serverId && (
                 <select value={saveTarget} onChange={(e) => setSaveTarget(e.target.value as "personal" | "server")}
-                  className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-[10px] text-[var(--text-muted)] outline-none">
+                  className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-[11px] text-[var(--text-muted)] outline-none">
                   <option value="personal">My library</option>
                   <option value="server">Server library</option>
                 </select>

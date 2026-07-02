@@ -272,7 +272,7 @@ export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutPro
 
         <div className="min-w-0 flex-1">
           <p className="select-none truncate text-sm font-semibold text-[var(--text-primary)]">{username}</p>
-          <p className="select-none text-[10px] text-[var(--text-muted)]">{online ? "Active now" : "Offline"}</p>
+          <p className="select-none text-[11px] text-[var(--text-muted)]">{online ? "Active now" : "Offline"}</p>
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-0.5">
@@ -324,7 +324,7 @@ export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutPro
                   >
                     {!isConsecutive ? (
                       <div
-                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
                         style={{ background: msg.isYou ? "#16a34a" : avatarColor }}
                       >
                         {msg.authorAvatar}
@@ -340,7 +340,7 @@ export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutPro
                       )}
                     >
                       {!isConsecutive && (
-                        <span className="px-1 text-[10px] text-[var(--text-muted)]">
+                        <span className="px-1 text-[11px] text-[var(--text-muted)]">
                           {msg.isYou ? "You" : msg.authorName}
                         </span>
                       )}
@@ -408,7 +408,7 @@ export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutPro
                   alt="preview"
                   className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
                 />
-                <span className="min-w-0 flex-1 truncate text-[10px] text-[var(--text-secondary)]">
+                <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
                   {pendingImage.name}
                 </span>
                 <button
@@ -434,7 +434,7 @@ export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutPro
               <button
                 onClick={() => { setShowGif((v) => !v); setShowEmoji(false); }}
                 title="GIF"
-                className="flex-shrink-0 rounded-md border border-[var(--border)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                className="flex-shrink-0 rounded-md border border-[var(--border)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 GIF
               </button>

@@ -433,7 +433,7 @@ export function PlayerHost() {
             </button>
           </div>
           <div className="flex items-center gap-0.5">
-            <span className="text-[9px] text-[var(--text-muted)] mr-auto tabular-nums">{currentIdx + 1} / {tracks.length}</span>
+            <span className="text-[10px] text-[var(--text-muted)] mr-auto tabular-nums">{currentIdx + 1} / {tracks.length}</span>
             {claim.canPlayback && tracks.length > 1 && (
               <button onClick={() => advance(-1)} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
                 <SkipBack size={13} />
@@ -457,7 +457,7 @@ export function PlayerHost() {
               </button>
             )}
             {!claim.canPlayback && (
-              <span className="flex items-center gap-1 text-[9px] text-[var(--text-muted)]">
+              <span className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
                 <Music size={10} /> listening
               </span>
             )}

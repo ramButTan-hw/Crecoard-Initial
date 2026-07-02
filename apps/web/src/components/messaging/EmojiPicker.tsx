@@ -77,7 +77,7 @@ export function EmojiPicker({ onSelect }: EmojiPickerProps) {
 
       {/* Emoji grid */}
       <div className="overflow-y-auto p-2" style={{ height: 220, scrollbarWidth: "thin" }}>
-        <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+        <p className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
           {category.label}
         </p>
         <div className="grid grid-cols-8 gap-0.5">

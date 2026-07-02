@@ -69,10 +69,10 @@ function ToastCard({ toast, onDismiss }: { toast: ChatToast; onDismiss: () => vo
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1 mb-0.5">
             <Hash size={10} className="text-[var(--text-muted)] flex-shrink-0" />
-            <span className="text-[10px] text-[var(--text-muted)] truncate">{toast.channelName}</span>
+            <span className="text-[11px] text-[var(--text-muted)] truncate">{toast.channelName}</span>
             {toast.isMention && (
               <span
-                className="ml-1 rounded px-1 py-px text-[9px] font-bold"
+                className="ml-1 rounded px-1 py-px text-[10px] font-bold"
                 style={{ background: "var(--accent)", color: "#fff" }}
               >
                 mention

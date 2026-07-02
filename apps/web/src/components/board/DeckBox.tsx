@@ -36,7 +36,7 @@ function SlideContent({ box, boardId }: { box: Box; boardId: string }) {
               <ItemRenderer key={item.id} item={item} boardId={boardId} boxId={box.id} vars={vars} collapsed isFinished />
             ))}
             {box.items.length > 0 && summaryItems.length === 0 && (
-              <div className="text-[10px] opacity-40 text-center mt-2">{box.items.length} item{box.items.length !== 1 ? "s" : ""}</div>
+              <div className="text-[11px] opacity-40 text-center mt-2">{box.items.length} item{box.items.length !== 1 ? "s" : ""}</div>
             )}
           </div>
         )}
@@ -214,7 +214,7 @@ export function DeckBox({ deck, boardId }: { deck: Box; boardId: string }) {
       {/* Label */}
       <div className="absolute top-2 left-3 z-30 flex items-center gap-1.5 pointer-events-none select-none opacity-50">
         <LayoutGrid size={11} />
-        <span className="text-[10px] font-semibold tracking-wider uppercase">{n} slides</span>
+        <span className="text-[11px] font-semibold tracking-wider uppercase">{n} slides</span>
       </div>
 
       {/* Controls */}
@@ -315,7 +315,7 @@ export function DeckBox({ deck, boardId }: { deck: Box; boardId: string }) {
             >
               <SlideContent box={slide} boardId={boardId} />
               {isCenter && hovered && !board?.isFinished && canEditBoard && (
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[9px] text-white/60 pointer-events-none select-none backdrop-blur-sm">
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[10px] text-white/60 pointer-events-none select-none backdrop-blur-sm">
                   drag out to release
                 </div>
               )}

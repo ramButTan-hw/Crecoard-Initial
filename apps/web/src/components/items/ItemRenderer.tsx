@@ -998,7 +998,10 @@ function TextItem({ item, upd, collapsed, isFinished, canInput, extraContextItem
   return (
     <div ref={containerRef}
       className={cn("relative w-full h-full", animClassFor(item.textAnimation, item.textAnimationCustom))}
-      style={item.textAnimation ? itemAnimStyle(item.textAnimationSpeed) : undefined}
+      style={{
+        ...(item.textAnimation ? itemAnimStyle(item.textAnimationSpeed) : undefined),
+        ...(item.textBackdrop ? { background: "rgba(13, 14, 18, 0.58)", borderRadius: 6 } : undefined),
+      }}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {/* Hidden file input for bg image */}
       <input ref={bgImageFileRef} type="file" accept="image/*" className="hidden" onChange={handleBgImageFile} />
@@ -1326,17 +1329,17 @@ function RichSelToolbar({
         <button
           ref={hlBtnRef}
           title="Highlight"
-          className="flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-4 text-black transition-opacity hover:opacity-80"
+          className="flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold leading-4 text-black transition-opacity hover:opacity-80"
           style={{ background: hlColor }}
           onClick={() => setShowHlPicker(v => !v)}
         >H</button>
         {!hideAlignment && (<>
         <Divider />
         {/* Alignment */}
-        <TBtn active={false} onClick={() => onExecCmd("justifyLeft")} title="Align left"><span className="text-[10px] font-mono">≡L</span></TBtn>
-        <TBtn active={false} onClick={() => onExecCmd("justifyCenter")} title="Align center"><span className="text-[10px] font-mono">≡C</span></TBtn>
-        <TBtn active={false} onClick={() => onExecCmd("justifyRight")} title="Align right"><span className="text-[10px] font-mono">≡R</span></TBtn>
-        <TBtn active={false} onClick={() => onExecCmd("justifyFull")} title="Justify"><span className="text-[10px] font-mono">≡J</span></TBtn>
+        <TBtn active={false} onClick={() => onExecCmd("justifyLeft")} title="Align left"><span className="text-[11px] font-mono">≡L</span></TBtn>
+        <TBtn active={false} onClick={() => onExecCmd("justifyCenter")} title="Align center"><span className="text-[11px] font-mono">≡C</span></TBtn>
+        <TBtn active={false} onClick={() => onExecCmd("justifyRight")} title="Align right"><span className="text-[11px] font-mono">≡R</span></TBtn>
+        <TBtn active={false} onClick={() => onExecCmd("justifyFull")} title="Justify"><span className="text-[11px] font-mono">≡J</span></TBtn>
         </>)}
         {/* Line spacing */}
         {onLineSpacing && (<>
@@ -1346,7 +1349,7 @@ function RichSelToolbar({
             onChange={(e) => { if (e.target.value) { onLineSpacing(e.target.value); e.target.value = ""; } }}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
-            className="rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-[10px] text-[var(--text-primary)] outline-none cursor-pointer"
+            className="rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-[11px] text-[var(--text-primary)] outline-none cursor-pointer"
             style={{ width: 40 }}
             title="Line spacing"
           >
@@ -1374,7 +1377,7 @@ function RichSelToolbar({
           linkInput !== null ? (
             <div className="flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
               {linkSelText && (
-                <span className="max-w-[80px] truncate rounded bg-[var(--accent)]/15 px-1.5 py-0.5 text-[10px] text-[var(--accent)]" title={linkSelText}>
+                <span className="max-w-[80px] truncate rounded bg-[var(--accent)]/15 px-1.5 py-0.5 text-[11px] text-[var(--accent)]" title={linkSelText}>
                   "{linkSelText}"
                 </span>
               )}
@@ -1479,7 +1482,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
 
       {/* Title */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Title</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Title</p>
         <input
           className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] transition-colors"
           placeholder="List title (optional)…"
@@ -1490,7 +1493,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
 
       {/* Wallpaper */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Wallpaper</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Wallpaper</p>
         <input
           className="mb-1.5 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
           placeholder="Paste image URL…"
@@ -1524,7 +1527,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
 
       {/* Font */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
         <div className="flex flex-col gap-2">
           <FontPicker
             compact
@@ -1537,14 +1540,14 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
               <input type="color" value={item.listFontColor ?? "#f2f2f2"} onChange={(e) => upd({ listFontColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
             </span>
             <span className="flex-1 text-[var(--text-secondary)]">Text color</span>
-            <span className="font-mono text-[10px] text-[var(--text-muted)]">{item.listFontColor ?? "default"}</span>
+            <span className="font-mono text-[11px] text-[var(--text-muted)]">{item.listFontColor ?? "default"}</span>
           </label>
         </div>
       </div>
 
       {/* Marker */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Marker style</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Marker style</p>
         <div className="flex gap-1.5">
           {([
             { id: "checkbox", icon: "☑", label: "Check" },
@@ -1563,7 +1566,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
               )}
             >
               <span className="text-sm">{m.icon}</span>
-              <span className="text-[9px]">{m.label}</span>
+              <span className="text-[10px]">{m.label}</span>
             </button>
           ))}
         </div>
@@ -1572,10 +1575,10 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
       {/* Border */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Border</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Border</p>
           <button
             onClick={() => upd({ listBorderWidth: hasBorder ? 0 : 1, listBorderColor: item.listBorderColor ?? "#ffffff", listBorderStyle: "solid" })}
-            className={cn("rounded px-2 py-0.5 text-[10px] transition-colors border", hasBorder ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]")}
+            className={cn("rounded px-2 py-0.5 text-[11px] transition-colors border", hasBorder ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]")}
           >
             {hasBorder ? "On" : "Off"}
           </button>
@@ -1590,7 +1593,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
                 <span className="text-[var(--text-secondary)]">Color</span>
               </label>
               <div className="flex items-center gap-1">
-                <span className="text-[10px] text-[var(--text-muted)]">W</span>
+                <span className="text-[11px] text-[var(--text-muted)]">W</span>
                 <input type="number" min={1} max={16} value={item.listBorderWidth ?? 1} onChange={(e) => upd({ listBorderWidth: Number(e.target.value) })} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} className="w-12 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none" />
               </div>
             </div>
@@ -1608,7 +1611,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
                     )}
                   >
                     <div className="w-full rounded-sm" style={{ height: 10, border: `${bw}px ${bs} ${bc}` }} />
-                    <span className={cn("text-[9px]", (item.listBorderStyle ?? "solid") === bs ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>{bs}</span>
+                    <span className={cn("text-[10px]", (item.listBorderStyle ?? "solid") === bs ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>{bs}</span>
                   </button>
                 );
               })}
@@ -1619,14 +1622,14 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
 
       {/* Shape */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shape</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shape</p>
         <PanelSlider label="Corners" value={item.listBorderRadius ?? 0} min={0} max={120} onChange={(v) => upd({ listBorderRadius: v })} />
         <PanelSlider label="Padding" value={item.listPadding ?? (item.listBgColor || (item.listBorderWidth ?? 0) > 0 ? 8 : 0)} min={0} max={48} onChange={(v) => upd({ listPadding: v })} />
       </div>
 
       {/* Spacing */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Spacing</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Spacing</p>
         <PanelSlider label="Row gap" value={item.listRowSpacing ?? 4} min={0} max={32} onChange={(v) => upd({ listRowSpacing: v })} />
         <PanelSlider label="Letter" value={item.listLetterSpacing ?? 0} min={-3} max={20} step={0.5} onChange={(v) => upd({ listLetterSpacing: v })} decimals={1} />
         <PanelSlider label="Line H" value={item.listLineHeight ?? 1.6} min={0.8} max={4} step={0.1} onChange={(v) => upd({ listLineHeight: v })} decimals={1} />
@@ -1634,7 +1637,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
 
       {/* Background */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background</p>
         <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
           <span className="relative h-5 w-5 flex-shrink-0 rounded border border-white/15 overflow-hidden" style={{ backgroundColor: item.listBgColor || "transparent", backgroundImage: !item.listBgColor ? "repeating-linear-gradient(45deg,var(--border) 0,var(--border) 1px,transparent 0,transparent 50%) 0/6px 6px" : undefined }}>
             <input type="color" value={item.listBgColor ?? "#1a1b1e"} onChange={(e) => upd({ listBgColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
@@ -1646,11 +1649,11 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
 
       {/* Shadow */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shadow</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shadow</p>
         <div className="grid grid-cols-2 gap-1.5 mb-2">
           {(["none","drop","hard","glow"] as const).map((s) => (
             <button key={s} onClick={() => upd({ listShadow: s })}
-              className={cn("rounded border py-1.5 text-[10px] capitalize transition-colors",
+              className={cn("rounded border py-1.5 text-[11px] capitalize transition-colors",
                 (item.listShadow ?? "none") === s ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]"
               )}>{s}</button>
           ))}
@@ -1667,11 +1670,11 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
 
       {/* Dividers */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Dividers</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Dividers</p>
         <div className="grid grid-cols-4 gap-1 mb-3">
           {(["solid","dashed","dotted","none"] as const).map((s) => (
             <button key={s} onClick={() => upd({ listDividerStyle: s })}
-              className={cn("rounded border py-1.5 text-[10px] capitalize transition-colors",
+              className={cn("rounded border py-1.5 text-[11px] capitalize transition-colors",
                 (item.listDividerStyle ?? "solid") === s ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]"
               )}>{s}</button>
           ))}
@@ -1683,7 +1686,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
                 <input type="color" value={item.listDividerColor ?? "#ffffff"} onChange={(e) => upd({ listDividerColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
               </span>
               <span className="flex-1 text-[var(--text-secondary)]">Color</span>
-              <span className="font-mono text-[10px] text-[var(--text-muted)]">{item.listDividerColor ?? "#ffffff"}</span>
+              <span className="font-mono text-[11px] text-[var(--text-muted)]">{item.listDividerColor ?? "#ffffff"}</span>
             </label>
             <PanelSlider label="Opacity" value={item.listDividerOpacity ?? 20} min={0} max={100} onChange={(v) => upd({ listDividerOpacity: v })} />
             <PanelSlider label="Width" value={item.listDividerWidth ?? 1} min={1} max={8} onChange={(v) => upd({ listDividerWidth: v })} />
@@ -1693,7 +1696,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
 
       {/* Progress bar — only for checkbox marker */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Progress</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Progress</p>
         {(item.listMarker ?? "checkbox") !== "checkbox" ? (
           <p className="text-[11px] text-[var(--text-muted)]">Only available with the Checkbox marker.</p>
         ) : (
@@ -1710,7 +1713,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
               </span>
               <span className="flex-1 text-[var(--text-secondary)]">Bar color</span>
               {item.listProgressColor && (
-                <button onClick={() => upd({ listProgressColor: undefined })} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset</button>
+                <button onClick={() => upd({ listProgressColor: undefined })} className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset</button>
               )}
             </label>
             {/* Height */}
@@ -1753,7 +1756,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
 
       {/* Contributions */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Contributions</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Contributions</p>
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={!!item.allowContributions} onChange={(e) => upd({ allowContributions: e.target.checked })} className="accent-[var(--accent)]" />
           <span className="text-[var(--text-secondary)]">Let viewers add their own entries</span>
@@ -1770,7 +1773,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
       {/* Checkbox */}
       {(item.listMarker ?? "checkbox") === "checkbox" && (
         <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Checkbox</p>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Checkbox</p>
           <div className="flex flex-col gap-2">
             {/* Checked color */}
             <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 cursor-pointer hover:border-[var(--text-muted)] transition-colors">
@@ -1783,7 +1786,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
             <PanelSlider label="Icon size" value={item.listCheckIconSize ?? 18} min={12} max={48} onChange={(v) => upd({ listCheckIconSize: v })} />
             {/* Unchecked icon */}
             <div>
-              <p className="mb-1 text-[10px] text-[var(--text-muted)]">Unchecked icon (URL or upload)</p>
+              <p className="mb-1 text-[11px] text-[var(--text-muted)]">Unchecked icon (URL or upload)</p>
               <div className="flex gap-1.5">
                 <input
                   className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
@@ -1800,7 +1803,7 @@ export function ListStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partia
             </div>
             {/* Checked icon */}
             <div>
-              <p className="mb-1 text-[10px] text-[var(--text-muted)]">Checked icon (optional — defaults to greyed unchecked)</p>
+              <p className="mb-1 text-[11px] text-[var(--text-muted)]">Checked icon (optional — defaults to greyed unchecked)</p>
               <div className="flex gap-1.5">
                 <input
                   className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
@@ -1833,7 +1836,7 @@ function IconUploadBtn({ onUpload }: { onUpload: (url: string) => void }) {
   return (
     <>
       <button onClick={() => ref.current?.click()}
-        className="flex-shrink-0 rounded border border-dashed border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+        className="flex-shrink-0 rounded border border-dashed border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
         <Upload size={10} />
       </button>
       <input ref={ref} type="file" accept="image/*" className="hidden" onChange={handleFile} />
@@ -1851,9 +1854,9 @@ function ChatColorRow({ label, value, fallback, onChange, onClear }: {
       </span>
       <span className="flex-1 text-[var(--text-secondary)]">{label}</span>
       {value ? (
-        <button onClick={(e) => { e.preventDefault(); onClear(); }} className="font-mono text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">clear</button>
+        <button onClick={(e) => { e.preventDefault(); onClear(); }} className="font-mono text-[11px] text-[var(--text-muted)] hover:text-red-400 transition-colors">clear</button>
       ) : (
-        <span className="font-mono text-[10px] text-[var(--text-muted)]">default</span>
+        <span className="font-mono text-[11px] text-[var(--text-muted)]">default</span>
       )}
     </label>
   );
@@ -1897,7 +1900,7 @@ export function ChatStylePanel({ item, upd, usedChannels = [] }: { item: BlockIt
     <div className="flex flex-col gap-4 p-3 text-xs">
       {/* Channel */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Channel name</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Channel name</p>
         <input
           className={cn(
             "w-full rounded border bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] transition-colors",
@@ -1910,13 +1913,13 @@ export function ChatStylePanel({ item, upd, usedChannels = [] }: { item: BlockIt
           onBlur={() => { if (collides) upd({ chatChannelName: lastValid.current }); }}
         />
         {collides && (
-          <p className="mt-1 text-[10px] text-red-400">#{current} is already on this board — a channel can only appear once.</p>
+          <p className="mt-1 text-[11px] text-red-400">#{current} is already on this board — a channel can only appear once.</p>
         )}
       </div>
 
       {/* Background image */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background image</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background image</p>
         <input
           className="mb-1.5 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
           placeholder="Paste image URL…"
@@ -1950,7 +1953,7 @@ export function ChatStylePanel({ item, upd, usedChannels = [] }: { item: BlockIt
 
       {/* Colors */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Colors</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Colors</p>
         <div className="flex flex-col gap-2">
           <ChatColorRow label="Background" value={item.chatBgColor} fallback="#1a1b1e" onChange={(c) => upd({ chatBgColor: c })} onClear={() => upd({ chatBgColor: undefined })} />
           <ChatColorRow label="Accent" value={item.chatAccentColor} fallback="#d59ee8" onChange={(c) => upd({ chatAccentColor: c })} onClear={() => upd({ chatAccentColor: undefined })} />
@@ -1960,7 +1963,7 @@ export function ChatStylePanel({ item, upd, usedChannels = [] }: { item: BlockIt
 
       {/* Font */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
         <div className="flex flex-col gap-2">
           <FontPicker compact value={item.chatFontFamily ?? "Inter"} onChange={(font) => { loadGoogleFont(font); upd({ chatFontFamily: font }); }} />
           <PanelSlider label="Size" value={item.chatFontSize ?? 14} min={10} max={22} onChange={(v) => upd({ chatFontSize: v })} />
@@ -1969,7 +1972,7 @@ export function ChatStylePanel({ item, upd, usedChannels = [] }: { item: BlockIt
 
       {/* Options */}
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Options</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Options</p>
         <div className="flex flex-col gap-2">
           <ChatToggleRow label="Message bubbles" value={item.chatBubbles ?? false} onChange={(v) => upd({ chatBubbles: v })} />
           <ChatToggleRow label="Hide channel header" value={item.chatHideHeader ?? false} onChange={(v) => upd({ chatHideHeader: v })} />
@@ -1984,13 +1987,13 @@ function PanelSlider({ label, value, min, max, step = 1, decimals = 0, onChange 
 }) {
   return (
     <div className="flex items-center gap-2 mb-2">
-      <span className="w-12 flex-shrink-0 text-[10px] text-[var(--text-muted)]">{label}</span>
+      <span className="w-12 flex-shrink-0 text-[11px] text-[var(--text-muted)]">{label}</span>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         onMouseDown={(e) => e.stopPropagation()}
         className="flex-1 accent-[var(--accent)] h-1"
       />
-      <span className="w-8 text-right text-[10px] text-[var(--text-muted)] flex-shrink-0">{value.toFixed(decimals)}</span>
+      <span className="w-8 text-right text-[11px] text-[var(--text-muted)] flex-shrink-0">{value.toFixed(decimals)}</span>
     </div>
   );
 }
@@ -2081,8 +2084,8 @@ function ListContributions({
             ) : (
               <span className="flex-1 min-w-0" style={{ wordBreak: "break-word" }}>
                 <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(c.content) }} />
-                <span className="ml-1.5 text-[10px] whitespace-nowrap" style={{ color: muted }}>— {c.authorName || "Anonymous"}</span>
-                {!c.approved && <span className="ml-1 text-[10px] whitespace-nowrap italic" style={{ color: muted }}>· pending</span>}
+                <span className="ml-1.5 text-[11px] whitespace-nowrap" style={{ color: muted }}>— {c.authorName || "Anonymous"}</span>
+                {!c.approved && <span className="ml-1 text-[11px] whitespace-nowrap italic" style={{ color: muted }}>· pending</span>}
               </span>
             )}
             {!collapsed && !isEditing && (canDelete || canModerate) && (
@@ -2268,7 +2271,7 @@ function ListItem({ item, upd, collapsed, isFinished, canInput, canContribute, b
     return (
       <div className="relative z-10 flex flex-col gap-1">
         {item.listProgressShowLabel !== false && (
-          <div className="flex items-center justify-between text-[10px]" style={{ color: item.listFontColor ? item.listFontColor + "90" : "var(--text-muted)" }}>
+          <div className="flex items-center justify-between text-[11px]" style={{ color: item.listFontColor ? item.listFontColor + "90" : "var(--text-muted)" }}>
             <span>{checkedCount} / {entries.length} done</span>
             <span className="font-semibold">{Math.round(progressPct)}%</span>
           </div>
@@ -2773,16 +2776,16 @@ export function EmbedStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
 
       {/* Border */}
       <div className="flex flex-col gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Border</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Border</p>
         <div className="flex gap-2">
           <label className="flex flex-col gap-1 flex-1">
-            <span className="text-[10px] text-[var(--text-muted)]">Color</span>
+            <span className="text-[11px] text-[var(--text-muted)]">Color</span>
             <div className="relative h-8 w-full rounded border border-[var(--border)] overflow-hidden" style={{ backgroundColor: item.embedBorderColor ?? "#ffffff" }}>
               <input type="color" value={item.embedBorderColor ?? "#ffffff"} onChange={(e) => upd({ embedBorderColor: e.target.value })} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
             </div>
           </label>
           <label className="flex flex-col gap-1 w-16">
-            <span className="text-[10px] text-[var(--text-muted)]">Width</span>
+            <span className="text-[11px] text-[var(--text-muted)]">Width</span>
             <input type="number" min={0} max={20} value={item.embedBorderWidth ?? 0}
               onChange={(e) => upd({ embedBorderWidth: Number(e.target.value) })}
               className="w-full rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]" />
@@ -2791,15 +2794,15 @@ export function EmbedStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
         <div className="grid grid-cols-3 gap-1">
           {(["solid","dashed","dotted","double","glow"] as const).map((s) => (
             <button key={s} onClick={() => upd({ embedBorderStyle: s })}
-              className={cn("rounded py-1 text-[10px] capitalize transition-colors",
+              className={cn("rounded py-1 text-[11px] capitalize transition-colors",
                 (item.embedBorderStyle ?? "solid") === s ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               )}>{s}</button>
           ))}
         </div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-[var(--text-muted)]">Corner radius</span>
-            <span className="text-[10px] font-mono text-[var(--text-muted)]">{item.embedBorderRadius ?? 8}px</span>
+            <span className="text-[11px] text-[var(--text-muted)]">Corner radius</span>
+            <span className="text-[11px] font-mono text-[var(--text-muted)]">{item.embedBorderRadius ?? 8}px</span>
           </div>
           <input type="range" min={0} max={48} value={item.embedBorderRadius ?? 8}
             onChange={(e) => upd({ embedBorderRadius: Number(e.target.value) })}
@@ -2809,11 +2812,11 @@ export function EmbedStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
 
       {/* Shadow */}
       <div className="flex flex-col gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shadow</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shadow</p>
         <div className="grid grid-cols-3 gap-1">
           {(["none","sm","md","lg","glow"] as const).map((s) => (
             <button key={s} onClick={() => upd({ embedShadow: s })}
-              className={cn("rounded py-1 text-[10px] capitalize transition-colors",
+              className={cn("rounded py-1 text-[11px] capitalize transition-colors",
                 (item.embedShadow ?? "none") === s ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               )}>{s}</button>
           ))}
@@ -2823,17 +2826,17 @@ export function EmbedStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
       {/* Filters */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Filters</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Filters</p>
           <button onClick={() => upd({ embedFilterBrightness: undefined, embedFilterContrast: undefined, embedFilterSaturate: undefined, embedFilterGrayscale: undefined, embedFilterSepia: undefined, embedFilterBlur: undefined, embedFilterHueRotate: undefined })}
-            className="text-[10px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">Reset</button>
+            className="text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">Reset</button>
         </div>
         {sliders.map(({ label, key, min, max, def, unit }) => {
           const val = (item[key] as number | undefined) ?? def;
           return (
             <div key={key} className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[var(--text-muted)]">{label}</span>
-                <span className="text-[10px] font-mono text-[var(--text-muted)]">{val}{unit}</span>
+                <span className="text-[11px] text-[var(--text-muted)]">{label}</span>
+                <span className="text-[11px] font-mono text-[var(--text-muted)]">{val}{unit}</span>
               </div>
               <input type="range" min={min} max={max} value={val}
                 onChange={(e) => upd({ [key]: Number(e.target.value) })}
@@ -3288,7 +3291,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
   };
 
   const PLabel = ({ children }: { children: React.ReactNode }) => (
-    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>
+    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>
   );
 
   const ToggleGroup = ({ options, value, onChange }: { options: { label: string; value: string }[]; value: string; onChange: (v: string) => void }) => (
@@ -3343,7 +3346,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
               className="rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-2 text-[11px] font-medium text-[var(--text-secondary)] hover:border-[var(--accent)]/60 hover:text-[var(--accent)] transition-colors text-left"
             >
               <span className="block font-semibold text-[var(--text-primary)]">{p.label}</span>
-              <span className="block text-[10px] text-[var(--text-muted)]">
+              <span className="block text-[11px] text-[var(--text-muted)]">
                 {Math.floor(p.workSecs/60)}m work · {Math.floor(p.breakSecs/60)}m break
               </span>
             </button>
@@ -3424,7 +3427,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
           <span className="text-[var(--text-secondary)]">Sync timer across session</span>
         </label>
         {item.timerCollabEnabled && (
-          <p className="mt-1 text-[10px] text-[var(--text-muted)] pl-5">
+          <p className="mt-1 text-[11px] text-[var(--text-muted)] pl-5">
             Connect Supabase to enable real-time sync.
           </p>
         )}
@@ -3524,7 +3527,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
                         ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
                         : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                     )}>
-                    <span className="text-[10px] font-medium leading-tight">{opt.label}</span>
+                    <span className="text-[11px] font-medium leading-tight">{opt.label}</span>
                   </button>
                 );
               })}
@@ -3533,7 +3536,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
             {/* Direction picker (for bg-fill and bg-sweep) */}
             {(item.timerProgressStyle === "bg-fill" || item.timerProgressStyle === "bg-sweep") && (
               <div>
-                <p className="text-[10px] text-[var(--text-muted)] mb-1">Direction</p>
+                <p className="text-[11px] text-[var(--text-muted)] mb-1">Direction</p>
                 <div className="grid grid-cols-4 gap-1">
                   {([
                     { id: "ltr", label: "→" },
@@ -3567,7 +3570,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
                   />
                 </label>
                 {item.timerProgressColor && (
-                  <button onClick={() => upd({ timerProgressColor: undefined })} className="text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">reset</button>
+                  <button onClick={() => upd({ timerProgressColor: undefined })} className="text-[11px] text-[var(--text-muted)] hover:text-red-400 transition-colors">reset</button>
                 )}
               </div>
             )}
@@ -3642,7 +3645,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
               <div className="flex gap-1">
                 {(["solid","dashed","dotted","glow"] as const).map((s) => (
                   <button key={s} onClick={() => upd({ timerBorderStyle: s })}
-                    className={cn("flex-1 rounded py-1 text-[10px] capitalize transition-colors",
+                    className={cn("flex-1 rounded py-1 text-[11px] capitalize transition-colors",
                       (item.timerBorderStyle ?? "solid") === s
                         ? "bg-[var(--accent)] text-white"
                         : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -3699,7 +3702,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
                 value={item.timerBgImage?.startsWith("data:") ? "" : (item.timerBgImage ?? "")}
                 onChange={(e) => upd({ timerBgImage: e.target.value || undefined })}
               />
-              <label className="flex items-center justify-center gap-1 cursor-pointer rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--text-muted)] transition-colors flex-shrink-0">
+              <label className="flex items-center justify-center gap-1 cursor-pointer rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--text-muted)] transition-colors flex-shrink-0">
                 <Upload size={10} />
                 <input ref={bgFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -3713,7 +3716,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
               )}
             </div>
             {item.timerBgImage?.startsWith("data:") && (
-              <p className="mt-1 text-[9px] text-[var(--text-muted)]">Local file uploaded</p>
+              <p className="mt-1 text-[10px] text-[var(--text-muted)]">Local file uploaded</p>
             )}
           </div>
 
@@ -3730,7 +3733,7 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
               <div className="flex gap-1">
                 {(["cover", "contain", "fill"] as const).map((s) => (
                   <button key={s} onClick={() => upd({ timerBgImageSize: s })}
-                    className={cn("flex-1 rounded py-1 text-[10px] capitalize transition-colors",
+                    className={cn("flex-1 rounded py-1 text-[11px] capitalize transition-colors",
                       (item.timerBgImageSize ?? "cover") === s
                         ? "bg-[var(--accent)] text-white"
                         : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -3837,7 +3840,7 @@ export function ImageStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
   return (
     <div className="flex flex-col gap-4 p-3 text-xs">
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Source</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Source</p>
         <input
           className="mb-1.5 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
           placeholder="Image URL…"
@@ -3856,7 +3859,7 @@ export function ImageStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
       </div>
 
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Fit</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Fit</p>
         <div className="flex gap-1">
           {(["cover", "contain", "fill"] as const).map((f) => (
             <button key={f} onClick={() => upd({ imageFit: f })}
@@ -3868,7 +3871,7 @@ export function ImageStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
       </div>
 
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Frame</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Frame</p>
         <div className="flex flex-col gap-2">
           <label className="flex items-center gap-2">
             <span className="w-14 text-[var(--text-muted)]">Radius</span>
@@ -3890,7 +3893,7 @@ export function ImageStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
       </div>
 
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Caption</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Caption</p>
         <input
           className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
           placeholder="Optional caption…"
@@ -4152,7 +4155,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                   type === gt.id ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                 )}>
                 <span className="text-xl leading-none">{gt.icon}</span>
-                <span className="text-[9px] text-center leading-tight">{gt.label}</span>
+                <span className="text-[10px] text-center leading-tight">{gt.label}</span>
               </button>
             ))}
           </div>
@@ -4163,14 +4166,14 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
           <div className="pt-1">
             {item.graphTableSourceItemId && boardId && (
               <div className="mb-3 rounded-lg border border-[var(--border)] p-2.5 flex flex-col gap-2">
-                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">Table source</p>
+                <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wide">Table source</p>
                 <p className="text-[11px] text-[var(--text-secondary)]">Live data from linked table.</p>
 
                 {/* Column mapping */}
                 {tableSourceCols.length > 0 && (
                   <div className="flex flex-col gap-2 rounded border border-[var(--border)] bg-[var(--surface-overlay)] p-2">
                     <div>
-                      <p className="text-[10px] text-[var(--text-muted)] mb-1">Label column</p>
+                      <p className="text-[11px] text-[var(--text-muted)] mb-1">Label column</p>
                       <select
                         value={item.graphTableLabelColId ?? tableSourceCols[0]?.id ?? ""}
                         onChange={(e) => upd({ graphTableLabelColId: e.target.value })}
@@ -4182,7 +4185,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                       </select>
                     </div>
                     <div>
-                      <p className="text-[10px] text-[var(--text-muted)] mb-1">Value columns</p>
+                      <p className="text-[11px] text-[var(--text-muted)] mb-1">Value columns</p>
                       <div className="flex flex-col gap-1">
                         {tableSourceCols
                           .filter((c) => c.id !== (item.graphTableLabelColId ?? tableSourceCols[0]?.id))
@@ -4240,14 +4243,14 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
             )}
             {item.graphTableSourceItemId ? null : (() => {
               const cellCls = "border-b border-r border-[var(--border)] py-1.5 px-2";
-              const hdrCls = `${cellCls} bg-[var(--surface-overlay)] text-[10px] text-[var(--text-muted)] font-semibold`;
+              const hdrCls = `${cellCls} bg-[var(--surface-overlay)] text-[11px] text-[var(--text-muted)] font-semibold`;
               const valInput = "w-full bg-transparent outline-none text-[var(--text-primary)] text-xs font-mono focus:text-[var(--accent)] transition-colors";
               const lblInput = "w-full bg-transparent outline-none text-[var(--text-secondary)] text-xs";
 
               /* helper: formula hint */
               const hint = (v: string | number) =>
                 typeof v === "string" && /[+\-*/]/.test(v) ? (
-                  <span className="text-[9px] font-mono text-[var(--accent)]/70 ml-1 flex-shrink-0">={resolveGraphValue(v)}</span>
+                  <span className="text-[10px] font-mono text-[var(--accent)]/70 ml-1 flex-shrink-0">={resolveGraphValue(v)}</span>
                 ) : null;
 
               /* ── PIE / DONUT ── */
@@ -4308,7 +4311,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                           <th className={cn(hdrCls, "w-6 text-center")}>#</th>
                           <th className={hdrCls}>Label</th>
                           <th className={hdrCls}>
-                            <input className="bg-transparent outline-none w-full font-semibold text-[10px] text-[var(--text-muted)]" defaultValue={xKey} onBlur={(e) => renameSeries(xKey, e.target.value || xKey)} />
+                            <input className="bg-transparent outline-none w-full font-semibold text-[11px] text-[var(--text-muted)]" defaultValue={xKey} onBlur={(e) => renameSeries(xKey, e.target.value || xKey)} />
                             <span className="text-[8px] text-[var(--text-muted)]/50 block font-normal">X axis →</span>
                           </th>
                           {yKeys.map((k, i) => (
@@ -4317,7 +4320,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                                 <label className="relative h-2.5 w-2.5 rounded-sm border border-white/20 overflow-hidden flex-shrink-0 cursor-pointer" style={{ backgroundColor: colors[(i+1) % colors.length] }}>
                                   <input type="color" value={colors[(i+1) % colors.length]} onChange={(e) => { const c=[...colors]; c[i+1]=e.target.value; upd({graphColors:c}); }} className="absolute inset-0 opacity-0 cursor-pointer" />
                                 </label>
-                                <input className="bg-transparent outline-none flex-1 min-w-0 font-semibold text-[10px] text-[var(--text-muted)]" defaultValue={k} onBlur={(e) => renameSeries(k, e.target.value || k)} />
+                                <input className="bg-transparent outline-none flex-1 min-w-0 font-semibold text-[11px] text-[var(--text-muted)]" defaultValue={k} onBlur={(e) => renameSeries(k, e.target.value || k)} />
                                 {yKeys.length > 1 && <button onClick={() => removeDs(k)} className="text-[var(--text-muted)] hover:text-red-400 flex-shrink-0"><XIcon size={8} /></button>}
                               </div>
                               <span className="text-[8px] text-[var(--text-muted)]/50 block font-normal">Y axis ↑</span>
@@ -4331,7 +4334,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                       <tbody>
                         {data.map((row, ri) => (
                           <tr key={ri} className="group hover:bg-white/[0.025] transition-colors">
-                            <td className={cn(cellCls, "text-center text-[10px] text-[var(--text-muted)]")}>{ri+1}</td>
+                            <td className={cn(cellCls, "text-center text-[11px] text-[var(--text-muted)]")}>{ri+1}</td>
                             <td className={cellCls}><input className={lblInput} placeholder="label" value={row.label} onChange={(e) => updateCell(ri, "label", e.target.value)} /></td>
                             <td className={cellCls}>
                               <div className="flex items-center"><input className={valInput} placeholder="0" value={String(row[xKey] ?? 0)} onChange={(e) => updateCell(ri, xKey, e.target.value)} />{hint(row[xKey] as string)}</div>
@@ -4371,7 +4374,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                               <label className="relative h-2.5 w-2.5 rounded-sm border border-white/20 overflow-hidden flex-shrink-0 cursor-pointer" style={{ backgroundColor: colors[ki % colors.length] }}>
                                 <input type="color" value={colors[ki % colors.length]} onChange={(e) => { const c=[...colors]; c[ki]=e.target.value; upd({graphColors:c}); }} className="absolute inset-0 opacity-0 cursor-pointer" />
                               </label>
-                              <input className="bg-transparent outline-none flex-1 min-w-0 font-semibold text-[10px] text-[var(--text-muted)]" defaultValue={k} onBlur={(e) => renameSeries(k, e.target.value || k)} />
+                              <input className="bg-transparent outline-none flex-1 min-w-0 font-semibold text-[11px] text-[var(--text-muted)]" defaultValue={k} onBlur={(e) => renameSeries(k, e.target.value || k)} />
                               {seriesKeys.length > 1 && <button onClick={() => removeSeries(k)} className="text-[var(--text-muted)] hover:text-red-400 flex-shrink-0"><XIcon size={8} /></button>}
                             </div>
                           </th>
@@ -4384,7 +4387,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                     <tbody>
                       {data.map((row, ri) => (
                         <tr key={ri} className="group hover:bg-white/[0.025] transition-colors">
-                          <td className={cn(cellCls, "text-center text-[10px] text-[var(--text-muted)]")}>{ri+1}</td>
+                          <td className={cn(cellCls, "text-center text-[11px] text-[var(--text-muted)]")}>{ri+1}</td>
                           <td className={cellCls}><input className={lblInput} placeholder="Category" value={row.label} onChange={(e) => updateCell(ri, "label", e.target.value)} /></td>
                           {seriesKeys.map((k) => (
                             <td key={k} className={cellCls}>
@@ -4414,7 +4417,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
             {/* Title */}
             <div>
-              <p className="mb-1.5 text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Title</p>
+              <p className="mb-1.5 text-[11px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Title</p>
               <input
                 className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] placeholder:text-[var(--text-muted)] transition-colors"
                 placeholder="Chart title…"
@@ -4425,7 +4428,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
             {/* Labels */}
             <div className="flex flex-col gap-2">
-              <p className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Labels</p>
+              <p className="text-[11px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Labels</p>
               <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors select-none">
                 <input type="checkbox" checked={!!item.graphShowDataLabels} onChange={(e) => upd({ graphShowDataLabels: e.target.checked || undefined })} className="accent-[var(--accent)]" />
                 <span className="text-xs text-[var(--text-secondary)]">Show data labels</span>
@@ -4433,14 +4436,14 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
               {type !== "pie" && type !== "donut" && (
                 <div className="grid grid-cols-2 gap-1.5">
                   <div className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[var(--text-muted)]">X axis title</span>
+                    <span className="text-[11px] text-[var(--text-muted)]">X axis title</span>
                     <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] placeholder:text-[var(--text-muted)] transition-colors"
                       placeholder="e.g. Month"
                       value={item.graphXAxisTitle ?? ""}
                       onChange={(e) => upd({ graphXAxisTitle: e.target.value || undefined })} />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[var(--text-muted)]">Y axis title</span>
+                    <span className="text-[11px] text-[var(--text-muted)]">Y axis title</span>
                     <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] placeholder:text-[var(--text-muted)] transition-colors"
                       placeholder="e.g. Value"
                       value={item.graphYAxisTitle ?? ""}
@@ -4453,9 +4456,9 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
             {/* Series colors */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Series colors</p>
+                <p className="text-[11px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Series colors</p>
                 {item.graphColors && (
-                  <button onClick={() => upd({ graphColors: undefined })} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">Reset</button>
+                  <button onClick={() => upd({ graphColors: undefined })} className="text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">Reset</button>
                 )}
               </div>
               <div className="flex flex-col gap-2">
@@ -4465,7 +4468,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                       <input type="color" value={colors[ki % colors.length]} onChange={(e) => { const c = [...colors]; c[ki] = e.target.value; upd({ graphColors: c }); }} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
                     </span>
                     <span className="text-xs text-[var(--text-secondary)]">{k}</span>
-                    <span className="ml-auto font-mono text-[10px] text-[var(--text-muted)]">{colors[ki % colors.length]}</span>
+                    <span className="ml-auto font-mono text-[11px] text-[var(--text-muted)]">{colors[ki % colors.length]}</span>
                   </label>
                 ))}
               </div>
@@ -4473,7 +4476,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
             {/* Background */}
             <div className="flex flex-col gap-2">
-              <p className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Background</p>
+              <p className="text-[11px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Background</p>
               <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
                 <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.graphBgColor ?? "transparent" }}>
                   <input type="color" value={item.graphBgColor ?? "#1a1b1e"} onChange={(e) => upd({ graphBgColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
@@ -4484,7 +4487,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                 )}
               </label>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] text-[var(--text-muted)]">Image</label>
+                <label className="text-[11px] text-[var(--text-muted)]">Image</label>
                 <div className="flex gap-1.5">
                   <input
                     className="flex-1 min-w-0 rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
@@ -4492,7 +4495,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                     value={item.graphBgImage?.startsWith("data:") ? "" : (item.graphBgImage ?? "")}
                     onChange={(e) => upd({ graphBgImage: e.target.value || undefined })}
                   />
-                  <label className="flex items-center justify-center gap-1 cursor-pointer rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--text-muted)] transition-colors flex-shrink-0">
+                  <label className="flex items-center justify-center gap-1 cursor-pointer rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--text-muted)] transition-colors flex-shrink-0">
                     <Upload size={11} />
                     <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -4506,14 +4509,14 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                   )}
                 </div>
                 {item.graphBgImage?.startsWith("data:") && (
-                  <p className="text-[9px] text-[var(--text-muted)]">Local file uploaded</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">Local file uploaded</p>
                 )}
               </div>
               {item.graphBgImage && (
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center justify-between">
-                    <label className="text-[10px] text-[var(--text-muted)]">Image opacity</label>
-                    <span className="text-[10px] text-[var(--text-muted)] font-mono">{item.graphBgImageOpacity ?? 80}%</span>
+                    <label className="text-[11px] text-[var(--text-muted)]">Image opacity</label>
+                    <span className="text-[11px] text-[var(--text-muted)] font-mono">{item.graphBgImageOpacity ?? 80}%</span>
                   </div>
                   <input type="range" min={5} max={100} value={item.graphBgImageOpacity ?? 80}
                     onChange={(e) => upd({ graphBgImageOpacity: Number(e.target.value) })}
@@ -4521,7 +4524,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                   <div className="flex gap-1.5 mt-0.5">
                     {["cover","contain","auto"].map((s) => (
                       <button key={s} onClick={() => upd({ graphBgImageSize: s })}
-                        className={cn("flex-1 rounded py-1 text-[10px] transition-colors",
+                        className={cn("flex-1 rounded py-1 text-[11px] transition-colors",
                           (item.graphBgImageSize ?? "cover") === s ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                         )}>{s}</button>
                     ))}
@@ -4532,10 +4535,10 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
             {/* Font */}
             <div className="flex flex-col gap-2">
-              <p className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Font</p>
+              <p className="text-[11px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Font</p>
               <div className="flex gap-2">
                 <div className="flex flex-col gap-1 flex-1">
-                  <label className="text-[10px] text-[var(--text-muted)]">Family</label>
+                  <label className="text-[11px] text-[var(--text-muted)]">Family</label>
                   <select
                     className="w-full rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
                     value={item.graphFontFamily ?? ""}
@@ -4548,7 +4551,7 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                   </select>
                 </div>
                 <div className="flex flex-col gap-1 w-16">
-                  <label className="text-[10px] text-[var(--text-muted)]">Size</label>
+                  <label className="text-[11px] text-[var(--text-muted)]">Size</label>
                   <input type="number" min={6} max={20}
                     className="w-full rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
                     value={item.graphFontSize ?? 10}
@@ -4561,17 +4564,17 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                   <input type="color" value={item.graphFontColor ?? "#888888"} onChange={(e) => upd({ graphFontColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
                 </span>
                 <span className="text-xs text-[var(--text-secondary)]">Label color</span>
-                <span className="ml-auto font-mono text-[10px] text-[var(--text-muted)]">{item.graphFontColor ?? "default"}</span>
+                <span className="ml-auto font-mono text-[11px] text-[var(--text-muted)]">{item.graphFontColor ?? "default"}</span>
               </label>
             </div>
 
             {/* Chart style */}
             <div className="flex flex-col gap-2">
-              <p className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Chart style</p>
+              <p className="text-[11px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">Chart style</p>
               <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] text-[var(--text-muted)]">Bar radius</label>
-                  <span className="text-[10px] text-[var(--text-muted)] font-mono">{item.graphBarRadius ?? 3}px</span>
+                  <label className="text-[11px] text-[var(--text-muted)]">Bar radius</label>
+                  <span className="text-[11px] text-[var(--text-muted)] font-mono">{item.graphBarRadius ?? 3}px</span>
                 </div>
                 <input type="range" min={0} max={20} value={item.graphBarRadius ?? 3}
                   onChange={(e) => upd({ graphBarRadius: Number(e.target.value) })}
@@ -4579,8 +4582,8 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
               </div>
               <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] text-[var(--text-muted)]">Line / area stroke</label>
-                  <span className="text-[10px] text-[var(--text-muted)] font-mono">{item.graphStrokeWidth ?? 2}px</span>
+                  <label className="text-[11px] text-[var(--text-muted)]">Line / area stroke</label>
+                  <span className="text-[11px] text-[var(--text-muted)] font-mono">{item.graphStrokeWidth ?? 2}px</span>
                 </div>
                 <input type="range" min={1} max={8} value={item.graphStrokeWidth ?? 2}
                   onChange={(e) => upd({ graphStrokeWidth: Number(e.target.value) })}
@@ -4588,8 +4591,8 @@ export function GraphStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
               </div>
               <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] text-[var(--text-muted)]">Corner radius</label>
-                  <span className="text-[10px] text-[var(--text-muted)] font-mono">{item.graphBorderRadius ?? 4}px</span>
+                  <label className="text-[11px] text-[var(--text-muted)]">Corner radius</label>
+                  <span className="text-[11px] text-[var(--text-muted)] font-mono">{item.graphBorderRadius ?? 4}px</span>
                 </div>
                 <input type="range" min={0} max={24} value={item.graphBorderRadius ?? 4}
                   onChange={(e) => upd({ graphBorderRadius: Number(e.target.value) })}
@@ -4848,7 +4851,7 @@ function ApiItem({ item, upd, collapsed, isFinished, extraContextItems }: { item
           <span className="text-xs font-semibold text-[var(--text-primary)] truncate">{item.apiLabel || "API"}</span>
           {val && <span className="ml-auto text-xs font-mono font-semibold text-[var(--accent)] truncate max-w-[80px]">{val}</span>}
         </div>
-        {hostname && <span className="text-[10px] text-[var(--text-muted)] truncate pl-3.5">{hostname}</span>}
+        {hostname && <span className="text-[11px] text-[var(--text-muted)] truncate pl-3.5">{hostname}</span>}
       </div>
     );
   }
@@ -4858,11 +4861,11 @@ function ApiItem({ item, upd, collapsed, isFinished, extraContextItems }: { item
       {/* Toolbar */}
       <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2 shrink-0">
         <span className={cn("h-2 w-2 rounded-full flex-shrink-0", loading ? "animate-pulse bg-yellow-400" : error ? "bg-red-400" : data ? "bg-green-400" : "bg-[var(--text-muted)]")} />
-        <span className="flex-1 truncate text-[var(--text-muted)] font-mono text-[10px]">{item.apiUrl || "No URL set"}</span>
+        <span className="flex-1 truncate text-[var(--text-muted)] font-mono text-[11px]">{item.apiUrl || "No URL set"}</span>
         <button
           onClick={doFetch}
           disabled={!item.apiUrl || loading}
-          className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-40"
+          className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors disabled:opacity-40"
           style={{ background: "var(--accent)", color: "#fff" }}
         >
           <RotateCcw size={10} className={loading ? "animate-spin" : ""} />
@@ -4883,7 +4886,7 @@ function ApiItem({ item, upd, collapsed, isFinished, extraContextItems }: { item
         {!error && extracted != null && (
           displayMode === "table" && Array.isArray(extracted) ? (
             <div className="overflow-auto">
-              <table className="w-full border-collapse text-[10px]">
+              <table className="w-full border-collapse text-[11px]">
                 <thead>
                   <tr>{Object.keys(extracted[0] ?? {}).map(k => (
                     <th key={k} className="border border-[var(--border)] px-2 py-1 text-left text-[var(--text-muted)] bg-[var(--surface-overlay)]">{k}</th>
@@ -4900,12 +4903,12 @@ function ApiItem({ item, upd, collapsed, isFinished, extraContextItems }: { item
             </div>
           ) : displayMode === "value" && typeof extracted !== "object" ? (
             <div className="flex flex-col items-center justify-center h-full gap-1">
-              {item.apiLabel && <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">{item.apiLabel}</p>}
+              {item.apiLabel && <p className="text-[11px] text-[var(--text-muted)] uppercase tracking-wider">{item.apiLabel}</p>}
               <p className="font-mono text-3xl font-bold text-[var(--accent)]">{formatValue(extracted)}</p>
-              {lastFetched && <p className="text-[9px] text-[var(--text-muted)]">Updated {lastFetched}</p>}
+              {lastFetched && <p className="text-[10px] text-[var(--text-muted)]">Updated {lastFetched}</p>}
             </div>
           ) : (
-            <pre className="font-mono text-[10px] text-[var(--text-secondary)] whitespace-pre-wrap break-all leading-relaxed">{JSON.stringify(extracted, null, 2)}</pre>
+            <pre className="font-mono text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap break-all leading-relaxed">{JSON.stringify(extracted, null, 2)}</pre>
           )
         )}
       </div>
@@ -4932,7 +4935,7 @@ export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial
   const method = item.apiMethod ?? "GET";
 
   const PLabel = ({ children }: { children: React.ReactNode }) => (
-    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>
+    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>
   );
 
   const Input = ({ value, onChange, placeholder, mono }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) => (
@@ -4943,7 +4946,7 @@ export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial
   );
 
   const Btn = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
-    <button onClick={onClick} className={cn("flex-1 rounded py-1 text-[10px] font-medium transition-colors", active ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]")}>{children}</button>
+    <button onClick={onClick} className={cn("flex-1 rounded py-1 text-[11px] font-medium transition-colors", active ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)] hover:text-[var(--text-primary)]")}>{children}</button>
   );
 
   return (
@@ -4957,7 +4960,7 @@ export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial
             <button key={p.id} onClick={() => upd({ apiUrl: p.url, apiMethod: p.method, apiAuthType: p.authType })}
               className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2 text-left hover:border-[var(--accent)] hover:bg-[var(--accent)]/5 transition-colors">
               <span className="flex-1 font-medium text-[var(--text-primary)] text-[11px]">{p.label}</span>
-              <span className="text-[9px] text-[var(--text-muted)]">{p.note}</span>
+              <span className="text-[10px] text-[var(--text-muted)]">{p.note}</span>
             </button>
           ))}
         </div>
@@ -5006,7 +5009,7 @@ export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial
         <section>
           <PLabel>Request body (JSON)</PLabel>
           <textarea
-            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 font-mono text-[10px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-muted)] resize-none"
+            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-muted)] resize-none"
             rows={4}
             value={item.apiBody ?? ""}
             onChange={(e) => upd({ apiBody: e.target.value })}
@@ -5019,7 +5022,7 @@ export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial
       <section>
         <PLabel>Extra headers (JSON)</PLabel>
         <textarea
-          className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 font-mono text-[10px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-muted)] resize-none"
+          className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 font-mono text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-muted)] resize-none"
           rows={3}
           value={item.apiHeaders ?? ""}
           onChange={(e) => upd({ apiHeaders: e.target.value })}
@@ -5037,7 +5040,7 @@ export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial
             ))}
           </div>
           <Input value={item.apiResponsePath ?? ""} onChange={(v) => upd({ apiResponsePath: v })} placeholder="e.g. data.items[0].name" />
-          <p className="text-[9px] text-[var(--text-muted)]">Dot-path to extract a field from the response. Leave blank to use full response.</p>
+          <p className="text-[10px] text-[var(--text-muted)]">Dot-path to extract a field from the response. Leave blank to use full response.</p>
           <Input value={item.apiLabel ?? ""} onChange={(v) => upd({ apiLabel: v })} placeholder="Label (shown above value)" />
         </div>
       </section>
@@ -5438,7 +5441,7 @@ function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished
           )}
 
           {event?.feedId && (
-            <p className="text-[9px] text-[var(--text-muted)] italic">From external calendar feed — read only</p>
+            <p className="text-[10px] text-[var(--text-muted)] italic">From external calendar feed — read only</p>
           )}
 
           {/* Remind me */}
@@ -5448,12 +5451,12 @@ function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished
               <div className="flex flex-wrap gap-1.5">
                 {REMINDER_LEADS.map(l => (
                   <button key={l.label} disabled={remindBusy} onClick={() => setReminder(l.ms)}
-                    className="rounded border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors disabled:opacity-40">
+                    className="rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors disabled:opacity-40">
                     {l.label}
                   </button>
                 ))}
               </div>
-              {reminderMsg && <p className="text-[10px] text-[var(--text-muted)]">{reminderMsg}</p>}
+              {reminderMsg && <p className="text-[11px] text-[var(--text-muted)]">{reminderMsg}</p>}
             </div>
           )}
 
@@ -5641,8 +5644,8 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished, extraC
             <div key={e.id} className="flex items-center gap-1.5 min-w-0">
               <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: e.color ?? accent }} />
               <span className="text-xs truncate text-[var(--text-primary)]">{e.title}</span>
-              {e.startTime && <span className="text-[9px] text-[var(--text-muted)] shrink-0">{fmtTime(e.startTime)}</span>}
-              <span className="ml-auto text-[10px] text-[var(--text-muted)] flex-shrink-0">{e.date.slice(5)}</span>
+              {e.startTime && <span className="text-[10px] text-[var(--text-muted)] shrink-0">{fmtTime(e.startTime)}</span>}
+              <span className="ml-auto text-[11px] text-[var(--text-muted)] flex-shrink-0">{e.date.slice(5)}</span>
             </div>
           ))
         }
@@ -5729,9 +5732,9 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished, extraC
             {navLabel()} <span style={{ fontSize: 8, opacity: 0.6 }}>▾</span>
           </button>
         </div>
-        <button onClick={goToday} className="relative z-[1] rounded px-1.5 py-0.5 text-[9px] border transition-colors" style={{ color: fontColor ? fontColor+"99" : "var(--text-muted)", borderColor: fontColor ? fontColor+"30" : "var(--border)" }}>Today</button>
+        <button onClick={goToday} className="relative z-[1] rounded px-1.5 py-0.5 text-[10px] border transition-colors" style={{ color: fontColor ? fontColor+"99" : "var(--text-muted)", borderColor: fontColor ? fontColor+"30" : "var(--border)" }}>Today</button>
         {/* View switcher */}
-        <div className="relative z-[1] flex rounded border overflow-hidden text-[9px]" style={{ borderColor: fontColor ? fontColor+"30" : "var(--border)" }}>
+        <div className="relative z-[1] flex rounded border overflow-hidden text-[10px]" style={{ borderColor: fontColor ? fontColor+"30" : "var(--border)" }}>
           {(["month","week","agenda"] as const).map(v => (
             <button key={v} onClick={() => upd({ calendarView: v })}
               className="px-1.5 py-0.5 capitalize transition-colors"
@@ -5873,7 +5876,7 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished, extraC
             <div key={key}>
               <div className="flex items-center gap-2 mb-1">
                 <span className={cn("font-semibold")} style={{ fontSize: fontSize + 1, color: isToday(key) ? todayColor : (fontColor ?? "var(--text-primary)") }}>{dateLabel(key)}</span>
-                {isToday(key) && <span className="rounded-full px-1.5 py-0 text-white text-[9px] font-medium" style={{ background: todayColor }}>Today</span>}
+                {isToday(key) && <span className="rounded-full px-1.5 py-0 text-white text-[10px] font-medium" style={{ background: todayColor }}>Today</span>}
               </div>
               <div className="flex flex-col gap-1 pl-2 border-l-2" style={{ borderColor: accent+"40" }}>
                 {evs.map(e => (
@@ -6046,29 +6049,29 @@ function CalendarSubscribeSection({ boardId, itemId }: { boardId: string; itemId
 
   return (
     <section>
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Subscribe</p>
-      <p className="mb-2 text-[9px] text-[var(--text-muted)]">A live feed URL that stays in sync — add it in Google/Apple/Outlook to see this board&apos;s events on your phone.</p>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Subscribe</p>
+      <p className="mb-2 text-[10px] text-[var(--text-muted)]">A live feed URL that stays in sync — add it in Google/Apple/Outlook to see this board&apos;s events on your phone.</p>
       {loading ? (
-        <p className="text-[9px] text-[var(--text-muted)]">…</p>
+        <p className="text-[10px] text-[var(--text-muted)]">…</p>
       ) : token ? (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-1.5">
             <input readOnly value={httpsUrl} onFocus={(e) => e.currentTarget.select()}
-              className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[10px] text-[var(--text-secondary)] outline-none" />
-            <button onClick={copy} className="shrink-0 rounded border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">{copied ? "Copied" : "Copy"}</button>
+              className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11px] text-[var(--text-secondary)] outline-none" />
+            <button onClick={copy} className="shrink-0 rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">{copied ? "Copied" : "Copy"}</button>
           </div>
           <div className="flex items-center gap-2">
-            <a href={webcalUrl} className="text-[10px] font-medium text-[var(--accent)] hover:underline">Subscribe in calendar app</a>
+            <a href={webcalUrl} className="text-[11px] font-medium text-[var(--accent)] hover:underline">Subscribe in calendar app</a>
             <span className="ml-auto flex gap-2">
-              <button onClick={regenerate} disabled={busy} className="text-[9px] text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-40">Regenerate</button>
-              <button onClick={revoke} disabled={busy} className="text-[9px] text-[var(--text-muted)] hover:text-red-400 disabled:opacity-40">Revoke</button>
+              <button onClick={regenerate} disabled={busy} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-40">Regenerate</button>
+              <button onClick={revoke} disabled={busy} className="text-[10px] text-[var(--text-muted)] hover:text-red-400 disabled:opacity-40">Revoke</button>
             </span>
           </div>
-          <p className="text-[9px] text-orange-400/80">Anyone with this link can view the board&apos;s events. Regenerate to invalidate the old URL.</p>
+          <p className="text-[10px] text-orange-400/80">Anyone with this link can view the board&apos;s events. Regenerate to invalidate the old URL.</p>
         </div>
       ) : (
         <button onClick={enable} disabled={busy}
-          className="flex w-full items-center justify-center gap-1.5 rounded border border-[var(--border)] py-1.5 text-[10px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-40">
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-[var(--border)] py-1.5 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-40">
           <Link2 size={12} /> Enable subscription URL
         </button>
       )}
@@ -6136,22 +6139,22 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
       {/* Linked Tables */}
       <section>
         <div className="mb-1 flex items-center justify-between">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Linked Tables</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Linked Tables</p>
           {boardId && boxId && tableItems.length > 0 && (
             <button onClick={addLink}
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] bg-[var(--accent)] text-white hover:opacity-80 transition-opacity">
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] bg-[var(--accent)] text-white hover:opacity-80 transition-opacity">
               <Plus size={9} /> Add link
             </button>
           )}
         </div>
-        <p className="mb-2 text-[9px] text-[var(--text-muted)]">Show rows from one or more tables as calendar events. Tables must be in the same block.</p>
+        <p className="mb-2 text-[10px] text-[var(--text-muted)]">Show rows from one or more tables as calendar events. Tables must be in the same block.</p>
         {!boardId || !boxId ? (
-          <p className="text-[9px] text-orange-400/80">Open the block to enable table linking.</p>
+          <p className="text-[10px] text-orange-400/80">Open the block to enable table linking.</p>
         ) : tableItems.length === 0 ? (
-          <p className="text-[9px] text-orange-400/80">No table items in this block yet. Add a Table item first.</p>
+          <p className="text-[10px] text-orange-400/80">No table items in this block yet. Add a Table item first.</p>
         ) : links.length === 0 ? (
           <button onClick={addLink}
-            className="w-full rounded border border-dashed border-[var(--border)] py-2 text-[9px] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors">
+            className="w-full rounded border border-dashed border-[var(--border)] py-2 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors">
             + Link a table
           </button>
         ) : (
@@ -6165,7 +6168,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
               return (
                 <div key={lk.id} className="rounded-lg border border-[var(--border)] p-2 flex flex-col gap-1.5">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] text-[var(--text-muted)] font-semibold shrink-0">#{idx + 1}</span>
+                    <span className="text-[10px] text-[var(--text-muted)] font-semibold shrink-0">#{idx + 1}</span>
                     <select value={lk.tableId}
                       onChange={e => patchLink(lk.id, { tableId: e.target.value, dateCol: "", titleCol: "", colorCol: undefined })}
                       className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none">
@@ -6177,7 +6180,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
                   {linkedTable && (
                     <>
                       <div className="flex items-center gap-2">
-                        <span className="text-[var(--text-muted)] w-10 shrink-0 text-[10px]">Date</span>
+                        <span className="text-[var(--text-muted)] w-10 shrink-0 text-[11px]">Date</span>
                         <select value={lk.dateCol} onChange={e => patchLink(lk.id, { dateCol: e.target.value })}
                           className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none">
                           <option value="">— Pick —</option>
@@ -6185,7 +6188,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
                         </select>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[var(--text-muted)] w-10 shrink-0 text-[10px]">Title</span>
+                        <span className="text-[var(--text-muted)] w-10 shrink-0 text-[11px]">Title</span>
                         <select value={lk.titleCol} onChange={e => patchLink(lk.id, { titleCol: e.target.value })}
                           className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none">
                           <option value="">— Pick —</option>
@@ -6193,7 +6196,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
                         </select>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[var(--text-muted)] w-10 shrink-0 text-[10px]">Color</span>
+                        <span className="text-[var(--text-muted)] w-10 shrink-0 text-[11px]">Color</span>
                         <select value={lk.colorCol ?? ""} onChange={e => patchLink(lk.id, { colorCol: e.target.value || undefined })}
                           className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none">
                           <option value="">— None —</option>
@@ -6203,7 +6206,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
                           title="Fallback color" className="h-6 w-6 shrink-0 cursor-pointer rounded border border-[var(--border)] bg-transparent p-0.5" />
                       </div>
                       {lk.dateCol && lk.titleCol && (
-                        <p className="text-[9px] text-green-400/80">✓ {(linkedTable.tableRows ?? []).length} row(s)</p>
+                        <p className="text-[10px] text-green-400/80">✓ {(linkedTable.tableRows ?? []).length} row(s)</p>
                       )}
                     </>
                   )}
@@ -6216,8 +6219,8 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
       {/* External Calendars */}
       <section>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">External Calendars</p>
-        <p className="mb-2 text-[9px] text-[var(--text-muted)]">Paste a public iCal (.ics) URL — works with Google Calendar, Apple Calendar, Outlook, and any iCal source.</p>
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">External Calendars</p>
+        <p className="mb-2 text-[10px] text-[var(--text-muted)]">Paste a public iCal (.ics) URL — works with Google Calendar, Apple Calendar, Outlook, and any iCal source.</p>
 
         {feeds.map(f => (
           <div key={f.id} className="mb-2 rounded-lg border border-[var(--border)] p-2 flex flex-col gap-1.5">
@@ -6225,15 +6228,15 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
               <span className="h-3 w-3 rounded-full shrink-0" style={{ background: f.color }} />
               <span className="flex-1 font-medium text-[var(--text-primary)] truncate">{f.name}</span>
               <button onClick={() => syncFeed(f)} disabled={syncing[f.id]}
-                className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors disabled:opacity-40 text-[9px]">
+                className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors disabled:opacity-40 text-[10px]">
                 {syncing[f.id] ? "⟳" : "↻"} Sync
               </button>
               <button onClick={() => removeFeed(f.id)} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>
             </div>
-            <p className="text-[9px] text-[var(--text-muted)] truncate">{f.url}</p>
-            {(errors[f.id] || f.lastError) && <p className="text-[9px] text-red-400">{errors[f.id] ?? f.lastError}</p>}
+            <p className="text-[10px] text-[var(--text-muted)] truncate">{f.url}</p>
+            {(errors[f.id] || f.lastError) && <p className="text-[10px] text-red-400">{errors[f.id] ?? f.lastError}</p>}
             {(item.calendarFeedEvents ?? []).filter(e => e.feedId === f.id).length > 0 && (
-              <p className="text-[9px] text-[var(--text-muted)]">
+              <p className="text-[10px] text-[var(--text-muted)]">
                 {(item.calendarFeedEvents ?? []).filter(e => e.feedId === f.id).length} events loaded
                 {f.lastSyncedAt && <span> · synced {fmtRelativeTime(f.lastSyncedAt)}</span>}
               </p>
@@ -6252,15 +6255,15 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
               <input type="color" value={newFeedColor} onChange={e => setNewFeedColor(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
             </span>
             <button onClick={addFeed} disabled={!newFeedUrl.trim()}
-              className="flex-1 rounded py-1 text-[10px] font-medium text-white disabled:opacity-40 transition-colors" style={{ background: accent }}>
+              className="flex-1 rounded py-1 text-[11px] font-medium text-white disabled:opacity-40 transition-colors" style={{ background: accent }}>
               + Add calendar
             </button>
           </div>
         </div>
 
         <details className="mt-2">
-          <summary className="cursor-pointer text-[9px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">How to get your iCal URL ▾</summary>
-          <div className="mt-1.5 rounded border border-[var(--border)] p-2 flex flex-col gap-1.5 text-[9px] text-[var(--text-muted)]">
+          <summary className="cursor-pointer text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">How to get your iCal URL ▾</summary>
+          <div className="mt-1.5 rounded border border-[var(--border)] p-2 flex flex-col gap-1.5 text-[10px] text-[var(--text-muted)]">
             <p><strong className="text-[var(--text-secondary)]">Google Calendar:</strong> Settings → your calendar → "Secret address in iCal format"</p>
             <p><strong className="text-[var(--text-secondary)]">Apple Calendar:</strong> File → Export, or share a public calendar to get its URL</p>
             <p><strong className="text-[var(--text-secondary)]">Outlook:</strong> Settings → Calendar → Shared calendars → Publish → ICS link</p>
@@ -6271,12 +6274,12 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
       {/* Export */}
       <section>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Export</p>
-        <p className="mb-2 text-[9px] text-[var(--text-muted)]">Download this board&apos;s own events as a .ics file to import into Google, Apple, or Outlook Calendar.</p>
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Export</p>
+        <p className="mb-2 text-[10px] text-[var(--text-muted)]">Download this board&apos;s own events as a .ics file to import into Google, Apple, or Outlook Calendar.</p>
         <button
           onClick={() => downloadIcs(events, "Crecoard Calendar")}
           disabled={events.length === 0}
-          className="flex w-full items-center justify-center gap-1.5 rounded border border-[var(--border)] py-1.5 text-[10px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-40"
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-[var(--border)] py-1.5 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-40"
         >
           <FileDown size={12} /> Export .ics{events.length > 0 ? ` (${events.length})` : ""}
         </button>
@@ -6287,7 +6290,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
       {/* Display */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Display</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Display</p>
         <div className="flex flex-col gap-2">
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={item.calendarFirstDayMonday ?? false} onChange={e => upd({ calendarFirstDayMonday: e.target.checked })} className="accent-[var(--accent)]" />
@@ -6302,7 +6305,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
       {/* Colors */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Colors</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Colors</p>
         <div className="flex flex-col gap-2">
           {[
             { label: "Accent / today", key: "calendarAccentColor" as const, default: "#d59ee8" },
@@ -6326,16 +6329,16 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
       {/* Header image */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Header image</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Header image</p>
         <div className="flex flex-col gap-1.5">
           <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
             placeholder="Image URL…" value={item.calendarHeaderBgImage?.startsWith("data:") ? "" : (item.calendarHeaderBgImage ?? "")}
             onChange={e => upd({ calendarHeaderBgImage: e.target.value || undefined })} />
           <div className="flex gap-1.5">
-            <button onClick={() => headerFileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+            <button onClick={() => headerFileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
               <Upload size={10} /> Upload
             </button>
-            {item.calendarHeaderBgImage && <button onClick={() => upd({ calendarHeaderBgImage: undefined })} className="rounded border border-[var(--border)] px-2 text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>}
+            {item.calendarHeaderBgImage && <button onClick={() => upd({ calendarHeaderBgImage: undefined })} className="rounded border border-[var(--border)] px-2 text-[11px] text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>}
           </div>
           <input ref={headerFileRef} type="file" accept="image/*" className="hidden" onChange={e => {
             const f = e.target.files?.[0]; if (!f) return;
@@ -6344,14 +6347,14 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
           {item.calendarHeaderBgImage && (
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
-                <span className="text-[var(--text-muted)] w-14 shrink-0 text-[10px]">Opacity</span>
+                <span className="text-[var(--text-muted)] w-14 shrink-0 text-[11px]">Opacity</span>
                 <input type="range" min={0} max={100} value={item.calendarHeaderBgImageOpacity ?? 100} onChange={e => upd({ calendarHeaderBgImageOpacity: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
-                <span className="w-8 text-right text-[var(--text-muted)] text-[10px]">{item.calendarHeaderBgImageOpacity ?? 100}%</span>
+                <span className="w-8 text-right text-[var(--text-muted)] text-[11px]">{item.calendarHeaderBgImageOpacity ?? 100}%</span>
               </div>
               <div className="flex gap-1">
                 {(["cover","contain","fill"] as const).map(s => (
                   <button key={s} onClick={() => upd({ calendarHeaderBgImageSize: s })}
-                    className={cn("flex-1 rounded py-0.5 text-[9px] border transition-colors", (item.calendarHeaderBgImageSize ?? "cover") === s ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)]")}>
+                    className={cn("flex-1 rounded py-0.5 text-[10px] border transition-colors", (item.calendarHeaderBgImageSize ?? "cover") === s ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)]")}>
                     {s}
                   </button>
                 ))}
@@ -6363,22 +6366,22 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
       {/* Cell image */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Cell image</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Cell image</p>
         {([
           { label: "All cells", imgKey: "calendarCellBgImage" as const, sizeKey: "calendarCellBgImageSize" as const, opacityKey: "calendarCellBgImageOpacity" as const, fileRef: cellBgFileRef },
           { label: "Weekend cells", imgKey: "calendarWeekendBgImage" as const, sizeKey: "calendarWeekendBgImageSize" as const, opacityKey: "calendarWeekendBgImageOpacity" as const, fileRef: wkndCellBgFileRef },
         ]).map(({ label, imgKey, sizeKey, opacityKey, fileRef }) => {
           return (
             <div key={imgKey} className="mb-3">
-              <p className="text-[9px] text-[var(--text-muted)] mb-1">{label}</p>
+              <p className="text-[10px] text-[var(--text-muted)] mb-1">{label}</p>
               <input className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] mb-1"
                 placeholder="Image URL…" value={item[imgKey]?.startsWith("data:") ? "" : (item[imgKey] ?? "")}
                 onChange={e => upd({ [imgKey]: e.target.value || undefined })} />
               <div className="flex gap-1.5 mb-1">
-                <button onClick={() => fileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
+                <button onClick={() => fileRef.current?.click()} className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed border-[var(--border)] py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors">
                   <Upload size={10} /> Upload
                 </button>
-                {item[imgKey] && <button onClick={() => upd({ [imgKey]: undefined })} className="rounded border border-[var(--border)] px-2 text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>}
+                {item[imgKey] && <button onClick={() => upd({ [imgKey]: undefined })} className="rounded border border-[var(--border)] px-2 text-[11px] text-[var(--text-muted)] hover:text-red-400 transition-colors">Clear</button>}
               </div>
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => {
                 const f = e.target.files?.[0]; if (!f) return;
@@ -6387,14 +6390,14 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
               {item[imgKey] && (
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[var(--text-muted)] w-14 shrink-0 text-[10px]">Opacity</span>
+                    <span className="text-[var(--text-muted)] w-14 shrink-0 text-[11px]">Opacity</span>
                     <input type="range" min={0} max={100} value={item[opacityKey] ?? 100} onChange={e => upd({ [opacityKey]: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
-                    <span className="w-8 text-right text-[var(--text-muted)] text-[10px]">{item[opacityKey] ?? 100}%</span>
+                    <span className="w-8 text-right text-[var(--text-muted)] text-[11px]">{item[opacityKey] ?? 100}%</span>
                   </div>
                   <div className="flex gap-1">
                     {(["cover","contain","fill"] as const).map(s => (
                       <button key={s} onClick={() => upd({ [sizeKey]: s })}
-                        className={cn("flex-1 rounded py-0.5 text-[9px] border transition-colors", (item[sizeKey] ?? "cover") === s ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)]")}>
+                        className={cn("flex-1 rounded py-0.5 text-[10px] border transition-colors", (item[sizeKey] ?? "cover") === s ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)]")}>
                         {s}
                       </button>
                     ))}
@@ -6408,7 +6411,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
       {/* Font */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <FontPicker compact value={item.calendarFontFamily ?? "Inter"} onChange={f => { loadGoogleFont(f); upd({ calendarFontFamily: f }); }} />
@@ -6416,7 +6419,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
               onChange={e => upd({ calendarFontSize: Number(e.target.value) })}
               onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
               className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none" />
-            <span className="text-[10px] text-[var(--text-muted)]">px</span>
+            <span className="text-[11px] text-[var(--text-muted)]">px</span>
           </div>
           <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
             <div className="flex items-center gap-2">
@@ -6432,7 +6435,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
       {/* Background */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background</p>
         <div className="flex flex-col gap-2">
           <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
             <div className="flex items-center gap-2">
@@ -6469,7 +6472,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
       {/* Shape */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shape</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shape</p>
         <div className="flex items-center gap-2">
           <span className="text-[var(--text-muted)] w-20 shrink-0">Corner radius</span>
           <input type="range" min={0} max={24} value={item.calendarBorderRadius ?? 0} onChange={e => upd({ calendarBorderRadius: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
@@ -6479,7 +6482,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
       {/* Events list */}
       <section>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Local events ({events.length})</p>
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Local events ({events.length})</p>
         {events.length === 0
           ? <p className="text-[var(--text-muted)]">Click a day to add events.</p>
           : (
@@ -6489,7 +6492,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
                   <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: e.color ?? accent }} />
                   <div className="flex-1 min-w-0">
                     <p className="truncate text-[var(--text-primary)]">{e.title}</p>
-                    <p className="text-[9px] text-[var(--text-muted)]">{e.date}{e.startTime ? ` · ${fmtTime(e.startTime)}` : ""}</p>
+                    <p className="text-[10px] text-[var(--text-muted)]">{e.date}{e.startTime ? ` · ${fmtTime(e.startTime)}` : ""}</p>
                   </div>
                   <button onClick={() => upd({ calendarEvents: events.filter(ev => ev.id !== e.id) })} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><XIcon size={11} /></button>
                 </div>
@@ -6910,9 +6913,9 @@ function FilterPanel({ cols, filters, onChange }: {
       onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}
     >
       <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Filters</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Filters</p>
         {filters.length > 0 && (
-          <button onClick={() => onChange([])} className="text-[10px] text-red-400 hover:underline">Clear all</button>
+          <button onClick={() => onChange([])} className="text-[11px] text-red-400 hover:underline">Clear all</button>
         )}
       </div>
       {filters.length === 0 && (
@@ -7285,11 +7288,11 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
   if (collapsed) {
     return (
       <div className="flex flex-col gap-0.5 min-w-0">
-        <div className="flex gap-2 text-[9px] font-semibold text-[var(--text-muted)] uppercase tracking-wide border-b border-[var(--border)] pb-1">
+        <div className="flex gap-2 text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wide border-b border-[var(--border)] pb-1">
           {cols.slice(0, 3).map(c => <span key={c.id} className="flex-1 truncate">{c.name}</span>)}
         </div>
         {rows.slice(0, 3).map(r => (
-          <div key={r.id} className="flex gap-2 text-[10px] text-[var(--text-primary)]">
+          <div key={r.id} className="flex gap-2 text-[11px] text-[var(--text-primary)]">
             {cols.slice(0, 3).map(c => (
               <span key={c.id} className="flex-1 truncate">
                 {c.type === "checkbox" ? (r.cells[c.id] ? "✓" : "—") : (r.cells[c.id] as string) || "—"}
@@ -7297,7 +7300,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
             ))}
           </div>
         ))}
-        {rows.length > 3 && <span className="text-[9px] text-[var(--text-muted)]">+{rows.length - 3} more rows</span>}
+        {rows.length > 3 && <span className="text-[10px] text-[var(--text-muted)]">+{rows.length - 3} more rows</span>}
       </div>
     );
   }
@@ -7390,14 +7393,14 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
           >
             <ArrowUpDown size={11} />
             {sortBy ? (cols.find(c => c.id === sortBy.colId)?.name ?? "Sort") : "Sort"}
-            {sortBy && <span className="text-[9px] ml-0.5">{sortBy.dir === "asc" ? "↑" : "↓"}</span>}
+            {sortBy && <span className="text-[10px] ml-0.5">{sortBy.dir === "asc" ? "↑" : "↓"}</span>}
           </button>
           {showSortPanel && (
             <div
               className="absolute top-full right-0 mt-1 z-50 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] shadow-xl p-2 flex flex-col gap-0.5"
               onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}
             >
-              <p className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)] px-1 mb-1">Sort by</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] px-1 mb-1">Sort by</p>
               {cols.map(c => (
                 <button key={c.id}
                   onClick={() => {
@@ -7413,7 +7416,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
                   )}
                 >
                   <span className="truncate">{c.name}</span>
-                  {sortBy?.colId === c.id && <span className="shrink-0 text-[9px]">{sortBy.dir === "asc" ? "↑ A→Z" : "↓ Z→A"}</span>}
+                  {sortBy?.colId === c.id && <span className="shrink-0 text-[10px]">{sortBy.dir === "asc" ? "↑ A→Z" : "↓ Z→A"}</span>}
                 </button>
               ))}
               {sortBy && (
@@ -7439,7 +7442,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
             <Filter size={11} />
             Filter
             {filters.length > 0 && (
-              <span className="ml-0.5 rounded-full bg-[var(--accent)] text-white w-4 h-4 text-[9px] flex items-center justify-center shrink-0 leading-none">
+              <span className="ml-0.5 rounded-full bg-[var(--accent)] text-white w-4 h-4 text-[10px] flex items-center justify-center shrink-0 leading-none">
                 {filters.length}
               </span>
             )}
@@ -7462,7 +7465,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
             const op = getFilterOps(col).find(o => o.value === f.op);
             const hasValue = f.op !== "is_empty" && f.op !== "is_not_empty";
             return (
-              <span key={f.id} className="flex items-center gap-1 rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] text-[var(--accent)]">
+              <span key={f.id} className="flex items-center gap-1 rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/10 px-2 py-0.5 text-[11px] text-[var(--accent)]">
                 <span className="font-medium">{col?.name ?? "?"}</span>
                 <span className="opacity-60">{op?.label}</span>
                 {hasValue && f.value && <span className="font-semibold">"{f.value}"</span>}
@@ -7476,7 +7479,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
             );
           })}
           {filters.length > 1 && (
-            <button onClick={() => setFilters([])} className="text-[10px] text-[var(--text-muted)] hover:text-red-400 px-1 transition-colors">
+            <button onClick={() => setFilters([])} className="text-[11px] text-[var(--text-muted)] hover:text-red-400 px-1 transition-colors">
               Clear all
             </button>
           )}
@@ -7485,10 +7488,10 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
 
       {activeCell && (
         <div className="relative shrink-0 flex items-center gap-0 border-b border-[var(--border)] bg-[var(--surface-overlay)]" style={{ zIndex: 2 }}>
-          <span className="shrink-0 px-2 py-1 text-[10px] font-mono font-semibold text-[var(--text-secondary)] border-r border-[var(--border)] select-none min-w-[2.5rem] text-center">{activeCell.ref || "–"}</span>
+          <span className="shrink-0 px-2 py-1 text-[11px] font-mono font-semibold text-[var(--text-secondary)] border-r border-[var(--border)] select-none min-w-[2.5rem] text-center">{activeCell.ref || "–"}</span>
           {activeCell.formula != null && (
             <>
-              <span className="shrink-0 px-1.5 text-[9px] font-semibold text-[var(--accent)] select-none border-r border-[var(--border)] py-1">fx</span>
+              <span className="shrink-0 px-1.5 text-[10px] font-semibold text-[var(--accent)] select-none border-r border-[var(--border)] py-1">fx</span>
               <span className="flex-1 min-w-0 px-2 py-1 text-[11px] text-[var(--text-primary)] font-mono truncate">
                 {activeCell.formula.startsWith('=') ? activeCell.formula.slice(1) : activeCell.formula}
               </span>
@@ -7510,7 +7513,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
                     className="flex items-center gap-1 cursor-pointer select-none overflow-hidden"
                     onClick={e => { if (!isFinished && editingCol !== col.id) { e.stopPropagation(); setColMenu(v => v === col.id ? null : col.id); } }}
                   >
-                    <span className="text-[9px] opacity-50 shrink-0">{COL_TYPE_ICONS[col.type]}</span>
+                    <span className="text-[10px] opacity-50 shrink-0">{COL_TYPE_ICONS[col.type]}</span>
                     {editingCol === col.id ? (
                       <input autoFocus value={col.name}
                         onChange={e => renameCol(col.id, e.target.value)}
@@ -7531,8 +7534,8 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
                         {sortBy.dir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
                       </button>
                     )}
-                    {!isFinished && !sortBy?.colId && <span className="text-[9px] opacity-0 group-hover/th:opacity-40 transition-opacity shrink-0">▾</span>}
-                    {!isFinished && sortBy?.colId !== col.id && sortBy?.colId && <span className="text-[9px] opacity-40 shrink-0">▾</span>}
+                    {!isFinished && !sortBy?.colId && <span className="text-[10px] opacity-0 group-hover/th:opacity-40 transition-opacity shrink-0">▾</span>}
+                    {!isFinished && sortBy?.colId !== col.id && sortBy?.colId && <span className="text-[10px] opacity-40 shrink-0">▾</span>}
                   </div>
                   {/* Column resize handle — blue pill indicator */}
                   {!isFinished && (
@@ -7552,7 +7555,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
                   )}
                   {colMenu === col.id && (
                     <div className="absolute top-full left-0 z-50 mt-0.5 w-40 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] shadow-lg p-1" onClick={e => e.stopPropagation()}>
-                      <p className="px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Type</p>
+                      <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Type</p>
                       {DEFAULT_COL_TYPES.map(t => (
                         <button key={t} onClick={() => setColType(col.id, t)}
                           className={cn("flex w-full items-center gap-2 rounded px-2 py-1 text-[11px] transition-colors hover:bg-[var(--surface-overlay)]", col.type === t ? "text-[var(--accent)]" : "text-[var(--text-secondary)]")}>
@@ -7566,7 +7569,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
                       </button>
                       {col.type === "select" && (
                         <div className="px-2 py-1 flex flex-col gap-1">
-                          <p className="text-[9px] text-[var(--text-muted)] mb-0.5">Options</p>
+                          <p className="text-[10px] text-[var(--text-muted)] mb-0.5">Options</p>
                           {(col.options ?? []).map((opt, oi) => (
                             <div key={oi} className="flex items-center gap-1">
                               <input
@@ -7664,7 +7667,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
                   {!isFinished && <td style={{ borderBottom: cellBorder }} />}
                   {!isFinished && (
                     <td style={{ borderBottom: cellBorder }} className="w-5">
-                      <button onClick={() => deleteRow(row.id)} className="opacity-0 group-hover/row:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-red-400 text-[10px]">✕</button>
+                      <button onClick={() => deleteRow(row.id)} className="opacity-0 group-hover/row:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-red-400 text-[11px]">✕</button>
                     </td>
                   )}
                 </tr>
@@ -7695,7 +7698,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
                           onClick={e => e.stopPropagation()}
                           onMouseDown={e => e.stopPropagation()}
                         >
-                          <p className="px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Aggregation</p>
+                          <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Aggregation</p>
                           {SUMMARY_FN_OPTIONS.map(opt => (
                             <button
                               key={opt.id}
@@ -7708,7 +7711,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
                                 fn === opt.id ? "text-[var(--accent)]" : "text-[var(--text-secondary)]"
                               )}
                             >
-                              <span className="w-4 text-center font-mono shrink-0 text-[10px]">{opt.icon}</span>
+                              <span className="w-4 text-center font-mono shrink-0 text-[11px]">{opt.icon}</span>
                               {opt.label}
                               {fn === opt.id && <Check size={10} className="ml-auto shrink-0" />}
                             </button>
@@ -7737,7 +7740,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
           </button>
         )}
         {(search || filters.length > 0) && (
-          <span className="px-3 py-1.5 text-[10px] text-[var(--text-muted)] shrink-0">
+          <span className="px-3 py-1.5 text-[11px] text-[var(--text-muted)] shrink-0">
             {visibleRows.length} / {rows.length} rows
           </span>
         )}
@@ -7881,7 +7884,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
       {/* Title */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Title</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Title</p>
         <label className="flex items-center gap-2 cursor-pointer mb-2">
           <input type="checkbox" checked={item.tableShowTitle !== false} onChange={e => upd({ tableShowTitle: e.target.checked })} className="accent-[var(--accent)]" />
           <span className="text-[var(--text-secondary)]">Show title</span>
@@ -7898,19 +7901,19 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
       {/* Summary row */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Summary row</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Summary row</p>
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={item.tableShowSummary ?? false} onChange={e => upd({ tableShowSummary: e.target.checked })} className="accent-[var(--accent)]" />
           <span className="text-[var(--text-secondary)]">Show summary row</span>
         </label>
         {item.tableShowSummary && (
-          <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">Click any cell in the summary row to set its aggregation (Sum, Avg, Count…)</p>
+          <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">Click any cell in the summary row to set its aggregation (Sum, Avg, Count…)</p>
         )}
       </section>
 
       {/* Background */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background</p>
         <div className="flex flex-col gap-2">
           <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
             <div className="flex items-center gap-2">
@@ -7956,7 +7959,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
       {/* Font */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Font</p>
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <FontPicker compact value={item.tableFontFamily ?? "Inter"} onChange={f => { loadGoogleFont(f); upd({ tableFontFamily: f }); }} />
@@ -7964,7 +7967,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
               onChange={e => upd({ tableFontSize: Number(e.target.value) })}
               onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
               className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none" title="Font size" />
-            <span className="text-[10px] text-[var(--text-muted)]">px</span>
+            <span className="text-[11px] text-[var(--text-muted)]">px</span>
           </div>
           <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
             <div className="flex items-center gap-2">
@@ -7973,7 +7976,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
               </span>
               <span className="text-[var(--text-secondary)]">Cell text color</span>
             </div>
-            <span className="font-mono text-[10px] text-[var(--text-muted)]">{item.tableFontColor ?? "default"}</span>
+            <span className="font-mono text-[11px] text-[var(--text-muted)]">{item.tableFontColor ?? "default"}</span>
           </label>
           <label className="flex items-center justify-between gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
             <div className="flex items-center gap-2">
@@ -7982,14 +7985,14 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
               </span>
               <span className="text-[var(--text-secondary)]">Header text color</span>
             </div>
-            <span className="font-mono text-[10px] text-[var(--text-muted)]">{item.tableHeaderFontColor ?? "default"}</span>
+            <span className="font-mono text-[11px] text-[var(--text-muted)]">{item.tableHeaderFontColor ?? "default"}</span>
           </label>
         </div>
       </section>
 
       {/* Rows */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Rows</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Rows</p>
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <span className="text-[var(--text-muted)] w-20 shrink-0">Row height</span>
@@ -7997,7 +8000,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
               onChange={e => upd({ tableRowHeight: Number(e.target.value) })}
               onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
               className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none" />
-            <span className="text-[10px] text-[var(--text-muted)]">px</span>
+            <span className="text-[11px] text-[var(--text-muted)]">px</span>
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={item.tableStriped ?? false} onChange={e => upd({ tableStriped: e.target.checked })} className="accent-[var(--accent)]" />
@@ -8037,9 +8040,9 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
       {/* Border */}
       <section>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Grid lines</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Grid lines</p>
           <button onClick={() => upd({ tableBorderWidth: hasBorder ? 0 : 1, tableBorderColor: item.tableBorderColor ?? "#ffffff20" })}
-            className={cn("rounded px-2 py-0.5 text-[10px] transition-colors border", hasBorder ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]")}>
+            className={cn("rounded px-2 py-0.5 text-[11px] transition-colors border", hasBorder ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]")}>
             {hasBorder ? "On" : "Off"}
           </button>
         </div>
@@ -8065,7 +8068,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
       {/* Shape */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shape</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Shape</p>
         <div className="flex items-center gap-2">
           <span className="text-[var(--text-muted)] w-20 shrink-0">Corner radius</span>
           <input type="range" min={0} max={24} value={item.tableBorderRadius ?? 0}
@@ -8076,13 +8079,13 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
       {/* Columns info */}
       <section>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Columns ({cols.length}) · {rows.length} rows</p>
-        <p className="text-[9px] text-[var(--text-muted)]">Double-click a column header to rename. Click ▾ to change type or delete.</p>
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Columns ({cols.length}) · {rows.length} rows</p>
+        <p className="text-[10px] text-[var(--text-muted)]">Double-click a column header to rename. Click ▾ to change type or delete.</p>
       </section>
 
       {/* Session log preset */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Presets</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Presets</p>
         <button
           onClick={() => upd({
             tableColumns: [
@@ -8099,17 +8102,17 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
           className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-2 text-left text-[11px] hover:border-[var(--accent)]/50 transition-colors"
         >
           <span className="block font-semibold text-[var(--text-primary)]">Session Log</span>
-          <span className="block text-[10px] text-[var(--text-muted)]">Time · Tag · Notes · Duration · Done</span>
+          <span className="block text-[11px] text-[var(--text-muted)]">Time · Tag · Notes · Duration · Done</span>
         </button>
       </section>
 
       {/* Chart */}
       <section>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Chart</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Chart</p>
           <label className="flex items-center gap-1.5 cursor-pointer">
             <input type="checkbox" checked={!!item.tableChartEnabled} onChange={e => upd({ tableChartEnabled: e.target.checked })} className="accent-[var(--accent)]" />
-            <span className="text-[10px] text-[var(--text-secondary)]">Show</span>
+            <span className="text-[11px] text-[var(--text-secondary)]">Show</span>
           </label>
         </div>
         {item.tableChartEnabled && (() => {
@@ -8124,7 +8127,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
               {/* Extract chart */}
               {boardId && boxId && (
                 <div>
-                  <p className="text-[10px] text-[var(--text-muted)] mb-1.5 font-medium">As block item</p>
+                  <p className="text-[11px] text-[var(--text-muted)] mb-1.5 font-medium">As block item</p>
                   <button
                     onClick={() => {
                       useBoardStore.getState().addItem(boardId, boxId, {
@@ -8144,17 +8147,17 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                   >
                     Extract chart → new block item
                   </button>
-                  <p className="mt-1 text-[9px] text-[var(--text-muted)]">Creates a standalone chart item in this block, linked to the table data.</p>
+                  <p className="mt-1 text-[10px] text-[var(--text-muted)]">Creates a standalone chart item in this block, linked to the table data.</p>
                 </div>
               )}
 
               {/* Chart type */}
               <div>
-                <p className="text-[10px] text-[var(--text-muted)] mb-1.5">Type</p>
+                <p className="text-[11px] text-[var(--text-muted)] mb-1.5">Type</p>
                 <div className="grid grid-cols-4 gap-1">
                   {GRAPH_TYPES.filter(gt => gt.id !== "scatter").map((gt) => (
                     <button key={gt.id} onClick={() => upd({ tableChartType: gt.id })}
-                      className={cn("flex flex-col items-center gap-0.5 rounded border px-1 py-2 text-[9px] transition-all",
+                      className={cn("flex flex-col items-center gap-0.5 rounded border px-1 py-2 text-[10px] transition-all",
                         (item.tableChartType ?? "bar") === gt.id
                           ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
                           : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]"
@@ -8169,9 +8172,9 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
               {/* Data mapping */}
               {usable.length > 1 && (
                 <div className="flex flex-col gap-2">
-                  <p className="text-[10px] text-[var(--text-muted)] font-medium">Data</p>
+                  <p className="text-[11px] text-[var(--text-muted)] font-medium">Data</p>
                   <div>
-                    <p className="text-[9px] text-[var(--text-muted)] mb-1 uppercase tracking-wide">Label column</p>
+                    <p className="text-[10px] text-[var(--text-muted)] mb-1 uppercase tracking-wide">Label column</p>
                     <div className="flex flex-wrap gap-1">
                       {usable.map((c) => (
                         <button key={c.id} onClick={() => upd({ tableChartLabelColId: c.id, tableChartValueColIds: undefined })}
@@ -8183,7 +8186,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                     </div>
                   </div>
                   <div>
-                    <p className="text-[9px] text-[var(--text-muted)] mb-1 uppercase tracking-wide">Value columns</p>
+                    <p className="text-[10px] text-[var(--text-muted)] mb-1 uppercase tracking-wide">Value columns</p>
                     <div className="flex flex-wrap gap-1">
                       {usable.filter((c) => c.id !== labelColId).map((c) => {
                         const checked = valueColIds.includes(c.id);
@@ -8203,7 +8206,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
               {/* Series colors */}
               <div>
-                <p className="text-[10px] text-[var(--text-muted)] mb-1.5 font-medium">Series colors</p>
+                <p className="text-[11px] text-[var(--text-muted)] mb-1.5 font-medium">Series colors</p>
                 <div className="flex flex-col gap-1.5">
                   {valueColIds.map((colId, i) => {
                     const col = cols.find((c) => c.id === colId);
@@ -8213,7 +8216,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
                           <input type="color" value={chartColors[i % chartColors.length]} onChange={(e) => { const c = [...chartColors]; c[i] = e.target.value; upd({ tableChartColors: c }); }} className="absolute inset-0 opacity-0 cursor-pointer" />
                         </span>
                         <span className="text-xs text-[var(--text-secondary)]">{col?.name ?? colId}</span>
-                        <span className="ml-auto font-mono text-[10px] text-[var(--text-muted)]">{chartColors[i % chartColors.length]}</span>
+                        <span className="ml-auto font-mono text-[11px] text-[var(--text-muted)]">{chartColors[i % chartColors.length]}</span>
                       </label>
                     );
                   })}
@@ -8222,7 +8225,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
               {/* Titles */}
               <div className="flex flex-col gap-2">
-                <p className="text-[10px] text-[var(--text-muted)] font-medium">Labels</p>
+                <p className="text-[11px] text-[var(--text-muted)] font-medium">Labels</p>
                 <input className={inputCls} placeholder="Chart title…" value={item.tableChartTitle ?? ""} onChange={e => upd({ tableChartTitle: e.target.value || undefined })} onMouseDown={e => e.stopPropagation()} />
                 <div className="flex gap-2">
                   <input className={cn(inputCls, "flex-1")} placeholder="X axis label…" value={item.tableChartXAxisTitle ?? ""} onChange={e => upd({ tableChartXAxisTitle: e.target.value || undefined })} onMouseDown={e => e.stopPropagation()} />
@@ -8232,14 +8235,14 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
               {/* Font */}
               <div className="flex flex-col gap-2">
-                <p className="text-[10px] text-[var(--text-muted)] font-medium">Font</p>
+                <p className="text-[11px] text-[var(--text-muted)] font-medium">Font</p>
                 <div className="flex items-center gap-2">
                   <FontPicker compact value={item.tableChartFontFamily ?? "Inter"} onChange={f => { loadGoogleFont(f); upd({ tableChartFontFamily: f }); }} />
                   <input type="number" min={8} max={20} value={item.tableChartFontSize ?? 10}
                     onChange={e => upd({ tableChartFontSize: Number(e.target.value) })}
                     onMouseDown={e => e.stopPropagation()}
                     className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs outline-none" />
-                  <span className="text-[10px] text-[var(--text-muted)]">px</span>
+                  <span className="text-[11px] text-[var(--text-muted)]">px</span>
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
                   <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.tableChartFontColor ?? "#888888" }}>
@@ -8252,7 +8255,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
               {/* Background */}
               <div>
-                <p className="text-[10px] text-[var(--text-muted)] mb-1.5 font-medium">Background</p>
+                <p className="text-[11px] text-[var(--text-muted)] mb-1.5 font-medium">Background</p>
                 <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--border)] px-2.5 py-2 hover:border-[var(--text-muted)] transition-colors">
                   <span className="relative h-5 w-5 rounded border border-white/20 overflow-hidden flex-shrink-0" style={{ backgroundColor: item.tableChartBgColor ?? "transparent" }}>
                     <input type="color" value={item.tableChartBgColor ?? "#1a1b1e"} onChange={e => upd({ tableChartBgColor: e.target.value })} className="absolute inset-0 opacity-0 cursor-pointer" />
@@ -8264,16 +8267,16 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
               {/* Stroke / radius */}
               <div className="flex flex-col gap-2">
-                <p className="text-[10px] text-[var(--text-muted)] font-medium">Shape</p>
+                <p className="text-[11px] text-[var(--text-muted)] font-medium">Shape</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[var(--text-muted)] w-20 shrink-0">Bar radius</span>
+                  <span className="text-[11px] text-[var(--text-muted)] w-20 shrink-0">Bar radius</span>
                   <input type="range" min={0} max={16} value={item.tableChartBarRadius ?? 3} onChange={e => upd({ tableChartBarRadius: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
-                  <span className="w-6 text-right text-[10px] text-[var(--text-muted)]">{item.tableChartBarRadius ?? 3}</span>
+                  <span className="w-6 text-right text-[11px] text-[var(--text-muted)]">{item.tableChartBarRadius ?? 3}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[var(--text-muted)] w-20 shrink-0">Stroke width</span>
+                  <span className="text-[11px] text-[var(--text-muted)] w-20 shrink-0">Stroke width</span>
                   <input type="range" min={1} max={8} value={item.tableChartStrokeWidth ?? 2} onChange={e => upd({ tableChartStrokeWidth: Number(e.target.value) })} className="flex-1 accent-[var(--accent)]" />
-                  <span className="w-6 text-right text-[10px] text-[var(--text-muted)]">{item.tableChartStrokeWidth ?? 2}</span>
+                  <span className="w-6 text-right text-[11px] text-[var(--text-muted)]">{item.tableChartStrokeWidth ?? 2}</span>
                 </div>
               </div>
 
@@ -8299,7 +8302,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
       {/* Collaboration */}
       <section>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Collaboration</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Collaboration</p>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -8310,7 +8313,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
           <span className="text-[var(--text-secondary)]">Shared table (real-time)</span>
         </label>
         {item.tableCollabEnabled && (
-          <div className="mt-2 flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] pl-5">
+          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] pl-5">
             <Users size={10} />
             <span>Connect Supabase to enable live row sync.</span>
           </div>
@@ -8393,7 +8396,7 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems 
               {t === "code" ? "< Code >" : "Preview"}
             </button>
           ))}
-          <span className="ml-auto text-[10px] text-[var(--text-muted)]">HTML · CSS · JS</span>
+          <span className="ml-auto text-[11px] text-[var(--text-muted)]">HTML · CSS · JS</span>
         </div>
       )}
 
@@ -8470,7 +8473,7 @@ function PlatformBadge({ platform }: { platform: string }) {
   const color = PLATFORM_COLORS[platform];
   return (
     <span
-      className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+      className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
       style={{ background: color ? color + "25" : "var(--surface-overlay)", color: color ?? "var(--text-muted)" }}
     >
       {platform}
@@ -8499,17 +8502,17 @@ export function TextAnimationSection({ item, upd }: { item: BlockItem; upd: (p: 
   const cur = item.textAnimation;
   return (
     <div className="px-4 py-4">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Animation</p>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Animation</p>
       <div className="grid grid-cols-3 gap-1.5">
         {presets.map((pr) => (
           <button key={pr.label} onClick={() => upd({ textAnimation: pr.v })}
-            className={cn("rounded border px-2 py-1.5 text-[10px] transition-colors",
+            className={cn("rounded border px-2 py-1.5 text-[11px] transition-colors",
               cur === pr.v ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/40")}>
             {pr.label}
           </button>
         ))}
         <button onClick={() => setStudioOpen(true)}
-          className={cn("rounded border px-2 py-1.5 text-[10px] transition-colors",
+          className={cn("rounded border px-2 py-1.5 text-[11px] transition-colors",
             cur === "custom" ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/40")}>
           {cur === "custom" ? (item.textAnimationCustom?.name ?? "Custom") : "Custom…"}
         </button>
@@ -8523,14 +8526,14 @@ export function TextAnimationSection({ item, upd }: { item: BlockItem; upd: (p: 
         <div className="mt-2 flex gap-1.5">
           {(["slow", "normal", "fast"] as const).map((sp) => (
             <button key={sp} onClick={() => upd({ textAnimationSpeed: sp === "normal" ? undefined : sp })}
-              className={cn("flex-1 rounded border px-2 py-1 text-[10px] capitalize transition-colors",
+              className={cn("flex-1 rounded border px-2 py-1 text-[11px] capitalize transition-colors",
                 (item.textAnimationSpeed ?? "normal") === sp ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)]")}>
               {sp}
             </button>
           ))}
         </div>
       )}
-      <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">Fade, Rise and Wipe play once; the rest loop. Skipped for viewers with reduced motion enabled.</p>
+      <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">Fade, Rise and Wipe play once; the rest loop. Skipped for viewers with reduced motion enabled.</p>
     </div>
   );
 }
@@ -8544,18 +8547,18 @@ export function ItemEntranceSection({ item, upd }: { item: BlockItem; upd: (p: P
   ];
   return (
     <div className="border-t border-[var(--border)] px-4 py-4">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Entrance</p>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Entrance</p>
       <div className="grid grid-cols-4 gap-1.5">
         {presets.map((pr) => (
           <button key={pr.label} onClick={() => upd({ itemEntrance: pr.v })}
-            className={cn("rounded border px-1 py-1.5 text-[10px] transition-colors",
+            className={cn("rounded border px-1 py-1.5 text-[11px] transition-colors",
               item.itemEntrance === pr.v ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/40")}>
             {pr.label}
           </button>
         ))}
       </div>
       <button onClick={() => setStudioOpen(true)}
-        className={cn("mt-1.5 w-full rounded border px-2 py-1.5 text-[10px] transition-colors",
+        className={cn("mt-1.5 w-full rounded border px-2 py-1.5 text-[11px] transition-colors",
           item.itemEntrance === "custom" ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/40")}>
         {item.itemEntrance === "custom" ? (item.itemEntranceCustom?.name ?? "Custom") : "Custom / library…"}
       </button>
@@ -8564,7 +8567,7 @@ export function ItemEntranceSection({ item, upd }: { item: BlockItem; upd: (p: P
           onApply={(spec: AnimSpec) => { upd({ itemEntrance: "custom", itemEntranceCustom: spec }); setStudioOpen(false); }}
           onClose={() => setStudioOpen(false)} />
       )}
-      <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">Plays once when the item appears on screen.</p>
+      <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">Plays once when the item appears on screen.</p>
     </div>
   );
 }
@@ -8857,7 +8860,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
       <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black/30 rounded-lg py-3">
         <Music size={22} className="text-[var(--text-muted)] opacity-50" />
         {playingElsewhere && (
-          <p className="text-[10px] text-[var(--text-muted)] text-center px-3">Another playlist is playing</p>
+          <p className="text-[11px] text-[var(--text-muted)] text-center px-3">Another playlist is playing</p>
         )}
         {canPlaybackUI && (
           <button
@@ -8891,7 +8894,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
         )}
         <div className="flex-1 min-w-0 text-center">
           <p className="text-[11px] font-medium text-[var(--text-primary)] truncate">{currentTrack?.title}</p>
-          <p className="text-[9px] text-[var(--text-muted)]">{currentIdx + 1} / {tracks.length} · {embed?.platform}</p>
+          <p className="text-[10px] text-[var(--text-muted)]">{currentIdx + 1} / {tracks.length} · {embed?.platform}</p>
         </div>
         {canPlaybackUI && (
           <button onClick={goNext} className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shrink-0">
@@ -8927,12 +8930,12 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
             onChange={(e) => upd({ playlistVolume: Number(e.target.value) })}
             className="flex-1 h-1 cursor-pointer" style={{ accentColor: accent }} />
           <Volume2 size={10} className="shrink-0 text-[var(--text-muted)]" />
-          <span className="text-[9px] text-[var(--text-muted)] w-6 text-right tabular-nums">{vol}%</span>
+          <span className="text-[10px] text-[var(--text-muted)] w-6 text-right tabular-nums">{vol}%</span>
         </div>
       )}
       {/* Live session row — server boards only */}
       {serverId && (session.active || canHost) && (
-        <div className="flex items-center gap-1.5 text-[10px] min-w-0">
+        <div className="flex items-center gap-1.5 text-[11px] min-w-0">
           {session.active ? (
             <>
               <span className="flex items-center gap-1 font-semibold shrink-0" style={{ color: accent }}>
@@ -8977,7 +8980,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
             className={cn("group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors", canPlaybackUI && "cursor-pointer", !active && canPlaybackUI && "hover:bg-white/5")}
             style={active ? { backgroundColor: accent + "25" } : undefined}
             onClick={() => goTo(i)}>
-            <span className="text-[10px] tabular-nums w-4 shrink-0 text-center" style={{ color: active ? accent : "var(--text-muted)" }}>{i + 1}</span>
+            <span className="text-[11px] tabular-nums w-4 shrink-0 text-center" style={{ color: active ? accent : "var(--text-muted)" }}>{i + 1}</span>
             <PlatformBadge platform={trackEmbed.platform} />
             <span className={cn("flex-1 text-[11px] truncate", active ? "font-medium" : "text-[var(--text-secondary)]")} style={active ? { color: accent } : undefined}
               title={track.addedBy ? `Added by ${track.addedBy}` : undefined}>{track.title}</span>
@@ -8992,7 +8995,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
       })}
       {pendingTracks.length > 0 && (
         <div className="mt-1 flex flex-col gap-0.5">
-          <p className="px-2 text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          <p className="px-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
             Pending approval · {pendingTracks.length}
           </p>
           {pendingTracks.map((t) => (
@@ -9051,11 +9054,11 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
             : <><Music size={11} /> Import all videos from {importInfo.platform} playlist</>}
         </button>
       )}
-      {importError && <p className="text-[10px] text-red-400">{importError === "YOUTUBE_API_KEY not configured" ? "Add YOUTUBE_API_KEY to your .env to enable playlist import" : importError}</p>}
+      {importError && <p className="text-[11px] text-red-400">{importError === "YOUTUBE_API_KEY not configured" ? "Add YOUTUBE_API_KEY to your .env to enable playlist import" : importError}</p>}
       {urlInput && !importInfo && (() => {
         const preview = resolveEmbed(urlInput, false);
         return (
-          <p className="text-[10px] text-[var(--text-muted)]">
+          <p className="text-[11px] text-[var(--text-muted)]">
             Detected: <span style={{ color: PLATFORM_COLORS[preview.platform] ?? "var(--text-secondary)" }}>{preview.platform}</span>
             {preview.isPlaylist && " playlist"}
             {preview.kind === "link" && " · will open in new tab"}
@@ -9134,7 +9137,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
               <div className="min-w-0">
                 <p className="text-[12px] font-semibold text-white truncate leading-tight">{currentTrack.title}</p>
                 {embed?.platform && (
-                  <p className="text-[9px] font-medium truncate" style={{ color: platformColor }}>{embed.platform}</p>
+                  <p className="text-[10px] font-medium truncate" style={{ color: platformColor }}>{embed.platform}</p>
                 )}
               </div>
             )}
@@ -9280,7 +9283,7 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
   ] as const;
 
   const SLabel = ({ children }: { children: React.ReactNode }) => (
-    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>
+    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>
   );
 
   return (
@@ -9302,7 +9305,7 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
             <button key={value} onClick={() => upd({ playlistLayout: value, playlistCompact: value === "minimal" ? true : false })}
               className={cn("flex flex-col items-center gap-1 rounded-lg border py-2 transition-colors", layout === value ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)]/40")}>
               <PlaylistLayoutIcon layout={value} />
-              <span className="text-[9px]">{label}</span>
+              <span className="text-[10px]">{label}</span>
             </button>
           ))}
         </div>
@@ -9340,7 +9343,7 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
           <input type="checkbox" checked={!!item.requireContributionApproval} onChange={(e) => upd({ requireContributionApproval: e.target.checked })} className="accent-[var(--accent)]" />
           <span className="text-[var(--text-secondary)]">Require approval for member-added tracks</span>
         </label>
-        <p className="mt-1 text-[10px] text-[var(--text-muted)]">Pending tracks are only visible to admins and their author until approved.</p>
+        <p className="mt-1 text-[11px] text-[var(--text-muted)]">Pending tracks are only visible to admins and their author until approved.</p>
       </section>
 
       {/* Volume */}
@@ -9354,7 +9357,7 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
           <Volume2 size={11} className="shrink-0 text-[var(--text-muted)]" />
           <span className="tabular-nums w-7 text-right text-[var(--text-muted)]">{item.playlistVolume ?? 80}%</span>
         </div>
-        <p className="mt-1 text-[9px] text-[var(--text-muted)] leading-tight">Works for audio files and YouTube only. Spotify, SoundCloud, and others don't expose a volume API — the button is dimmed for those.</p>
+        <p className="mt-1 text-[10px] text-[var(--text-muted)] leading-tight">Works for audio files and YouTube only. Spotify, SoundCloud, and others don't expose a volume API — the button is dimmed for those.</p>
       </section>
 
       {/* Background */}
@@ -9368,7 +9371,7 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
             {item.playlistBgImage ? (
               <div className="flex items-center gap-2">
                 <div className="w-10 h-7 rounded border border-[var(--border)] bg-cover bg-center shrink-0" style={{ backgroundImage: `url(${item.playlistBgImage})` }} />
-                <button onClick={() => upd({ playlistBgImage: undefined })} className="text-[10px] text-red-400 hover:text-red-300 transition-colors">Remove</button>
+                <button onClick={() => upd({ playlistBgImage: undefined })} className="text-[11px] text-red-400 hover:text-red-300 transition-colors">Remove</button>
                 <div className="flex items-center gap-1.5 ml-auto">
                   <span className="text-[var(--text-muted)]">Opacity</span>
                   <input type="range" min={0} max={100} value={item.playlistBgImageOpacity ?? 100}
@@ -9403,7 +9406,7 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
               <span className="text-[var(--text-secondary)]">Color</span>
               <div className="flex items-center gap-1.5">
                 {item.playlistBgColor && (
-                  <button onClick={() => upd({ playlistBgColor: undefined, playlistBgGradient: false })} className="text-[9px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
+                  <button onClick={() => upd({ playlistBgColor: undefined, playlistBgGradient: false })} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
                 )}
                 <div className="relative">
                   <button className="h-5 w-5 rounded border border-[var(--border)]"
@@ -9489,7 +9492,7 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
               {openPicker === "accent" && (
                 <div className="absolute right-0 top-7 z-50 flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
                   <input type="color" value={item.playlistAccentColor || "#d59ee8"} onChange={(e) => upd({ playlistAccentColor: e.target.value })} className="h-8 w-24 cursor-pointer border-0 p-0" />
-                  <button onClick={() => { upd({ playlistAccentColor: undefined }); setOpenPicker(null); }} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset to default</button>
+                  <button onClick={() => { upd({ playlistAccentColor: undefined }); setOpenPicker(null); }} className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset to default</button>
                 </div>
               )}
             </div>
@@ -9647,7 +9650,7 @@ function KanbanEditModal({
           <input type="color" value={color || "#d59ee8"} onChange={(e) => setColor(e.target.value)}
             className="h-6 w-10 cursor-pointer rounded border-0 p-0" />
           {color && (
-            <button onClick={() => setColor("")} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
+            <button onClick={() => setColor("")} className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
           )}
         </div>
         <button
@@ -9743,7 +9746,7 @@ function KanbanColumnContainer({
           </span>
         )}
         {showCount && (
-          <span className="text-[10px] text-[var(--text-muted)] tabular-nums flex-shrink-0">
+          <span className="text-[11px] text-[var(--text-muted)] tabular-nums flex-shrink-0">
             {colCards.length}{col.limit != null ? `/${col.limit}` : ""}
           </span>
         )}
@@ -9790,7 +9793,7 @@ function KanbanColumnContainer({
             </button>
           )}
           {atLimit && (
-            <div className="mt-1 text-center text-[10px] text-amber-400">WIP limit reached</div>
+            <div className="mt-1 text-center text-[11px] text-amber-400">WIP limit reached</div>
           )}
         </div>
       </SortableContext>
@@ -10003,9 +10006,9 @@ function KanbanItem({
               style={{ background: `${color}1a`, border: `1px solid ${color}35` }}
             >
               <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: color }} />
-              <span className="text-[10px] text-[var(--text-muted)]">{col.title}</span>
+              <span className="text-[11px] text-[var(--text-muted)]">{col.title}</span>
               <span
-                className="rounded-full px-[5px] text-[9px] font-bold leading-[14px]"
+                className="rounded-full px-[5px] text-[10px] font-bold leading-[14px]"
                 style={{ background: `${color}30`, color }}
               >
                 {count}
@@ -10154,7 +10157,7 @@ function KanbanItem({
 
 export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
   const SLabel = ({ children }: { children: React.ReactNode }) => (
-    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</div>
+    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</div>
   );
   const accent = item.kanbanAccentColor ?? "#d59ee8";
   const [openPicker, setOpenPicker] = useState<string | null>(null);
@@ -10272,7 +10275,7 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
                       onChange={(e) => upd({ [key]: e.target.value } as Partial<BlockItem>)}
                       className="h-8 w-24 cursor-pointer border-0 p-0" />
                     <button onClick={() => { upd({ [key]: undefined } as Partial<BlockItem>); setOpenPicker(null); }}
-                      className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset</button>
+                      className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset</button>
                   </div>
                 )}
               </div>
@@ -10333,7 +10336,7 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
                     onChange={(e) => upd({ kanbanBgColor: e.target.value })}
                     className="h-8 w-24 cursor-pointer border-0 p-0" />
                   <button onClick={() => { upd({ kanbanBgColor: undefined }); setOpenPicker(null); }}
-                    className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
+                    className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
                 </div>
               )}
             </div>

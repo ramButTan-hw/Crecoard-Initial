@@ -38,7 +38,7 @@ export function EmbedCardItem({ item, collapsed }: EmbedCardItemProps) {
           <div className="flex-1 min-w-0">
             {/* Source label */}
             {card.source && (
-              <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5"
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5"
                 style={{ color: accent, opacity: 0.85 }}>
                 {card.source}
               </p>
@@ -75,7 +75,7 @@ export function EmbedCardItem({ item, collapsed }: EmbedCardItemProps) {
             style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))" }}>
             {card.fields!.map((f, i) => (
               <div key={i} className={f.inline === false ? "col-span-full" : ""}>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                   {f.label}
                 </p>
                 <p className="text-sm font-medium text-[var(--text-primary)] leading-tight">
@@ -99,7 +99,7 @@ export function EmbedCardItem({ item, collapsed }: EmbedCardItemProps) {
         {/* Footer */}
         {(card.footer || card.timestamp) && (
           <div className="flex items-center gap-1.5 mt-auto pt-1 border-t border-[var(--border)]">
-            <span className="text-[10px] text-[var(--text-muted)] truncate">
+            <span className="text-[11px] text-[var(--text-muted)] truncate">
               {[card.footer, card.timestamp ? new Date(card.timestamp).toLocaleString() : undefined]
                 .filter(Boolean).join(" · ")}
             </span>
@@ -124,7 +124,7 @@ export function EmbedCardStylePanel({ item, upd }: EmbedCardStylePanelProps) {
   return (
     <div className="p-4 flex flex-col gap-4 text-xs">
       <section className="flex flex-col gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Content</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Content</p>
 
         <label className="flex flex-col gap-1">
           <span className="text-[var(--text-secondary)]">Title</span>
@@ -166,7 +166,7 @@ export function EmbedCardStylePanel({ item, upd }: EmbedCardStylePanelProps) {
       </section>
 
       <section className="flex flex-col gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Appearance</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Appearance</p>
 
         <label className="flex items-center gap-2">
           <span className="text-[var(--text-secondary)]">Accent color</span>
@@ -180,7 +180,7 @@ export function EmbedCardStylePanel({ item, upd }: EmbedCardStylePanelProps) {
       </section>
 
       <section className="flex flex-col gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Fields</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Fields</p>
         <p className="text-[var(--text-muted)] leading-relaxed">
           Fields are set by incoming webhooks. To add fields manually, send a POST to your board&apos;s webhook URL.
         </p>

@@ -70,7 +70,7 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-semibold text-[var(--text-primary)] leading-tight">Community Boards</h2>
-                <span className="rounded-full bg-[var(--accent)]/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[var(--accent)]">Coming soon</span>
+                <span className="rounded-full bg-[var(--accent)]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--accent)]">Coming soon</span>
               </div>
               <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-tight">
                 Browsing and sharing community boards is coming soon.
@@ -199,11 +199,11 @@ function BoardCard({ board, onUse, disabled }: { board: CommunityBoard; onUse: (
           </div>
         )}
         <div className="absolute inset-0 bg-[var(--accent)]/0 group-hover:bg-[var(--accent)]/5 transition-colors" />
-        <span className="absolute bottom-2 right-2 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-[var(--accent)] text-white opacity-0 group-hover:opacity-100 transition-opacity shadow">
+        <span className="absolute bottom-2 right-2 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[var(--accent)] text-white opacity-0 group-hover:opacity-100 transition-opacity shadow">
           Use board
         </span>
         {cat && (
-          <span className="absolute top-2 left-2 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-black/50 text-white backdrop-blur-sm">
+          <span className="absolute top-2 left-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-black/50 text-white backdrop-blur-sm">
             {cat.emoji} {cat.label}
           </span>
         )}
@@ -217,7 +217,7 @@ function BoardCard({ board, onUse, disabled }: { board: CommunityBoard; onUse: (
         {/* Author + stats */}
         <div className="flex items-center gap-2 mt-auto pt-1.5 border-t border-[var(--border)]">
           <AuthorAvatar name={board.author.name} avatarUrl={board.author.avatarUrl} />
-          <span className="text-[10px] text-[var(--text-muted)] truncate flex-1">{board.author.name}</span>
+          <span className="text-[11px] text-[var(--text-muted)] truncate flex-1">{board.author.name}</span>
           <div className="flex items-center gap-2.5 shrink-0">
             <StatPill icon={<Heart size={9} />} value={board.likes} />
             <StatPill icon={<Download size={9} />} value={board.uses} />
@@ -228,7 +228,7 @@ function BoardCard({ board, onUse, disabled }: { board: CommunityBoard; onUse: (
         {board.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {board.tags.slice(0, 3).map((tag) => (
-              <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--surface-overlay)] text-[var(--text-muted)]">
+              <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--surface-overlay)] text-[var(--text-muted)]">
                 {tag}
               </span>
             ))}
@@ -392,7 +392,7 @@ function PublishModal({ onClose }: { onClose: () => void }) {
               placeholder="What's this board for? Who would benefit from it?"
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/60 transition-colors placeholder:text-[var(--text-muted)] resize-none"
             />
-            <span className="text-[10px] text-[var(--text-muted)] self-end">{description.length}/280</span>
+            <span className="text-[11px] text-[var(--text-muted)] self-end">{description.length}/280</span>
           </Field>
 
           <Field label="Category">
@@ -430,7 +430,7 @@ function PublishModal({ onClose }: { onClose: () => void }) {
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1.5">
                 {tags.map((t) => (
-                  <span key={t} className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/20">
+                  <span key={t} className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/20">
                     {t}
                     <button onClick={() => removeTag(t)} className="hover:opacity-60 transition-opacity"><X size={8} /></button>
                   </span>
@@ -513,7 +513,7 @@ function AuthorAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string })
   return avatarUrl ? (
     <img src={avatarUrl} alt={name} className="w-5 h-5 rounded-full object-cover shrink-0" />
   ) : (
-    <div className="w-5 h-5 rounded-full bg-[var(--accent)] flex items-center justify-center shrink-0 text-[9px] font-bold text-white">
+    <div className="w-5 h-5 rounded-full bg-[var(--accent)] flex items-center justify-center shrink-0 text-[10px] font-bold text-white">
       {name.charAt(0).toUpperCase()}
     </div>
   );
@@ -521,7 +521,7 @@ function AuthorAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string })
 
 function StatPill({ icon, value }: { icon: React.ReactNode; value: number }) {
   return (
-    <span className="flex items-center gap-0.5 text-[10px] text-[var(--text-muted)]">
+    <span className="flex items-center gap-0.5 text-[11px] text-[var(--text-muted)]">
       {icon} {value.toLocaleString()}
     </span>
   );

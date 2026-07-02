@@ -340,6 +340,10 @@ export interface BlockItem {
   textAnimationCustom?: import("@/lib/animSpec").AnimSpec;
   /** Entrance effect when the item mounts on screen */
   itemEntrance?: "fade" | "scale" | "rise" | "custom";
+  /** Readable backdrop behind reading-surface items over board wallpapers (undefined = auto) */
+  itemScrim?: boolean;
+  /** Explicit readable backdrop for text items */
+  textBackdrop?: boolean;
   itemEntranceCustom?: import("@/lib/animSpec").AnimSpec;
   textBorderStyle?: "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset" | "outset" | "glow";
   textBorderColor?: string;

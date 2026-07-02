@@ -125,7 +125,7 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
           {hasBoardTheme && tab === "colors" && (
             <button
               onClick={() => clearBoardTheme(activeBoardId)}
-              className="text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors underline"
+              className="text-[11px] text-[var(--text-muted)] hover:text-red-400 transition-colors underline"
             >
               reset to app
             </button>
@@ -209,7 +209,7 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
                     <div key={saved.id} className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2">
                       <span className="h-3 w-3 rounded-full border border-white/20 flex-shrink-0" style={{ backgroundColor: saved.vars.accent }} />
                       <span className="flex-1 text-xs text-[var(--text-primary)] truncate">{saved.name}</span>
-                      <button onClick={() => setBoardTheme(activeBoardId, saved.vars)} className="text-[10px] font-medium text-[var(--accent)] hover:underline">Apply</button>
+                      <button onClick={() => setBoardTheme(activeBoardId, saved.vars)} className="text-[11px] font-medium text-[var(--accent)] hover:underline">Apply</button>
                       <button onClick={() => deleteSavedTheme(saved.id)} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><Trash2 size={11} /></button>
                     </div>
                   ))}
@@ -224,7 +224,7 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
           <>
             {/* ── THEME BACKGROUND (outer — behind canvas) ── */}
             <div className="rounded-lg border border-[var(--border)] p-3 flex flex-col gap-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">
                 Theme Background <span className="normal-case text-[var(--text-muted)] font-normal tracking-normal">· behind canvas</span>
               </p>
 
@@ -296,7 +296,7 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
 
             {/* ── BOARD BACKGROUND (inner — part of canvas) ── */}
             <div className="rounded-lg border border-[var(--border)] p-3 flex flex-col gap-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">
                 Board Background <span className="normal-case text-[var(--text-muted)] font-normal tracking-normal">· moves with canvas</span>
               </p>
 
@@ -374,11 +374,11 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
                         <input type="color" value={overlayColor} onChange={(e) => upd({ backgroundOverlayColor: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
                       </span>
                       <span className="flex-1 text-xs text-[var(--text-secondary)]">Tint color</span>
-                      <span className="font-mono text-[10px] text-[var(--text-muted)]">{overlayColor}</span>
+                      <span className="font-mono text-[11px] text-[var(--text-muted)]">{overlayColor}</span>
                     </label>
                     <div className="mt-1.5">
                       <div className="mb-1 flex items-center justify-between">
-                        <span className="text-[10px] text-[var(--text-muted)]">Intensity</span>
+                        <span className="text-[11px] text-[var(--text-muted)]">Intensity</span>
                         <span className="text-xs text-[var(--text-muted)]">{Math.round(overlayOpacity * 100)}%</span>
                       </div>
                       <input type="range" min={0} max={1} step={0.01} value={overlayOpacity} onChange={(e) => upd({ backgroundOverlayOpacity: parseFloat(e.target.value) })} className="w-full accent-[var(--accent)]" />
@@ -397,7 +397,7 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
 
 function SectionLabel({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <p className={cn("mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]", className)}>
+    <p className={cn("mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]", className)}>
       {children}
     </p>
   );
@@ -410,7 +410,7 @@ function ColorPickerRow({ label, value, onChange }: { label: string; value: stri
         <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
       </span>
       <span className="flex-1 text-xs text-[var(--text-secondary)] truncate">{label}</span>
-      <span className="font-mono text-[10px] text-[var(--text-muted)] flex-shrink-0">{value}</span>
+      <span className="font-mono text-[11px] text-[var(--text-muted)] flex-shrink-0">{value}</span>
     </label>
   );
 }

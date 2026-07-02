@@ -302,12 +302,12 @@ function ItemCard({
       {!isFinished && !(isMobile && isSelected) && (
         <div className="absolute top-1 right-1 z-20 pointer-events-none flex items-center gap-1">
           {item.showInCollapsed && (
-            <span title="Pinned to collapsed view" className="flex items-center gap-0.5 rounded-full bg-[var(--accent)]/20 px-1.5 py-0.5 text-[9px] font-semibold text-[var(--accent)] leading-none">
+            <span title="Pinned to collapsed view" className="flex items-center gap-0.5 rounded-full bg-[var(--accent)]/20 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--accent)] leading-none">
               <Pin size={8} />
             </span>
           )}
           {item.settingsLocked && (
-            <span className="flex items-center gap-0.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-amber-400 leading-none">
+            <span className="flex items-center gap-0.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 leading-none">
               <Lock size={8} />
             </span>
           )}
@@ -759,7 +759,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                       )}
                       {summaryItems.length === 0 ? (
                         <div className="absolute inset-0 flex items-center justify-center">
-                          <p className="text-[10px] opacity-50 italic text-center px-3">Pin items using the <Pin size={9} className="inline" /> button</p>
+                          <p className="text-[11px] opacity-50 italic text-center px-3">Pin items using the <Pin size={9} className="inline" /> button</p>
                         </div>
                       ) : (
                         <div style={{ width: box.width, height: box.height, transform: `scale(${scale})`, transformOrigin: "top left", position: "absolute", top: 0, left: 0 }}>
@@ -778,7 +778,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                     </div>
                   );
                 })()}
-                <p className="mt-2 text-[10px] text-[var(--text-muted)]">{summaryItems.length} pinned · {box.items.length - summaryItems.length} expanded-only</p>
+                <p className="mt-2 text-[11px] text-[var(--text-muted)]">{summaryItems.length} pinned · {box.items.length - summaryItems.length} expanded-only</p>
               </div>
 
               {!isFinished && canEdit && (
@@ -948,7 +948,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
               {/* Collapsed style — independent overrides for the canvas card */}
               <div className="border-t border-[var(--border)] pt-4">
                 <SLabel>Collapsed (canvas card) style</SLabel>
-                <p className="text-[10px] text-[var(--text-muted)] mb-4 -mt-1">
+                <p className="text-[11px] text-[var(--text-muted)] mb-4 -mt-1">
                   Overrides style when the block sits on the board. Leave any field at default to inherit from the expanded style above.
                 </p>
                 <BlockStyleEditor
@@ -960,7 +960,7 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                 {box.collapsedStyle && Object.keys(box.collapsedStyle).length > 0 && (
                   <button
                     onClick={() => updateBox(boardId, boxId, { collapsedStyle: undefined })}
-                    className="mt-3 text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                    className="mt-3 text-[11px] text-[var(--text-muted)] hover:text-red-400 transition-colors"
                   >
                     Reset collapsed style (inherit all from expanded)
                   </button>
@@ -1088,7 +1088,7 @@ function CollapsedLayoutEditor({ box, boardId, boxId }: { box: Box; boardId: str
     <div className="flex flex-col gap-4 p-4 text-xs">
       <div>
         <SLabel>Collapsed preview</SLabel>
-        <p className="text-[10px] text-[var(--text-muted)] mb-2">Drag chips to reposition · grab corner to resize</p>
+        <p className="text-[11px] text-[var(--text-muted)] mb-2">Drag chips to reposition · grab corner to resize</p>
         <div
           className="relative overflow-hidden rounded-xl border border-[var(--border)] mx-auto"
           style={{ width: previewW, height: previewH, background: box.style.backgroundColor, flexShrink: 0 }}
@@ -1120,7 +1120,7 @@ function CollapsedLayoutEditor({ box, boardId, boxId }: { box: Box; boardId: str
           })}
           {summaryItems.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <p className="text-[10px] text-[var(--text-muted)] text-center px-3">Pin items below to see them here</p>
+              <p className="text-[11px] text-[var(--text-muted)] text-center px-3">Pin items below to see them here</p>
             </div>
           )}
         </div>
@@ -1155,7 +1155,7 @@ function CollapsedLayoutEditor({ box, boardId, boxId }: { box: Box; boardId: str
                       moveCollapsedItem(boardId, boxId, item.id, padding, padding + idx * 46);
                       resizeCollapsedItem(boardId, boxId, item.id, defaultW, 40);
                     }}
-                    className="opacity-0 group-hover/pinrow:opacity-100 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-opacity flex-shrink-0"
+                    className="opacity-0 group-hover/pinrow:opacity-100 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-opacity flex-shrink-0"
                     title="Reset position"
                   >
                     ↺
@@ -1165,7 +1165,7 @@ function CollapsedLayoutEditor({ box, boardId, boxId }: { box: Box; boardId: str
             );
           })}
           {box.items.length === 0 && (
-            <p className="text-[10px] text-[var(--text-muted)] text-center py-2">No items in this block yet</p>
+            <p className="text-[11px] text-[var(--text-muted)] text-center py-2">No items in this block yet</p>
           )}
         </div>
       </div>
@@ -1214,6 +1214,14 @@ export function TextStylePanel({ item, upd, hideCollapsed }: { item: BlockItem; 
 
       <TextAnimationSection item={item} upd={upd} />
 
+      <div className="px-4 pb-1">
+        <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--text-secondary)]">
+          <input type="checkbox" checked={!!item.textBackdrop} onChange={(e) => upd({ textBackdrop: e.target.checked || undefined })} className="accent-[var(--accent)]" />
+          Readable backdrop
+        </label>
+        <p className="mt-1 text-[11px] text-[var(--text-muted)]">Dark panel behind the text — for busy wallpapers.</p>
+      </div>
+
       <Divider_ />
 
       {/* Background */}
@@ -1257,7 +1265,7 @@ export function TextStylePanel({ item, upd, hideCollapsed }: { item: BlockItem; 
         <div className="grid grid-cols-3 gap-1.5 mb-3">
           {(["none","drop","hard","glow","neon"] as const).map((s) => (
             <button key={s} onClick={() => upd({ textShadow: s })}
-              className={cn("rounded border py-1.5 text-[10px] capitalize transition-colors",
+              className={cn("rounded border py-1.5 text-[11px] capitalize transition-colors",
                 (item.textShadow ?? "none") === s ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]"
               )}>{s}</button>
           ))}
@@ -1274,7 +1282,7 @@ export function TextStylePanel({ item, upd, hideCollapsed }: { item: BlockItem; 
         <div className="flex items-center justify-between mb-3">
           <SLabel>Border</SLabel>
           <button onClick={() => upd({ textBorderWidth: hasBorder ? 0 : 1, textBorderColor: item.textBorderColor ?? "#ffffff", textBorderStyle: "solid" })}
-            className={cn("rounded px-2.5 py-0.5 text-[10px] transition-colors border", hasBorder ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]")}>
+            className={cn("rounded px-2.5 py-0.5 text-[11px] transition-colors border", hasBorder ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]")}>
             {hasBorder ? "On" : "Off"}
           </button>
         </div>
@@ -1282,14 +1290,14 @@ export function TextStylePanel({ item, upd, hideCollapsed }: { item: BlockItem; 
           <>
             <ColorRow label="Color" color={item.textBorderColor ?? "#ffffff"} open={openPicker === "border"} onToggle={() => setOpenPicker((v) => v === "border" ? null : "border")} onChange={(c) => upd({ textBorderColor: c })} />
             <div className="flex items-center gap-2 mt-2 mb-2">
-              <span className="text-[10px] text-[var(--text-muted)] w-14 flex-shrink-0">Width</span>
+              <span className="text-[11px] text-[var(--text-muted)] w-14 flex-shrink-0">Width</span>
               <input type="number" min={1} max={24} value={item.textBorderWidth ?? 1} onChange={(e) => upd({ textBorderWidth: Number(e.target.value) })} className="w-16 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs outline-none text-[var(--text-primary)]" />
-              <span className="text-[10px] text-[var(--text-muted)]">px</span>
+              <span className="text-[11px] text-[var(--text-muted)]">px</span>
             </div>
             <div className="grid grid-cols-3 gap-1">
               {TEXT_BORDER_STYLES.map((s) => (
                 <button key={s} onClick={() => upd({ textBorderStyle: s as BlockItem["textBorderStyle"] })}
-                  className={cn("rounded border py-1.5 text-[10px] capitalize transition-colors",
+                  className={cn("rounded border py-1.5 text-[11px] capitalize transition-colors",
                     item.textBorderStyle === s ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--text-muted)]"
                   )}>{s}</button>
               ))}
@@ -1303,7 +1311,7 @@ export function TextStylePanel({ item, upd, hideCollapsed }: { item: BlockItem; 
         <Divider_ />
         <div className="px-4 py-4">
           <SLabel>Card view font</SLabel>
-          <p className="text-[10px] text-[var(--text-muted)] mb-3 -mt-1">
+          <p className="text-[11px] text-[var(--text-muted)] mb-3 -mt-1">
             Overrides font when this item is pinned as a collapsed card. Leave blank to inherit.
           </p>
           <div className="mb-2">
@@ -1320,7 +1328,7 @@ export function TextStylePanel({ item, upd, hideCollapsed }: { item: BlockItem; 
               onChange={(e) => upd({ collapsedFontSize: e.target.value ? Number(e.target.value) : undefined })}
               className="w-20 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none"
             />
-            <span className="text-[10px] text-[var(--text-muted)]">px</span>
+            <span className="text-[11px] text-[var(--text-muted)]">px</span>
           </div>
           <div className="flex gap-1.5 mb-2">
             {([
@@ -1351,7 +1359,7 @@ export function TextStylePanel({ item, upd, hideCollapsed }: { item: BlockItem; 
             </label>
             <span className="text-[11px] text-[var(--text-muted)] flex-1">Color</span>
             {item.collapsedFontColor && (
-              <button onClick={() => upd({ collapsedFontColor: undefined })} className="text-[10px] text-[var(--text-muted)] hover:text-red-400 transition-colors">reset</button>
+              <button onClick={() => upd({ collapsedFontColor: undefined })} className="text-[11px] text-[var(--text-muted)] hover:text-red-400 transition-colors">reset</button>
             )}
           </div>
         </div>
@@ -1371,12 +1379,12 @@ function SliderRow({ label, value, min, max, step = 1, decimals = 0, onChange }:
 }) {
   return (
     <div className="flex items-center gap-2 mb-2">
-      <span className="w-12 flex-shrink-0 text-[10px] text-[var(--text-muted)]">{label}</span>
+      <span className="w-12 flex-shrink-0 text-[11px] text-[var(--text-muted)]">{label}</span>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="flex-1 accent-[var(--accent)] h-1"
       />
-      <span className="w-8 text-right text-[10px] text-[var(--text-muted)] flex-shrink-0">{value.toFixed(decimals)}</span>
+      <span className="w-8 text-right text-[11px] text-[var(--text-muted)] flex-shrink-0">{value.toFixed(decimals)}</span>
     </div>
   );
 }
@@ -1399,7 +1407,7 @@ function ColorRow({ label, color, open, onToggle, onChange, allowClear, onClear 
           </div>
         )}
       </div>
-      <span className="text-[10px] text-[var(--text-muted)] w-14 flex-shrink-0">{label}</span>
+      <span className="text-[11px] text-[var(--text-muted)] w-14 flex-shrink-0">{label}</span>
       <input className="flex-1 min-w-0 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 font-mono text-xs text-[var(--text-primary)] outline-none uppercase" value={color} onChange={(e) => onChange(e.target.value)} maxLength={7} placeholder="none" />
       {allowClear && color && <button onClick={onClear} className="text-[var(--text-muted)] hover:text-red-400 text-xs px-1 flex-shrink-0">×</button>}
     </div>
@@ -1470,9 +1478,9 @@ function BlockStyleEditor({ boxId, boardId, style, onUpdate }: {
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-1">
-            <span className="text-[10px] text-[var(--text-muted)]">W</span>
+            <span className="text-[11px] text-[var(--text-muted)]">W</span>
             <input type="number" min={0} max={24} value={style.borderWidth} onChange={(e) => onUpdate({ borderWidth: Number(e.target.value) })} className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none" />
-            <span className="text-[10px] text-[var(--text-muted)]">R</span>
+            <span className="text-[11px] text-[var(--text-muted)]">R</span>
             <input type="number" min={0} max={200} value={style.borderRadius} onChange={(e) => onUpdate({ borderRadius: Number(e.target.value) })} className="w-14 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-xs text-[var(--text-primary)] outline-none" />
           </div>
         </div>
@@ -1485,7 +1493,7 @@ function BlockStyleEditor({ boxId, boardId, style, onUpdate }: {
                 className={cn("flex flex-col items-center gap-1 rounded-lg p-1.5 transition-all", isActive ? "bg-[var(--accent)]/15 ring-1 ring-[var(--accent)]" : "hover:bg-[var(--surface-overlay)]")}
               >
                 <div className="w-full rounded" style={{ height: 18, border: bs.id === "glow" || bs.id === "none" ? "none" : `${w}px ${bs.id} ${style.borderColor}`, boxShadow: bs.id === "glow" ? `0 0 6px 2px ${style.borderColor}` : undefined, background: bs.id === "none" ? "repeating-linear-gradient(45deg,var(--border) 0,var(--border) 1px,transparent 0,transparent 50%) 0/6px 6px" : "transparent" }} />
-                <span className={cn("text-[9px]", isActive ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>{bs.label}</span>
+                <span className={cn("text-[10px]", isActive ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>{bs.label}</span>
               </button>
             );
           })}
@@ -1528,6 +1536,6 @@ function BlockStyleEditor({ boxId, boardId, style, onUpdate }: {
 }
 
 function SLabel({ children }: { children: React.ReactNode }) {
-  return <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>;
+  return <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>;
 }
 

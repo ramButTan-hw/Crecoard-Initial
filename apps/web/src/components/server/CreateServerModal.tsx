@@ -85,7 +85,7 @@ export function CreateServerModal({ onClose, onCreated }: CreateServerModalProps
               {effectiveIcon}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">
                 Icon — pick or type
               </p>
               <div className="flex flex-wrap gap-1.5 mb-2">
@@ -117,7 +117,7 @@ export function CreateServerModal({ onClose, onCreated }: CreateServerModalProps
 
           {/* Name */}
           <div>
-            <label className="block mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Server Name <span className="text-red-400">*</span>
             </label>
             <input
@@ -132,7 +132,7 @@ export function CreateServerModal({ onClose, onCreated }: CreateServerModalProps
 
           {/* Description */}
           <div>
-            <label className="block mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <label className="block mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Description <span className="text-[var(--text-muted)] font-normal normal-case tracking-normal">(optional)</span>
             </label>
             <textarea

@@ -266,9 +266,9 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
           <div className="flex-1 flex flex-col min-h-0 px-5 pt-4 pb-4">
             <div className="flex items-center gap-3 mb-2.5 flex-wrap flex-shrink-0">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Profile Board</p>
-              <span className="text-[10px] text-[var(--text-muted)] opacity-60">Click a block to open its editor · drag &amp; resize freely</span>
+              <span className="text-[11px] text-[var(--text-muted)] opacity-60">Click a block to open its editor · drag &amp; resize freely</span>
               <div className="flex items-center gap-1.5 ml-auto flex-wrap">
-                <span className="text-[10px] text-[var(--text-muted)] mr-0.5">Board bg:</span>
+                <span className="text-[11px] text-[var(--text-muted)] mr-0.5">Board bg:</span>
                 {BOARD_BG_COLORS.map((c) => (
                   <button key={c} onClick={() => { setBoardBg(c); setBoardBgImage(undefined); }}
                     className="h-4 w-4 rounded-sm transition-all hover:scale-110"
@@ -287,7 +287,7 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
                   </div>
                 ) : (
                   <button onClick={() => boardBgImageRef.current?.click()}
-                    className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] text-[var(--text-muted)] border border-dashed border-[var(--border)] hover:border-[var(--text-muted)] transition-colors">
+                    className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-muted)] border border-dashed border-[var(--border)] hover:border-[var(--text-muted)] transition-colors">
                     <Camera size={10} /> img
                   </button>
                 )}
@@ -710,7 +710,7 @@ function BlockEditorPanel({ block, onChange, onDelete, onClose }: {
           }} />
           {block.bgImage && (
             <div>
-              <p className="text-[10px] text-[var(--text-muted)] mb-1">Opacity: {Math.round((block.bgOpacity ?? 0.5) * 100)}%</p>
+              <p className="text-[11px] text-[var(--text-muted)] mb-1">Opacity: {Math.round((block.bgOpacity ?? 0.5) * 100)}%</p>
               <input type="range" min="0.05" max="1" step="0.05" value={block.bgOpacity ?? 0.5}
                 onChange={(e) => onChange({ bgOpacity: Number(e.target.value) })}
                 className="w-full" style={{ accentColor: "var(--accent)" }} />
@@ -742,7 +742,7 @@ function BlockEditorPanel({ block, onChange, onDelete, onClose }: {
                 {/* Item header */}
                 <div className="flex items-center gap-1">
                   <GripVertical size={12} className="text-[var(--text-muted)] cursor-grab flex-shrink-0" />
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)] flex-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] flex-1">
                     {item.type === "text" ? "Text" : "List"}
                   </span>
                   <button onClick={() => deleteItem(item.id)} className="text-[var(--text-muted)] hover:text-red-400 transition-colors">
@@ -798,7 +798,7 @@ function TextItemEditor({ item, onChange }: { item: TextItem; onChange: (p: Part
       <div className="flex gap-1">
         {FONT_FAMILIES.map(({ key, label, css }) => (
           <button key={key} onClick={() => onChange({ fontFamily: key })}
-            className={cn("flex-1 rounded py-0.5 text-[10px] transition-colors", item.fontFamily === key || (!item.fontFamily && key === "sans") ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)]")}
+            className={cn("flex-1 rounded py-0.5 text-[11px] transition-colors", item.fontFamily === key || (!item.fontFamily && key === "sans") ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)]")}
             style={{ fontFamily: css }}>
             {label}
           </button>
@@ -807,18 +807,18 @@ function TextItemEditor({ item, onChange }: { item: TextItem; onChange: (p: Part
 
       {/* Font size + weight */}
       <div className="flex items-center gap-1.5">
-        <label className="text-[9px] text-[var(--text-muted)] whitespace-nowrap">Size</label>
+        <label className="text-[10px] text-[var(--text-muted)] whitespace-nowrap">Size</label>
         <input type="range" min={8} max={32} step={1} value={item.fontSize ?? 12}
           onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
           className="flex-1" style={{ accentColor: "var(--accent)" }} />
-        <span className="text-[9px] text-[var(--text-muted)] w-5 text-right">{item.fontSize ?? 12}</span>
+        <span className="text-[10px] text-[var(--text-muted)] w-5 text-right">{item.fontSize ?? 12}</span>
       </div>
 
       {/* Font weight row */}
       <div className="flex gap-0.5">
         {FONT_WEIGHTS.map((w) => (
           <button key={w} onClick={() => onChange({ fontWeight: w, bold: w >= 700 })}
-            className={cn("flex-1 rounded py-0.5 text-[9px] transition-colors", fw === w ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)]")}
+            className={cn("flex-1 rounded py-0.5 text-[10px] transition-colors", fw === w ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)]")}
             style={{ fontWeight: w }}>
             {FONT_WEIGHT_LABELS[w]}
           </button>
@@ -851,22 +851,22 @@ function TextItemEditor({ item, onChange }: { item: TextItem; onChange: (p: Part
       {/* Line height + letter spacing */}
       <div className="flex gap-1">
         <div className="flex flex-col gap-0.5 flex-1">
-          <span className="text-[9px] text-[var(--text-muted)]">Spacing</span>
+          <span className="text-[10px] text-[var(--text-muted)]">Spacing</span>
           <div className="flex gap-0.5">
             {(["tight","normal","relaxed"] as LineHeight[]).map((lh) => (
               <button key={lh} onClick={() => onChange({ lineHeight: lh })}
-                className={cn("flex-1 rounded py-0.5 text-[9px] transition-colors capitalize", (item.lineHeight ?? "normal") === lh ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)]")}>
+                className={cn("flex-1 rounded py-0.5 text-[10px] transition-colors capitalize", (item.lineHeight ?? "normal") === lh ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)]")}>
                 {lh === "tight" ? "Tght" : lh === "normal" ? "Nrm" : "Rlxd"}
               </button>
             ))}
           </div>
         </div>
         <div className="flex flex-col gap-0.5 flex-1">
-          <span className="text-[9px] text-[var(--text-muted)]">Tracking</span>
+          <span className="text-[10px] text-[var(--text-muted)]">Tracking</span>
           <div className="flex gap-0.5">
             {(["normal","wide","wider"] as LetterSpacing[]).map((ls) => (
               <button key={ls} onClick={() => onChange({ letterSpacing: ls })}
-                className={cn("flex-1 rounded py-0.5 text-[9px] transition-colors", (item.letterSpacing ?? "normal") === ls ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)]")}>
+                className={cn("flex-1 rounded py-0.5 text-[10px] transition-colors", (item.letterSpacing ?? "normal") === ls ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)]")}>
                 {ls === "normal" ? "Nrm" : ls === "wide" ? "Wide" : "Xwde"}
               </button>
             ))}
@@ -903,7 +903,7 @@ function ListItemEditor({ item, onChange }: { item: ListItem; onChange: (p: Part
       <div className="flex gap-1">
         {FONT_FAMILIES.map(({ key, label, css }) => (
           <button key={key} onClick={() => onChange({ fontFamily: key })}
-            className={cn("flex-1 rounded py-0.5 text-[10px] transition-colors", (item.fontFamily ?? "sans") === key ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)]")}
+            className={cn("flex-1 rounded py-0.5 text-[11px] transition-colors", (item.fontFamily ?? "sans") === key ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-overlay)] text-[var(--text-muted)]")}
             style={{ fontFamily: css }}>
             {label}
           </button>
@@ -912,11 +912,11 @@ function ListItemEditor({ item, onChange }: { item: ListItem; onChange: (p: Part
 
       {/* Size + color */}
       <div className="flex items-center gap-1.5">
-        <label className="text-[9px] text-[var(--text-muted)] whitespace-nowrap">Size</label>
+        <label className="text-[10px] text-[var(--text-muted)] whitespace-nowrap">Size</label>
         <input type="range" min={8} max={18} step={1} value={item.fontSize ?? 12}
           onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
           className="flex-1" style={{ accentColor: "var(--accent)" }} />
-        <span className="text-[9px] text-[var(--text-muted)] w-5 text-right">{item.fontSize ?? 12}</span>
+        <span className="text-[10px] text-[var(--text-muted)] w-5 text-right">{item.fontSize ?? 12}</span>
       </div>
       <div className="flex gap-1 flex-wrap items-center">
         {TEXT_COLORS.map((c) => (
@@ -952,7 +952,7 @@ function ListItemEditor({ item, onChange }: { item: ListItem; onChange: (p: Part
       ))}
       {item.entries.length < 8 && (
         <button onClick={() => onChange({ entries: [...item.entries, { id: crypto.randomUUID(), text: "", checked: false }] })}
-          className="text-left text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+          className="text-left text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
           + Add entry
         </button>
       )}
@@ -965,7 +965,7 @@ function ListItemEditor({ item, onChange }: { item: ListItem; onChange: (p: Part
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{label}</p>
       {children}
     </div>
   );

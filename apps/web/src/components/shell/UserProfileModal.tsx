@@ -184,7 +184,7 @@ export function UserProfileModal({
         {/* Profile board — grows to fill remaining modal height */}
         <div className="flex-1 flex flex-col min-h-0 border-t border-[var(--border)] overflow-hidden">
           <div className="px-5 pt-3 pb-2 flex-shrink-0">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Profile Board</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Profile Board</p>
           </div>
           <div className="flex-1 min-h-0 px-5 pb-5 flex flex-col">
             <div

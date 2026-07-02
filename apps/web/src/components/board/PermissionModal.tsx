@@ -54,14 +54,14 @@ function RoleSelector({
     <div className="space-y-2">
       <div>
         <p className="text-[12px] font-semibold text-[var(--text-primary)]">{label}</p>
-        <p className="text-[10px] text-[var(--text-muted)]">{description}</p>
+        <p className="text-[11px] text-[var(--text-muted)]">{description}</p>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {/* Everyone (no restriction) chip */}
         <button
           onClick={() => onChange(null)}
           className={cn(
-            "flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[10px] font-medium transition-all border",
+            "flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all border",
             isEveryone
               ? "bg-[var(--accent)] text-white border-[var(--accent)]"
               : "bg-[var(--surface)] text-[var(--text-muted)] border-[var(--border)] hover:border-[var(--accent)]/50 hover:text-[var(--text-primary)]"
@@ -80,7 +80,7 @@ function RoleSelector({
               onClick={() => toggle(role.id)}
               title={role.name}
               className={cn(
-                "flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[10px] font-medium transition-all border",
+                "flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all border",
                 selected
                   ? "text-white border-transparent"
                   : isEveryone
@@ -100,7 +100,7 @@ function RoleSelector({
 
         {/* Owner always chip — informational */}
         <span
-          className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[10px] font-medium border border-[var(--border)] text-[var(--text-muted)] opacity-60 cursor-default"
+          className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium border border-[var(--border)] text-[var(--text-muted)] opacity-60 cursor-default"
           title="Owner always has access"
         >
           <Crown size={9} />
@@ -109,7 +109,7 @@ function RoleSelector({
       </div>
 
       {serverRoles.length === 0 && !isEveryone && (
-        <p className="text-[10px] text-[var(--text-muted)] italic">No custom roles — create roles in server settings.</p>
+        <p className="text-[11px] text-[var(--text-muted)] italic">No custom roles — create roles in server settings.</p>
       )}
     </div>
   );
@@ -183,7 +183,7 @@ export function ItemPermissionModal({ targetLabel, itemType, initialPerms, onSav
         <>
           <div className="border-t border-[var(--border)] pt-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Functions</p>
-            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Fine-grained controls within the item</p>
+            <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Fine-grained controls within the item</p>
           </div>
           {fnSchema.map((f) => (
             <RoleSelector key={f.id} label={f.label} description={f.description}

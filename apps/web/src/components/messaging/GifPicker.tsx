@@ -131,7 +131,7 @@ export function GifPicker({ onSelect, onClose }: GifPickerProps) {
 
       {/* Attribution */}
       <div className="flex-shrink-0 border-t border-[var(--border)] px-3 py-1 text-right">
-        <span className="text-[9px] text-[var(--text-muted)]">Powered by GIPHY</span>
+        <span className="text-[10px] text-[var(--text-muted)]">Powered by GIPHY</span>
       </div>
     </div>
   );

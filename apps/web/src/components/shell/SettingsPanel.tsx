@@ -142,7 +142,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </button>
                 ))}
               </div>
-              <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">
+              <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">
                 App theme is the default. Boards can override it with their own theme.
               </p>
             </div>
@@ -199,7 +199,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     <div key={saved.id} className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-2">
                       <span className="h-3 w-3 rounded-full border border-white/20 flex-shrink-0" style={{ backgroundColor: saved.vars.accent }} />
                       <span className="flex-1 text-xs text-[var(--text-primary)] truncate">{saved.name}</span>
-                      <button onClick={() => handlePresetClick(saved.vars)} className="text-[10px] font-medium text-[var(--accent)] hover:underline transition-colors">Apply</button>
+                      <button onClick={() => handlePresetClick(saved.vars)} className="text-[11px] font-medium text-[var(--accent)] hover:underline transition-colors">Apply</button>
                       <button onClick={() => deleteSavedTheme(saved.id)} className="text-[var(--text-muted)] hover:text-red-400 transition-colors"><Trash2 size={11} /></button>
                     </div>
                   ))}
@@ -353,11 +353,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                       />
                     </span>
                     <span className="flex-1 text-xs text-[var(--text-secondary)]">Tint color</span>
-                    <span className="font-mono text-[10px] text-[var(--text-muted)]">{appBg.overlayColor}</span>
+                    <span className="font-mono text-[11px] text-[var(--text-muted)]">{appBg.overlayColor}</span>
                   </label>
                   <div className="mt-1.5">
                     <div className="mb-1 flex items-center justify-between">
-                      <span className="text-[10px] text-[var(--text-muted)]">Intensity</span>
+                      <span className="text-[11px] text-[var(--text-muted)]">Intensity</span>
                       <span className="text-xs text-[var(--text-muted)]">{Math.round(appBg.overlayOpacity * 100)}%</span>
                     </div>
                     <input
@@ -380,7 +380,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
 function SectionLabel({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <p className={cn("mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]", className)}>
+    <p className={cn("mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]", className)}>
       {children}
     </p>
   );
@@ -398,7 +398,7 @@ function ColorPickerRow({ label, value, onChange }: { label: string; value: stri
         />
       </span>
       <span className="flex-1 text-xs text-[var(--text-secondary)] truncate">{label}</span>
-      <span className="font-mono text-[10px] text-[var(--text-muted)] flex-shrink-0">{value}</span>
+      <span className="font-mono text-[11px] text-[var(--text-muted)] flex-shrink-0">{value}</span>
     </label>
   );
 }

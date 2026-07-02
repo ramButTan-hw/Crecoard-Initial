@@ -131,7 +131,7 @@ function MenuRow({
       )}
       <span className="flex-1">{item.label}</span>
       {item.shortcut && (
-        <span className="text-[10px] text-[var(--text-muted)] font-mono">{item.shortcut}</span>
+        <span className="text-[11px] text-[var(--text-muted)] font-mono">{item.shortcut}</span>
       )}
       {item.children && <ChevronRight size={12} className="text-[var(--text-muted)] ml-1 shrink-0" />}
       {showSub && item.children && rowRef.current && (

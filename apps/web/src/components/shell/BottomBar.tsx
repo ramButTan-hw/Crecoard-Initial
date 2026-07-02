@@ -187,7 +187,7 @@ export function BottomBar({
           {/* Favorite board preview */}
           {favoriteBoard ? (
             <div className="flex flex-col flex-1 min-h-0">
-              <p className="px-4 pt-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              <p className="px-4 pt-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 {favoriteBoard.name || "Untitled Board"}
               </p>
               <div
@@ -298,7 +298,7 @@ export function BottomBar({
             <span className="flex h-[22px] w-[22px] items-center justify-center overflow-hidden rounded-full" style={{ background: mounted ? (identity.color ?? "var(--surface-overlay)") : "var(--surface-overlay)" }}>
               {mounted && identity.avatarUrl
                 ? <img src={identity.avatarUrl} alt="" className="h-full w-full object-cover" />
-                : <span className="text-[10px] font-bold text-white">{mounted ? (identity.displayName[0] ?? "?").toUpperCase() : "?"}</span>}
+                : <span className="text-[11px] font-bold text-white">{mounted ? (identity.displayName[0] ?? "?").toUpperCase() : "?"}</span>}
             </span>
           } />
         </nav>
@@ -421,7 +421,7 @@ function MobileTab({ label, icon, active, onClick }: {
       )}
     >
       <span className="flex h-[22px] items-center justify-center">{icon}</span>
-      <span className="text-[10px] font-medium leading-none">{label}</span>
+      <span className="text-[11px] font-medium leading-none">{label}</span>
     </button>
   );
 }
@@ -511,7 +511,7 @@ function BarBtn({
       >
         {icon ?? children}
         {!!unread && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white leading-none">
+          <span className="absolute -top-0.5 -right-0.5 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white leading-none">
             {unread > 99 ? "99+" : unread}
           </span>
         )}
@@ -553,7 +553,7 @@ function ServerCard({ srv, onSelect }: { srv: SrvEntry; onSelect: () => void }) 
           ? <img src={srv.icon} alt="" className="h-full w-full object-cover" />
           : <span className="text-3xl select-none">{srv.icon}</span>}
         {srv.online !== undefined && (
-          <span className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-black/50 px-1.5 py-0.5 text-[10px] text-white">
+          <span className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-black/50 px-1.5 py-0.5 text-[11px] text-white">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400" />
             {srv.online} online
           </span>
@@ -594,7 +594,7 @@ function ServerGridModal({
         {/* My servers (real) */}
         {realServers.length > 0 && (
           <>
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">My Servers</p>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">My Servers</p>
             <div className="grid grid-cols-3 gap-3 mb-4">
               {realServers.map((srv) => (
                 <ServerCard key={srv.id} srv={srv} onSelect={() => onServerSelect(srv.id)} />

@@ -128,7 +128,7 @@ function TrackerGGSetupFields({
   return (
     <>
       <label className="flex flex-col gap-1">
-        <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">Game</span>
+        <span className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">Game</span>
         <select value={game} onChange={(e) => setGame(e.target.value as TrackerGGGame)}
           className="rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]">
           {(Object.keys(GAME_LABEL) as TrackerGGGame[]).map((g) => (
@@ -138,7 +138,7 @@ function TrackerGGSetupFields({
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">Platform</span>
+        <span className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">Platform</span>
         <select value={platform} onChange={(e) => setPlatform(e.target.value as TrackerGGPlatform)}
           className="rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]">
           {GAME_PLATFORMS[game].map((p) => (
@@ -148,7 +148,7 @@ function TrackerGGSetupFields({
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">Username</span>
+        <span className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">Username</span>
         <input value={username} onChange={(e) => setUsername(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && username.trim() && onSave({ game, platform, username: username.trim() })}
           placeholder={USERNAME_HINT[game]}
@@ -181,12 +181,12 @@ function SteamSetupFields({
   return (
     <>
       <label className="flex flex-col gap-1.5">
-        <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">Steam profile</span>
+        <span className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">Steam profile</span>
         <input value={identifier} onChange={(e) => setIdentifier(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && identifier.trim() && onSave({ identifier: identifier.trim() })}
           placeholder="username or steamcommunity.com/id/…"
           className="rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]" />
-        <span className="text-[10px] text-[var(--text-muted)]">
+        <span className="text-[11px] text-[var(--text-muted)]">
           Vanity URL (e.g. <em>gaben</em>), full profile URL, or 17-digit SteamID64.
         </span>
       </label>
@@ -307,13 +307,13 @@ function TrackerGGBody({ item, compact }: { item: BlockItem; compact: boolean })
         <div className="grid grid-cols-2 gap-x-3 gap-y-2">
           {data.stats.map((stat) => (
             <div key={stat.key}>
-              <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide leading-none mb-0.5">
+              <p className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide leading-none mb-0.5">
                 {stat.label}
               </p>
               <div className="flex items-center gap-1">
                 <p className="text-sm font-semibold text-[var(--text-primary)]">{stat.value}</p>
                 {stat.percentile !== undefined && stat.percentile >= 75 && (
-                  <span className="text-[9px] font-semibold px-1 rounded-full"
+                  <span className="text-[10px] font-semibold px-1 rounded-full"
                     style={{ background: accent + "30", color: accent }}>
                     top {100 - Math.round(stat.percentile)}%
                   </span>
@@ -363,7 +363,7 @@ function SteamBody({ item, compact }: { item: BlockItem; compact: boolean }) {
 
       {!compact && data.recentGames.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Recent</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Recent</p>
           {data.recentGames.map((g) => (
             <div key={g.appId} className="flex items-center gap-2">
               {g.iconUrl ? (
@@ -378,11 +378,11 @@ function SteamBody({ item, compact }: { item: BlockItem; compact: boolean }) {
               <span className="text-xs text-[var(--text-primary)] truncate flex-1">{g.name}</span>
               <div className="flex flex-col items-end flex-shrink-0">
                 {g.playtime2weeks !== undefined && (
-                  <span className="text-[9px] font-semibold text-[#66c0f4]">
+                  <span className="text-[10px] font-semibold text-[#66c0f4]">
                     {fmtPlaytime(g.playtime2weeks)} this week
                   </span>
                 )}
-                <span className="text-[9px] text-[var(--text-muted)]">
+                <span className="text-[10px] text-[var(--text-muted)]">
                   {fmtPlaytime(g.playtimeForever)} total
                 </span>
               </div>
@@ -510,7 +510,7 @@ export function ExternalItem({ item, boardId, boxId, collapsed, isFinished, onUp
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)] flex-shrink-0"
           style={{ borderLeftWidth: 3, borderLeftColor: st.accent }}>
           <Icon size={12} style={{ color: st.accent }} className="flex-shrink-0" />
-          <span className="text-[10px] font-black tracking-widest flex-1 truncate" style={{ color: st.accent }}>
+          <span className="text-[11px] font-black tracking-widest flex-1 truncate" style={{ color: st.accent }}>
             {headerLabel}
           </span>
           {!isFinished && (
@@ -559,7 +559,7 @@ export function ExternalItem({ item, boardId, boxId, collapsed, isFinished, onUp
         {/* Footer */}
         {!st.hideFooter && fetchedAt && (
           <div className="mt-auto pt-1 border-t border-[var(--border)] flex-shrink-0">
-            <p className="text-[9px] text-[var(--text-muted)]">
+            <p className="text-[10px] text-[var(--text-muted)]">
               Updated {new Date(fetchedAt).toLocaleTimeString()}
             </p>
           </div>
@@ -580,7 +580,7 @@ function ColorRow({
       <input type="color" value={value} onChange={(e) => onChange(e.target.value)}
         className="w-6 h-6 rounded cursor-pointer border border-[var(--border)] bg-transparent p-0.5" />
       <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-20 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5 text-[10px] font-mono text-[var(--text-primary)] outline-none focus:border-[var(--accent)]" />
+        className="w-20 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)] outline-none focus:border-[var(--accent)]" />
     </div>
   );
 }
@@ -636,7 +636,7 @@ export function ExternalStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
 
       {/* Player info + refresh */}
       <section className="flex flex-col gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
           {provider ? PROVIDER_META[provider].label : "Integration"}
         </p>
         {provider === "tracker-gg" && item.trackerGG && (
@@ -662,7 +662,7 @@ export function ExternalStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
 
       {/* Color customization */}
       <section className="flex flex-col gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Colors</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Colors</p>
         <ColorRow label="Accent" value={st.accent} onChange={(v) => patch({ accentColor: v })} />
         <ColorRow
           label="Background"
@@ -670,7 +670,7 @@ export function ExternalStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
           onChange={(v) => patch({ bgColor: v })}
         />
         <button onClick={() => patch({ accentColor: undefined, bgColor: undefined })}
-          className="self-start text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+          className="self-start text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
           Reset to defaults
         </button>
       </section>
@@ -679,11 +679,11 @@ export function ExternalStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
 
       {/* Layout options */}
       <section className="flex flex-col gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Layout</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Layout</p>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="text-xs text-[var(--text-muted)] flex-1">Corner radius</span>
-            <span className="text-[10px] text-[var(--text-muted)] w-6 text-right">{st.radius}</span>
+            <span className="text-[11px] text-[var(--text-muted)] w-6 text-right">{st.radius}</span>
           </div>
           <input type="range" min={0} max={16} step={1} value={st.radius}
             onChange={(e) => patch({ borderRadius: Number(e.target.value) })}

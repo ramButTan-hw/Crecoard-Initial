@@ -76,9 +76,9 @@ function SortableTab({
       onClick={onActivate}
     >
       {isPublic ? (
-        <span className="text-[10px] text-green-400" title="Public">●</span>
+        <span className="text-[11px] text-green-400" title="Public">●</span>
       ) : (
-        <span className="text-[10px] text-[var(--text-muted)]" title="Private">●</span>
+        <span className="text-[11px] text-[var(--text-muted)]" title="Private">●</span>
       )}
 
       {isRenaming ? (

@@ -240,7 +240,7 @@ function DraggableItem({ def, selectedBoxId, onPick }: { def: (typeof ITEM_DEFIN
         <span className="flex-shrink-0 text-[var(--text-muted)]">{def.icon}</span>
         <div className="flex min-w-0 flex-col">
           <span className="text-sm leading-tight">{def.label}</span>
-          <span className="text-[10px] leading-tight text-[var(--text-muted)]">{def.description}</span>
+          <span className="text-[11px] leading-tight text-[var(--text-muted)]">{def.description}</span>
         </div>
       </button>
     );
@@ -261,7 +261,7 @@ function DraggableItem({ def, selectedBoxId, onPick }: { def: (typeof ITEM_DEFIN
       <span className={cn("flex-shrink-0", selectedBoxId ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>{def.icon}</span>
       <div className="flex flex-col min-w-0">
         <span className="text-sm leading-tight">{def.label}</span>
-        <span className="text-[10px] text-[var(--text-muted)] leading-tight">{def.description}</span>
+        <span className="text-[11px] text-[var(--text-muted)] leading-tight">{def.description}</span>
       </div>
     </div>
   );
@@ -280,7 +280,7 @@ function SectionHeader({
       {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
       {label}
       {count !== undefined && (
-        <span className="ml-auto text-[10px] font-normal tabular-nums">{count}</span>
+        <span className="ml-auto text-[11px] font-normal tabular-nums">{count}</span>
       )}
     </button>
   );
@@ -365,17 +365,17 @@ function CollectionSection({ boardId }: { boardId: string }) {
               {isOpen ? <ChevronDown size={11} className="text-[var(--text-muted)] flex-shrink-0" /> : <ChevronRight size={11} className="text-[var(--text-muted)] flex-shrink-0" />}
               <LayoutGrid size={11} className="text-[var(--accent)] flex-shrink-0" />
               <span className="text-[11px] text-[var(--text-secondary)] truncate flex-1">{box.title || "Untitled"}</span>
-              <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">{box.items.length}</span>
+              <span className="text-[11px] text-[var(--text-muted)] flex-shrink-0">{box.items.length}</span>
             </button>
             {isOpen && (
               <div className="ml-5 mb-1 space-y-0.5">
                 {box.items.length === 0 ? (
-                  <p className="px-3 py-1 text-[10px] text-[var(--text-muted)] italic">Empty</p>
+                  <p className="px-3 py-1 text-[11px] text-[var(--text-muted)] italic">Empty</p>
                 ) : (
                   box.items.map((item) => (
                     <div key={item.id} className="flex items-center gap-1.5 px-3 py-0.5">
                       <ItemTypeIcon type={item.type} />
-                      <span className="text-[10px] text-[var(--text-muted)] truncate">
+                      <span className="text-[11px] text-[var(--text-muted)] truncate">
                         {TYPE_LABEL[item.type] ?? item.type}
                         {item.text ? <span className="opacity-60"> — {item.text.slice(0, 30)}</span> : null}
                       </span>
@@ -399,14 +399,14 @@ function CollectionSection({ boardId }: { boardId: string }) {
             {canvasOpen ? <ChevronDown size={11} className="text-[var(--text-muted)] flex-shrink-0" /> : <ChevronRight size={11} className="text-[var(--text-muted)] flex-shrink-0" />}
             <Layers size={11} className="text-[var(--accent)] flex-shrink-0" />
             <span className="text-[11px] text-[var(--text-secondary)] flex-1">Canvas items</span>
-            <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">{canvasItems.length}</span>
+            <span className="text-[11px] text-[var(--text-muted)] flex-shrink-0">{canvasItems.length}</span>
           </button>
           {canvasOpen && (
             <div className="ml-5 mb-1 space-y-0.5">
               {canvasItems.map((item) => (
                 <div key={item.id} className="flex items-center gap-1.5 px-3 py-0.5">
                   <ItemTypeIcon type={item.type} />
-                  <span className="text-[10px] text-[var(--text-muted)] truncate">
+                  <span className="text-[11px] text-[var(--text-muted)] truncate">
                     {TYPE_LABEL[item.type] ?? item.type}
                     {item.text ? <span className="opacity-60"> — {item.text.slice(0, 30)}</span> : null}
                   </span>
