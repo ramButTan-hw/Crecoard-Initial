@@ -88,6 +88,8 @@ export function useBoardChatItem(itemId: string, boardId: string, channelName?: 
   }, [chatKey]);
 
   const messages = ctx.messagesByItem[chatKey] ?? [];
+  /** True until the first page for this channel has arrived (undefined = not fetched yet). */
+  const loading = ctx.messagesByItem[chatKey] === undefined;
 
   const send = useCallback(
     (
@@ -120,7 +122,7 @@ export function useBoardChatItem(itemId: string, boardId: string, channelName?: 
     [chatKey]
   );
 
-  return { messages, send, chatKey, loadOlder, reactions: ctx.reactionsByMessage, toggleReaction, togglePin };
+  return { messages, loading, send, chatKey, loadOlder, reactions: ctx.reactionsByMessage, toggleReaction, togglePin };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -157,7 +157,16 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   animation: cr-rainbow calc(var(--cr-dur, 0.6s) * 8) linear infinite;
 }
 .cr-anim-rainbow, .cr-anim-rainbow * { -webkit-text-fill-color: transparent; }
+/* Loading skeleton — pulsing surface block for content that is on its way */
+@keyframes cr-skeleton { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+.cr-skeleton {
+  background: var(--surface-overlay);
+  border-radius: 8px;
+  animation: cr-skeleton 1.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .cr-skeleton { animation: none; }
   .cr-anim-fade, .cr-anim-rise, .cr-anim-scale, .cr-anim-wipe,
   .cr-anim-pulse, .cr-anim-float, .cr-glow-pulse-layer,
   .cr-anim-glitch, .cr-anim-breathe, .cr-anim-rainbow,

@@ -85,6 +85,9 @@ export function PlayerHost() {
   const [docked, setDocked] = useState(false);
   const dockedRef = useRef(docked);
   const [showVol, setShowVol] = useState(false);
+  // Media fade-in: iframes paint late — show a skeleton until they load.
+  const [mediaLoaded, setMediaLoaded] = useState(false);
+  useEffect(() => { setMediaLoaded(false); }, [embed?.url]);
 
   // ── Pin loop: track the owning slot's rect, else dock bottom-right ─────────
   useEffect(() => {
@@ -377,10 +380,15 @@ export function PlayerHost() {
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
       allowFullScreen
       className="w-full border-none block"
-      style={docked
-        ? (embed.fixedHeight ? { height: Math.min(embed.fixedHeight, 166) } : { aspectRatio: embed.aspectRatio ?? "16/9" })
-        : { height: "100%" }}
+      style={{
+        ...(docked
+          ? (embed.fixedHeight ? { height: Math.min(embed.fixedHeight, 166) } : { aspectRatio: embed.aspectRatio ?? "16/9" })
+          : { height: "100%" }),
+        opacity: mediaLoaded ? 1 : 0,
+        transition: "opacity 0.3s ease",
+      }}
       onLoad={() => {
+        setMediaLoaded(true);
         if (embed.platform === "YouTube") {
           iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1 }), "*");
         }
@@ -413,6 +421,9 @@ export function PlayerHost() {
         border: docked ? "1px solid var(--border)" : undefined,
       }}
     >
+      {!mediaLoaded && embed.kind === "iframe" && embed.platform !== "Spotify" && (
+        <div aria-hidden className="cr-skeleton absolute inset-0" style={{ borderRadius: "inherit" }} />
+      )}
       {media}
 
       {docked && (

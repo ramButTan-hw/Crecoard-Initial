@@ -134,7 +134,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const serverId = useBoardStore((s) => (s.serverBoards[chatBoardId] ?? s.boards.find((b) => b.id === chatBoardId))?.serverId);
   const { serverMembers } = useServers();
   const roster = serverId ? (serverMembers[serverId] ?? []) : [];
-  const { messages, send, chatKey, loadOlder, reactions, toggleReaction, togglePin } = useBoardChatItem(item.id, chatBoardId, channelName);
+  const { messages, loading: chatLoading, send, chatKey, loadOlder, reactions, toggleReaction, togglePin } = useBoardChatItem(item.id, chatBoardId, channelName);
 
   // One-time heal: legacy chat backgrounds were stored as inline data URLs — a
   // single wallpaper could fill the whole localStorage quota ("Storage is full")
@@ -516,9 +516,21 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
         className="relative z-10 flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2"
         style={{ minHeight: 0, scrollbarWidth: "thin" }}
       >
-        {displayed.length === 0 ? (
+        {chatLoading && !searchTerm ? (
+          <div className="flex flex-1 flex-col justify-end gap-3 py-2" aria-busy="true">
+            {[62, 40, 76].map((w, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <div className="cr-skeleton h-7 w-7 shrink-0 rounded-full" style={{ animationDelay: `${i * 130}ms` }} />
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5">
+                  <div className="cr-skeleton h-2.5 w-24 rounded" style={{ animationDelay: `${i * 130}ms` }} />
+                  <div className="cr-skeleton h-2.5 rounded" style={{ width: `${w}%`, animationDelay: `${i * 130}ms` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : displayed.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
-            <span className="text-2xl">{searchTerm ? "🔍" : "#"}</span>
+            <span className="text-lg font-bold text-[var(--text-muted)]">{searchTerm ? <Search size={20} /> : "#"}</span>
             <p className="text-xs font-semibold text-[var(--text-primary)]">{searchTerm ? "No matches" : `#${channelName}`}</p>
             <p className="text-[11px] text-[var(--text-muted)]">
               {searchTerm ? `No messages matching “${chatSearch.trim()}”.` : `This is the beginning of #${channelName}.`}

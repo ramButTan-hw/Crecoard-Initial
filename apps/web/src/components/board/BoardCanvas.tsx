@@ -539,7 +539,23 @@ export function BoardCanvas() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [boardId, removeBox, duplicateBox, setExpandedBox, setZoom, setPanOffset, canEditBoard, broadcastOp]);
 
-  if (!board) return null;
+  if (!board) {
+    // Board content is on its way (server board being fetched) — ghost layout
+    // instead of a blank void so the switch feels instant.
+    return (
+      <div className="relative h-full w-full flex-1 overflow-hidden" aria-busy="true">
+        {[
+          { left: "12%", top: "14%", width: 300, height: 210 },
+          { left: "42%", top: "10%", width: 260, height: 170 },
+          { left: "66%", top: "24%", width: 300, height: 230 },
+          { left: "18%", top: "54%", width: 360, height: 190 },
+          { left: "54%", top: "60%", width: 280, height: 170 },
+        ].map((g, i) => (
+          <div key={i} className="cr-skeleton absolute" style={{ ...g, animationDelay: `${i * 130}ms` }} />
+        ))}
+      </div>
+    );
+  }
 
   const bgSize = board.backgroundSize ?? "cover";
 
