@@ -315,7 +315,7 @@ export interface BlockItem {
   textBgColor?: string;
   textBgImage?: string;
   /** Decorative animation preset — fade/rise/wipe play once, pulse/float loop (CSS-only, honors reduced-motion) */
-  textAnimation?: "fade" | "rise" | "wipe" | "pulse" | "float" | "custom";
+  textAnimation?: "fade" | "rise" | "wipe" | "pulse" | "float" | "glitch" | "breathe" | "rainbow" | "custom";
   textAnimationSpeed?: "slow" | "normal" | "fast";
   /** Embedded custom animation spec (copied from the library on apply — see lib/animSpec) */
   textAnimationCustom?: import("@/lib/animSpec").AnimSpec;

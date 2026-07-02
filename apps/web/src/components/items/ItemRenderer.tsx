@@ -8494,6 +8494,7 @@ export function TextAnimationSection({ item, upd }: { item: BlockItem; upd: (p: 
   const presets: { v: BlockItem["textAnimation"] | undefined; label: string }[] = [
     { v: undefined, label: "None" }, { v: "fade", label: "Fade in" }, { v: "rise", label: "Rise" },
     { v: "wipe", label: "Wipe" }, { v: "pulse", label: "Pulse" }, { v: "float", label: "Float" },
+    { v: "glitch", label: "Glitch" }, { v: "breathe", label: "Breathe" }, { v: "rainbow", label: "Rainbow" },
   ];
   const cur = item.textAnimation;
   return (
@@ -8529,7 +8530,7 @@ export function TextAnimationSection({ item, upd }: { item: BlockItem; upd: (p: 
           ))}
         </div>
       )}
-      <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">Fade, Rise and Wipe play once; Pulse and Float loop gently. Skipped for viewers with reduced motion enabled.</p>
+      <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">Fade, Rise and Wipe play once; the rest loop. Skipped for viewers with reduced motion enabled.</p>
     </div>
   );
 }

@@ -119,6 +119,7 @@ export function ensureAnimClass(raw: unknown): string | undefined {
 export const ITEM_ANIM_CLASS: Record<string, string> = {
   fade: "cr-anim-fade", rise: "cr-anim-rise", scale: "cr-anim-scale",
   wipe: "cr-anim-wipe", pulse: "cr-anim-pulse", float: "cr-anim-float",
+  glitch: "cr-anim-glitch", breathe: "cr-anim-breathe", rainbow: "cr-anim-rainbow",
 };
 
 /** Resolve an item's animation class: builtin preset name or embedded custom spec. */
