@@ -8712,14 +8712,6 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
   // in upstream, but the interact wall is skipped when finished — mirror that
   // here or the pinned player would get pointer-events:none and eat no clicks).
   const slotInteractive = canInteract !== false || !!isFinished;
-  const slotCb = useCallback((el: HTMLDivElement | null) => {
-    const s = usePlayerStore.getState();
-    if (el) s.registerSlot(playerKey, el, slotInteractive);
-    else {
-      const existing = s.slots[playerKey]?.el;
-      if (existing) s.unregisterSlot(playerKey, existing);
-    }
-  }, [playerKey, slotInteractive]);
   const accent = item.playlistAccentColor || "var(--accent)";
   const showList = item.playlistShowList !== false;
   const volSupported = !embed || embed.kind === "audio" || embed.platform === "YouTube" || embed.platform === "SoundCloud";
@@ -8878,7 +8870,9 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
     // media (living in PlayerHost so it survives board switches) is pinned
     // exactly over this div. Otherwise offer to take the player over.
     ownsPlayer ? (
-      <div ref={slotCb} className="w-full h-full bg-black" />
+      // PlayerHost pins the real media over this div — it finds the slot by
+      // querying this attribute directly (a store registry raced hydration).
+      <div data-player-slot={playerKey} data-slot-interactive={slotInteractive ? "1" : "0"} className="w-full h-full bg-black" />
     ) : (
       <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black/30 rounded-lg py-3">
         <Music size={22} className="text-[var(--text-muted)] opacity-50" />

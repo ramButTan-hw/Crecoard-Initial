@@ -97,7 +97,7 @@ export function PlayerHost() {
       const el = boxRef.current;
       if (el) {
         const ps = usePlayerStore.getState();
-        const slot = ps.slots[claimKey];
+        const slotEl = document.querySelector(`[data-player-slot="${CSS.escape(claimKey)}"]`) as HTMLElement | null;
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         // Clip the pinned media to the canvas area so it never paints over
@@ -105,8 +105,8 @@ export function PlayerHost() {
         const canvasHost = document.querySelector("[data-board-canvas]")?.parentElement;
         const clipRect = canvasHost?.getBoundingClientRect() ?? null;
         let pinned = false;
-        if (slot?.el.isConnected) {
-          const r = slot.el.getBoundingClientRect();
+        if (slotEl?.isConnected) {
+          const r = slotEl.getBoundingClientRect();
           const bounds = clipRect ?? { left: 0, top: 0, right: vw, bottom: vh };
           const noOverlap =
             r.bottom <= bounds.top || r.top >= bounds.bottom ||
@@ -128,7 +128,7 @@ export function PlayerHost() {
             // the item's transparent layers would eat every click). Capped
             // below modals/menus (z 300+).
             let rootZ: number | null = null;
-            let cur: HTMLElement | null = slot.el;
+            let cur: HTMLElement | null = slotEl;
             while (cur && cur !== document.body) {
               const zi = getComputedStyle(cur).zIndex;
               if (zi !== "auto") {
@@ -145,7 +145,7 @@ export function PlayerHost() {
             el.style.bottom = "auto";
             el.style.zIndex = String(rootZ !== null ? Math.min(rootZ + 1, 299) : 25);
             el.style.borderRadius = "8px";
-            el.style.pointerEvents = slot.interactive ? "auto" : "none";
+            el.style.pointerEvents = slotEl.dataset.slotInteractive !== "0" ? "auto" : "none";
           }
         }
         if (!pinned) {
