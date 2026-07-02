@@ -77,6 +77,21 @@ export async function POST(req: NextRequest) {
   const chatKey = `${msg.board_id}::${(msg.channel as string) ?? "general"}`;
   const channelLabel = `#${(msg.channel as string) ?? "general"}`;
 
+  // Per-channel notification preferences (default 'all' when no row).
+  const { data: prefRows } = await db
+    .from("chat_notification_prefs")
+    .select("user_id, level")
+    .eq("chat_key", chatKey)
+    .in("user_id", recipientIds);
+  const prefOf = new Map((prefRows ?? []).map((r) => [r.user_id as string, r.level as string]));
+  recipientIds = recipientIds.filter((id) => {
+    const level = prefOf.get(id) ?? "all";
+    if (level === "mute") return false;
+    if (level === "mentions") return mentioned.has(id);
+    return true;
+  });
+  if (recipientIds.length === 0) return NextResponse.json({ sent: 0, skipped: "prefs" });
+
   // Throttle non-mention pushes per user+channel.
   const { data: recent } = await db
     .from("push_chat_log")

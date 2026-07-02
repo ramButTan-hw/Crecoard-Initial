@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Smile, ImageIcon, X, Pin, Search, Plus } from "lucide-react";
+import { Send, Smile, ImageIcon, X, Pin, Search, Plus, Bell, BellOff, AtSign, Check } from "lucide-react";
 import type { BlockItem, Board } from "@/store/boardStore";
 import { useBoardStore } from "@/store/boardStore";
 import { useServers } from "@/contexts/ServersContext";
@@ -134,7 +134,8 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const serverId = useBoardStore((s) => (s.serverBoards[chatBoardId] ?? s.boards.find((b) => b.id === chatBoardId))?.serverId);
   const { serverMembers } = useServers();
   const roster = serverId ? (serverMembers[serverId] ?? []) : [];
-  const { messages, loading: chatLoading, send, chatKey, loadOlder, reactions, toggleReaction, togglePin } = useBoardChatItem(item.id, chatBoardId, channelName);
+  const { messages, loading: chatLoading, send, chatKey, loadOlder, reactions, toggleReaction, togglePin, notifPref, setNotifPref } = useBoardChatItem(item.id, chatBoardId, channelName);
+  const [notifMenuOpen, setNotifMenuOpen] = useState(false);
 
   // One-time heal: legacy chat backgrounds were stored as inline data URLs — a
   // single wallpaper could fill the whole localStorage quota ("Storage is full")
@@ -481,6 +482,41 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
             </span>
           )}
           <span className="text-[11px] text-[var(--text-muted)]">{messages.length}</span>
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => setNotifMenuOpen((v) => !v)}
+              title={notifPref === "all" ? "Notifications: all messages" : notifPref === "mentions" ? "Notifications: mentions only" : "Notifications: muted"}
+              className={cn(
+                "rounded p-1 transition-colors hover:bg-[var(--surface-overlay)]",
+                notifPref === "all" ? "text-[var(--text-muted)] hover:text-[var(--text-primary)]" : notifPref === "mentions" ? "text-[var(--accent)]" : "text-[var(--text-muted)] opacity-60"
+              )}
+            >
+              {notifPref === "mute" ? <BellOff size={14} /> : notifPref === "mentions" ? <AtSign size={14} /> : <Bell size={14} />}
+            </button>
+            {notifMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setNotifMenuOpen(false)} />
+                <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-[var(--border)] py-1 shadow-2xl" style={{ background: "var(--surface-raised)" }}>
+                  {([
+                    { v: "all", label: "All messages", icon: <Bell size={13} /> },
+                    { v: "mentions", label: "Mentions only", icon: <AtSign size={13} /> },
+                    { v: "mute", label: "Muted", icon: <BellOff size={13} /> },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.v}
+                      onClick={() => { setNotifPref(opt.v); setNotifMenuOpen(false); }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
+                    >
+                      <span className="text-[var(--text-muted)]">{opt.icon}</span>
+                      <span className="flex-1">{opt.label}</span>
+                      {notifPref === opt.v && <Check size={12} className="text-[var(--accent)]" />}
+                    </button>
+                  ))}
+                  <p className="border-t border-[var(--border)] px-3 pb-1 pt-1.5 text-[10px] text-[var(--text-muted)]">Applies to toasts and push, on all your devices.</p>
+                </div>
+              </>
+            )}
+          </div>
           <button
             onClick={() => setSearchOpen((v) => { if (v) setChatSearch(""); return !v; })}
             title="Search this channel"

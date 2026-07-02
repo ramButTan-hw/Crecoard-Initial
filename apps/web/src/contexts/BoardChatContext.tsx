@@ -27,6 +27,8 @@ export interface ChatReaction {
 }
 
 interface BoardChatContextValue {
+  notifPrefs: Record<string, "all" | "mentions" | "mute">;
+  setNotifPref: (chatKey: string, level: "all" | "mentions" | "mute") => void;
   /** Messages indexed by itemId. */
   messagesByItem: Record<string, ChatMessage[]>;
   /** Raw reactions indexed by message id (grouping/counts derived in the UI). */
@@ -56,6 +58,8 @@ interface BoardChatContextValue {
 }
 
 const BoardChatContext = createContext<BoardChatContextValue>({
+  notifPrefs: {},
+  setNotifPref: () => {},
   messagesByItem: {},
   reactionsByMessage: {},
   loadAndSubscribe: () => () => {},
@@ -91,6 +95,12 @@ export function useBoardChatItem(itemId: string, boardId: string, channelName?: 
   const messages = ctx.messagesByItem[chatKey] ?? [];
   /** True until the first page for this channel has arrived (undefined = not fetched yet). */
   const loading = ctx.messagesByItem[chatKey] === undefined;
+  const notifPref = ctx.notifPrefs[chatKey] ?? "all";
+  const setNotifPrefForKey = useCallback(
+    (level: "all" | "mentions" | "mute") => ctx.setNotifPref(chatKey, level),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chatKey]
+  );
 
   const send = useCallback(
     (
@@ -123,7 +133,7 @@ export function useBoardChatItem(itemId: string, boardId: string, channelName?: 
     [chatKey]
   );
 
-  return { messages, loading, send, chatKey, loadOlder, reactions: ctx.reactionsByMessage, toggleReaction, togglePin };
+  return { messages, loading, send, chatKey, loadOlder, reactions: ctx.reactionsByMessage, toggleReaction, togglePin, notifPref, setNotifPref: setNotifPrefForKey };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -152,6 +162,52 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
   const { push: pushNotification, isActive } = useNotifications();
   const identityRef = useRef(identity);
   useEffect(() => { identityRef.current = identity; }, [identity]);
+
+  // Per-channel notification preferences: 'all' (default) | 'mentions' | 'mute'.
+  // Gates toasts, pings and unread on the client; /api/push/chat reads the same
+  // table server-side so web push honors them too.
+  const [notifPrefs, setNotifPrefs] = useState<Record<string, "all" | "mentions" | "mute">>({});
+  const notifPrefsRef = useRef(notifPrefs);
+  useEffect(() => { notifPrefsRef.current = notifPrefs; }, [notifPrefs]);
+  useEffect(() => {
+    if (!identity.userId) return;
+    let cancelled = false;
+    void supabase
+      .from("chat_notification_prefs")
+      .select("chat_key, level")
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        setNotifPrefs(Object.fromEntries(data.map((r) => [r.chat_key as string, r.level as "all" | "mentions" | "mute"])));
+      });
+    return () => { cancelled = true; };
+  }, [identity.userId]);
+
+  const setNotifPref = useCallback((chatKey: string, level: "all" | "mentions" | "mute") => {
+    setNotifPrefs((prev) => {
+      const next = { ...prev };
+      if (level === "all") delete next[chatKey];
+      else next[chatKey] = level;
+      return next;
+    });
+    const me = identityRef.current.userId;
+    if (!me) return;
+    if (level === "all") {
+      void supabase.from("chat_notification_prefs").delete().eq("user_id", me).eq("chat_key", chatKey);
+    } else {
+      void supabase.from("chat_notification_prefs").upsert(
+        { user_id: me, chat_key: chatKey, level, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,chat_key" }
+      );
+    }
+  }, []);
+
+  /** True when a notification for this key/mention state should fire. */
+  const notifAllowed = useCallback((chatKey: string, isMention: boolean) => {
+    const level = notifPrefsRef.current[chatKey] ?? "all";
+    if (level === "mute") return false;
+    if (level === "mentions") return isMention;
+    return true;
+  }, []);
   const [messagesByItem, setMessagesByItem] = useState<Record<string, ChatMessage[]>>({});
   const [reactionsByMessage, setReactionsByMessage] = useState<Record<string, ChatReaction[]>>({});
   // Mirror of reactionsByMessage so toggleReaction can read current state without
@@ -232,6 +288,7 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
               (me.displayName && msg.content.toLowerCase().includes(`@${me.displayName.toLowerCase()}`))
             )
           );
+          if (!notifAllowed(key, isMention)) return;
           playPing(isMention ? "mention" : "message");
           pushNotification({
             itemId: key,
@@ -283,15 +340,17 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
                   (identity.displayName && msg.content.toLowerCase().includes(`@${identity.displayName.toLowerCase()}`))
                 )
               );
-              playPing(isMention ? "mention" : "message");
-              pushNotification({
-                itemId: key,
-                channelName: channel,
-                authorName:   msg.authorName,
-                authorAvatar: msg.authorAvatar,
-                content:      msg.content ?? "",
-                isMention,
-              });
+              if (notifAllowed(key, isMention)) {
+                playPing(isMention ? "mention" : "message");
+                pushNotification({
+                  itemId: key,
+                  channelName: channel,
+                  authorName:   msg.authorName,
+                  authorAvatar: msg.authorAvatar,
+                  content:      msg.content ?? "",
+                  isMention,
+                });
+              }
             }
 
             setMessagesByItem((prev) => {
@@ -578,7 +637,7 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <BoardChatContext.Provider value={{ messagesByItem, reactionsByMessage, loadAndSubscribe, loadOlder, sendMessage, toggleReaction, togglePin }}>
+    <BoardChatContext.Provider value={{ notifPrefs, setNotifPref, messagesByItem, reactionsByMessage, loadAndSubscribe, loadOlder, sendMessage, toggleReaction, togglePin }}>
       {children}
     </BoardChatContext.Provider>
   );
