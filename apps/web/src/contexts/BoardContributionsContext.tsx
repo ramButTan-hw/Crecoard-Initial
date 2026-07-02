@@ -271,12 +271,15 @@ export function BoardContributionsProvider({ children }: { children: React.React
     content: string,
     opts: { kind?: string; approved?: boolean } = {},
   ): Promise<void> => {
+    // The live snapshot renders under "<uuid>:live" — board_id is a uuid column,
+    // so strip the suffix or every contribution from the live board fails to insert.
+    const dbBoardId = boardId.replace(/:live$/, "");
     const kind = opts.kind ?? "entry";
     const approved = opts.approved ?? true;
     const optimisticId = `opt-${crypto.randomUUID()}`;
     const optimistic: Contribution = {
       id: optimisticId,
-      boardId,
+      boardId: dbBoardId,
       itemId,
       authorId: identity.userId,
       authorName: identity.displayName,
@@ -297,7 +300,7 @@ export function BoardContributionsProvider({ children }: { children: React.React
     const { data, error } = await supabase
       .from("board_item_contributions")
       .insert({
-        board_id: boardId,
+        board_id: dbBoardId,
         item_id: itemId,
         author_id: identity.userId,
         author_name: identity.displayName,
