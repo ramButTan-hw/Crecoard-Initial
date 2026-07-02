@@ -1917,6 +1917,29 @@ export function ChatStylePanel({ item, upd, usedChannels = [] }: { item: BlockIt
         )}
       </div>
 
+      {/* Mention color */}
+      <div>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Mention color</p>
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={item.chatMentionColor ?? "#a78bfa"}
+            onChange={(e) => upd({ chatMentionColor: e.target.value })}
+            className="h-7 w-9 cursor-pointer rounded border border-[var(--border)] bg-transparent"
+          />
+          <span className="rounded px-1.5 py-0.5 text-xs font-medium"
+            style={{ background: `color-mix(in srgb, ${item.chatMentionColor ?? "var(--accent)"} 25%, transparent)`, color: item.chatMentionColor ?? "var(--accent)" }}>
+            @preview
+          </span>
+          {item.chatMentionColor && (
+            <button onClick={() => upd({ chatMentionColor: undefined })}
+              className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Background image */}
       <div>
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Background image</p>

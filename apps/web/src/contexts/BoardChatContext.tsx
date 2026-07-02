@@ -27,6 +27,8 @@ export interface ChatReaction {
 }
 
 interface BoardChatContextValue {
+  editMessage: (id: string, key: string, content: string) => Promise<void>;
+  deleteMessage: (id: string, key: string) => Promise<void>;
   notifPrefs: Record<string, "all" | "mentions" | "mute">;
   setNotifPref: (chatKey: string, level: "all" | "mentions" | "mute") => void;
   /** Messages indexed by itemId. */
@@ -58,6 +60,8 @@ interface BoardChatContextValue {
 }
 
 const BoardChatContext = createContext<BoardChatContextValue>({
+  editMessage: async () => {},
+  deleteMessage: async () => {},
   notifPrefs: {},
   setNotifPref: () => {},
   messagesByItem: {},
@@ -96,6 +100,16 @@ export function useBoardChatItem(itemId: string, boardId: string, channelName?: 
   /** True until the first page for this channel has arrived (undefined = not fetched yet). */
   const loading = ctx.messagesByItem[chatKey] === undefined;
   const notifPref = ctx.notifPrefs[chatKey] ?? "all";
+  const editOwnMessage = useCallback(
+    (id: string, content: string) => ctx.editMessage(id, chatKey, content),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chatKey]
+  );
+  const deleteOwnMessage = useCallback(
+    (id: string) => ctx.deleteMessage(id, chatKey),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chatKey]
+  );
   const setNotifPrefForKey = useCallback(
     (level: "all" | "mentions" | "mute") => ctx.setNotifPref(chatKey, level),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,7 +147,7 @@ export function useBoardChatItem(itemId: string, boardId: string, channelName?: 
     [chatKey]
   );
 
-  return { messages, loading, send, chatKey, loadOlder, reactions: ctx.reactionsByMessage, toggleReaction, togglePin, notifPref, setNotifPref: setNotifPrefForKey };
+  return { messages, loading, send, chatKey, loadOlder, reactions: ctx.reactionsByMessage, toggleReaction, togglePin, notifPref, setNotifPref: setNotifPrefForKey, editOwnMessage, deleteOwnMessage };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -152,6 +166,7 @@ function rowToMessage(row: Record<string, unknown>): ChatMessage {
     pinned: Boolean(row.pinned),
     pinnedAt: (row.pinned_at as string | null) ?? undefined,
     pinnedBy: (row.pinned_by as string | null) ?? undefined,
+    editedAt: (row.edited_at as string | null) ?? undefined,
   };
 }
 
@@ -397,12 +412,31 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
                 changed = true;
                 return {
                   ...m,
+                  content: (row.content as string | null) ?? m.content,
+                  editedAt: (row.edited_at as string | null) ?? m.editedAt,
                   pinned: Boolean(row.pinned),
                   pinnedAt: (row.pinned_at as string | null) ?? undefined,
                   pinnedBy: (row.pinned_by as string | null) ?? undefined,
                 };
               });
               return changed ? { ...prev, [key]: updated } : prev;
+            });
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "DELETE",
+            schema: "public",
+            table: "board_chat_messages",
+          },
+          (payload) => {
+            const id = (payload.old as Record<string, unknown>)?.id as string | undefined;
+            if (!id) return;
+            setMessagesByItem((prev) => {
+              const existing = prev[key];
+              if (!existing?.some((m) => m.id === id)) return prev;
+              return { ...prev, [key]: existing.filter((m) => m.id !== id) };
             });
           }
         )
@@ -482,6 +516,25 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
         }
       }
     };
+  }, []);
+
+  const editMessage = useCallback(async (id: string, key: string, content: string) => {
+    const editedAt = new Date().toISOString();
+    setMessagesByItem((prev) => {
+      const existing = prev[key];
+      if (!existing) return prev;
+      return { ...prev, [key]: existing.map((m) => (m.id === id ? { ...m, content, editedAt } : m)) };
+    });
+    await supabase.from("board_chat_messages").update({ content, edited_at: editedAt }).eq("id", id);
+  }, []);
+
+  const deleteMessage = useCallback(async (id: string, key: string) => {
+    setMessagesByItem((prev) => {
+      const existing = prev[key];
+      if (!existing) return prev;
+      return { ...prev, [key]: existing.filter((m) => m.id !== id) };
+    });
+    await supabase.from("board_chat_messages").delete().eq("id", id);
   }, []);
 
   const loadOlder = useCallback(async (boardId: string, channel: string, beforeIso: string): Promise<number> => {
@@ -645,7 +698,7 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <BoardChatContext.Provider value={{ notifPrefs, setNotifPref, messagesByItem, reactionsByMessage, loadAndSubscribe, loadOlder, sendMessage, toggleReaction, togglePin }}>
+    <BoardChatContext.Provider value={{ editMessage, deleteMessage, notifPrefs, setNotifPref, messagesByItem, reactionsByMessage, loadAndSubscribe, loadOlder, sendMessage, toggleReaction, togglePin }}>
       {children}
     </BoardChatContext.Provider>
   );

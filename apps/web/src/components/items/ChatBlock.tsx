@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Smile, ImageIcon, X, Pin, Search, Plus, Bell, BellOff, AtSign, Check } from "lucide-react";
+import { Send, Smile, ImageIcon, X, Pin, Search, Plus, Bell, BellOff, AtSign, Check, Pencil, Trash2 } from "lucide-react";
 import type { BlockItem, Board } from "@/store/boardStore";
 import { useBoardStore } from "@/store/boardStore";
 import { useServers } from "@/contexts/ServersContext";
@@ -44,6 +44,8 @@ function renderMessageContent(
   myName: string,
   resolve: (id: string) => string | undefined,
   resolveBox: (boardId: string | undefined, id: string) => string | undefined,
+  mentionColor: string = "var(--accent)",
+  inverted = false, // rendering on an accent-colored bubble — accent text would vanish
 ): React.ReactNode {
   const parts = content.split(/(<@[0-9a-fA-F-]{36}>|<box:[A-Za-z0-9_|\-]+>|@[A-Za-z0-9_.\-]+|https?:\/\/[^\s]+)/g);
   return parts.map((part, i) => {
@@ -80,8 +82,13 @@ function renderMessageContent(
       isMe = !!myName && name.toLowerCase() === myName.toLowerCase();
     }
     if (name !== null) {
+      const style: React.CSSProperties = inverted
+        ? { background: isMe ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.18)", color: "#fff" }
+        : isMe
+          ? { background: `color-mix(in srgb, ${mentionColor} 25%, transparent)`, color: mentionColor }
+          : { color: mentionColor };
       return (
-        <span key={i} className={isMe ? "rounded bg-[var(--accent)]/25 px-0.5 font-semibold text-[var(--accent)]" : "font-medium text-[var(--accent)]"}>
+        <span key={i} className={isMe ? "rounded px-0.5 font-semibold" : "rounded px-0.5 font-medium"} style={style}>
           @{name}
         </span>
       );
@@ -134,8 +141,11 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const serverId = useBoardStore((s) => (s.serverBoards[chatBoardId] ?? s.boards.find((b) => b.id === chatBoardId))?.serverId);
   const { serverMembers } = useServers();
   const roster = serverId ? (serverMembers[serverId] ?? []) : [];
-  const { messages, loading: chatLoading, send, chatKey, loadOlder, reactions, toggleReaction, togglePin, notifPref, setNotifPref } = useBoardChatItem(item.id, chatBoardId, channelName);
+  const { messages, loading: chatLoading, send, chatKey, loadOlder, reactions, toggleReaction, togglePin, notifPref, setNotifPref, editOwnMessage, deleteOwnMessage } = useBoardChatItem(item.id, chatBoardId, channelName);
   const [notifMenuOpen, setNotifMenuOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const serverPref = useBoardChat().notifPrefs[`server::${serverId}`];
 
   // One-time heal: legacy chat backgrounds were stored as inline data URLs — a
@@ -642,6 +652,27 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                   >
                     <Smile size={12} />
                   </button>
+                  {isYou && !msg.id.startsWith("opt-") && msg.content && (
+                    <button
+                      onClick={() => { setEditingId(msg.id); setEditDraft(msg.content ?? ""); setConfirmDeleteId(null); }}
+                      title="Edit message"
+                      className="rounded p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                  )}
+                  {isYou && !msg.id.startsWith("opt-") && (
+                    <button
+                      onClick={() => {
+                        if (confirmDeleteId === msg.id) { void deleteOwnMessage(msg.id); setConfirmDeleteId(null); }
+                        else setConfirmDeleteId(msg.id);
+                      }}
+                      title={confirmDeleteId === msg.id ? "Click again to delete" : "Delete message"}
+                      className={cn("rounded p-1 transition-colors", confirmDeleteId === msg.id ? "text-red-400" : "text-[var(--text-muted)] hover:text-red-400")}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
                 </div>
                 {reactingTo === msg.id && (
                   <>
@@ -683,7 +714,23 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                       </span>
                     </div>
                   )}
-                  {msg.content && (
+                  {editingId === msg.id ? (
+                    <div className="mt-0.5 flex flex-col gap-1">
+                      <input
+                        autoFocus
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && editDraft.trim()) {
+                            void editOwnMessage(msg.id, editDraft.trim());
+                            setEditingId(null);
+                          } else if (e.key === "Escape") setEditingId(null);
+                        }}
+                        className="w-full rounded border border-[var(--accent)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)] outline-none"
+                      />
+                      <p className="text-[10px] text-[var(--text-muted)]">enter to save · esc to cancel</p>
+                    </div>
+                  ) : msg.content && (
                     <p
                       className={cn("break-words leading-relaxed text-sm", bubbles && "mt-0.5 inline-block rounded-2xl px-3 py-1.5")}
                       style={{
@@ -693,7 +740,8 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                         background: bubbles ? (isYou ? accent : "var(--surface-overlay)") : undefined,
                       }}
                     >
-                      {renderMessageContent(msg.content, identity.userId, identity.displayName, (id) => profiles.get(id)?.displayName, resolveBoxTitle)}
+                      {renderMessageContent(msg.content, identity.userId, identity.displayName, (id) => profiles.get(id)?.displayName, resolveBoxTitle, item.chatMentionColor || "var(--accent)", bubbles && isYou)}
+                      {msg.editedAt && <span className="ml-1.5 align-baseline text-[10px] opacity-60">(edited)</span>}
                     </p>
                   )}
                   {msg.gif && (

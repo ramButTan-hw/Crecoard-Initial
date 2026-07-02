@@ -193,6 +193,7 @@ export interface ChatMessage {
   pinned?: boolean;   // pinned within its (board, channel)
   pinnedAt?: string;  // ISO string — when it was pinned
   pinnedBy?: string;  // user id who pinned it
+  editedAt?: string;
 }
 
 // ─── File bank item ───────────────────────────────────────────────────────────
@@ -681,6 +682,8 @@ export interface BlockItem {
   // chat appearance
   chatBgColor?: string;
   chatBgImage?: string;
+  /** Color for @mention chips in this chat (defaults to the accent) */
+  chatMentionColor?: string;
   chatBgSize?: string;
   chatBgPosition?: string;
   chatBgOpacity?: number;
