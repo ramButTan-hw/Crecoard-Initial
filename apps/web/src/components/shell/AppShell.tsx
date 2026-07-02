@@ -29,7 +29,7 @@ import { ProfileModal } from "./ProfileModal";
 import { SettingsModal } from "./SettingsModal";
 import { UserProfileModal, type ViewableUser } from "./UserProfileModal";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
-import { createSnapToGrid, magnetize } from "@/lib/snapToGrid";
+import { createSnapToGrid, snapPosition, type Rect } from "@/lib/snapToGrid";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/boardConstants";
 import { applyThemeVars, applyAppFont, CSS_VAR_NAMES, ThemeVarMap } from "@/lib/appThemes";
 import { CollabContext, useCollabSessionSetup } from "@/lib/useCollabSession";
@@ -61,6 +61,15 @@ function getEventCoords(e: PointerEvent | MouseEvent | TouchEvent) {
 let _dragMoveRafId: number | null = null;
 
 // ─── Inner component: uses all contexts, contains all logic ──────────────────
+
+
+// Everything a moving box/item can align to on this board (edges + centers).
+function alignTargets(board: { boxes: { id: string; x: number; y: number; width: number; height: number; deckOwnerId?: string }[]; boardItems?: { id: string; boardX: number; boardY: number; boardW: number; boardH: number }[] }, excludeId: string): { x: number; y: number; w: number; h: number }[] {
+  return [
+    ...board.boxes.filter((b) => b.id !== excludeId && !b.deckOwnerId).map((b) => ({ x: b.x, y: b.y, w: b.width, h: b.height })),
+    ...(board.boardItems ?? []).filter((i) => i.id !== excludeId).map((i) => ({ x: i.boardX, y: i.boardY, w: i.boardW, h: i.boardH })),
+  ];
+}
 
 function AppShellInner() {
   const [activeView, setActiveView] = useState<"board" | "server">("board");
@@ -316,8 +325,20 @@ function AppShellInner() {
   const mouseSensor = useSensor(MouseSensor, { activationConstraint: { distance: 6 } });
   const touchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } });
   const sensors = useSensors(mouseSensor, touchSensor);
-  // Zoom-aware magnetic snap: snap to GRID_MINOR canvas px regardless of zoom level.
-  const snapToGrid = useMemo(() => createSnapToGrid(zoom, showGrid), [zoom, showGrid]);
+  // Alignment targets for a dragging box: sibling boxes + board-level items,
+  // scoped to the board actually being edited (a server draft and its :live
+  // snapshot share box ids, so a global search could grab a stale copy).
+  const getAlignInfo = useCallback((id: string): { rect: Rect; targets: Rect[] } | null => {
+    const s = useBoardStore.getState();
+    const effectiveBoardId = (activeView === "server" && activeServerId)
+      ? (activeServerBoardId ?? s.activeBoardId)
+      : s.activeBoardId;
+    const board = s.boards.find((b) => b.id === effectiveBoardId) ?? s.serverBoards[effectiveBoardId];
+    const box = board?.boxes.find((x) => x.id === id);
+    if (!board || !box) return null;
+    return { rect: { x: box.x, y: box.y, w: box.width, h: box.height }, targets: alignTargets(board, id) };
+  }, [activeView, activeServerId, activeServerBoardId]);
+  const snapToGrid = useMemo(() => createSnapToGrid(zoom, showGrid, getAlignInfo), [zoom, showGrid, getAlignInfo]);
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
     // Block all drag interactions in live preview and for members
@@ -351,8 +372,11 @@ function AppShellInner() {
       const board = state.boards.find((b) => b.id === effectiveBoardId) ?? state.serverBoards[effectiveBoardId];
       const box = board?.boxes.find((b) => b.id === boxId);
       if (!box || !board) return;
-      const snap = (v: number) => magnetize(v, state.showGrid);
-      setDragPos({ x: snap(box.x + deltaX / state.zoom), y: snap(box.y + deltaY / state.zoom) });
+      const p = snapPosition(
+        { x: box.x + deltaX / state.zoom, y: box.y + deltaY / state.zoom, w: box.width, h: box.height },
+        alignTargets(board, boxId), state.showGrid
+      );
+      setDragPos({ x: p.x, y: p.y });
     });
   }, [activeView, activeServerId, activeServerBoardId, isDraftMode, viewerRole, setDragPos]);
 
@@ -380,9 +404,12 @@ function AppShellInner() {
       const board = state.boards.find((b) => b.id === boardId) ?? state.serverBoards[boardId];
       const box = board?.boxes.find((b) => b.id === boxId);
       if (box && e.delta) {
-        const snap = (v: number) => magnetize(v, state.showGrid);
-        const newX = Math.max(0, Math.min(CANVAS_WIDTH - box.width, snap(box.x + e.delta.x / state.zoom)));
-        const newY = Math.max(0, Math.min(CANVAS_HEIGHT - box.height, snap(box.y + e.delta.y / state.zoom)));
+        const p = snapPosition(
+          { x: box.x + e.delta.x / state.zoom, y: box.y + e.delta.y / state.zoom, w: box.width, h: box.height },
+          alignTargets(board!, boxId), state.showGrid
+        );
+        const newX = Math.round(Math.max(0, Math.min(CANVAS_WIDTH - box.width, p.x)));
+        const newY = Math.round(Math.max(0, Math.min(CANVAS_HEIGHT - box.height, p.y)));
         const cx = newX + box.width / 2;
         const cy = newY + box.height / 2;
         const target = !box.deckOwnerId ? board!.boxes.find(b =>

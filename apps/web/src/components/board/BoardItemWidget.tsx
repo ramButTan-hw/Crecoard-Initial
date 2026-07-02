@@ -12,7 +12,7 @@ import { animClassFor } from "@/lib/animSpec";
 import { ContextMenu, type ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import { magnetize } from "@/lib/snapToGrid";
+import { magnetize, snapPosition } from "@/lib/snapToGrid";
 
 const MIN_W = 80;
 const MIN_H = 40;
@@ -70,24 +70,39 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
     const startY = e.clientY;
     const origX = item.boardX;
     const origY = item.boardY;
-    const snap = (v: number) => magnetize(v, useBoardStore.getState().showGrid);
+    // Align to neighbors (boxes + other items) — captured once, positions are
+    // static for the duration of the drag. Grid stays as an opt-in fallback.
+    const st0 = useBoardStore.getState();
+    const board0 = st0.boards.find((b) => b.id === boardId) ?? st0.serverBoards[boardId];
+    const targets = board0 ? [
+      ...board0.boxes.filter((b) => !b.deckOwnerId).map((b) => ({ x: b.x, y: b.y, w: b.width, h: b.height })),
+      ...(board0.boardItems ?? []).filter((i) => i.id !== item.id).map((i) => ({ x: i.boardX, y: i.boardY, w: i.boardW, h: i.boardH })),
+    ] : [];
+    const snapped = (dx: number, dy: number) => {
+      const p = snapPosition({ x: origX + dx, y: origY + dy, w: item.boardW, h: item.boardH }, targets, useBoardStore.getState().showGrid);
+      return { x: Math.max(0, p.x), y: Math.max(0, p.y) };
+    };
 
     const onMove = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) / zoom;
       const dy = (ev.clientY - startY) / zoom;
       isDragging.current = true;
-      setLivePos({ x: Math.max(0, snap(origX + dx)), y: Math.max(0, snap(origY + dy)) });
+      const p = snapped(dx, dy);
+      setLivePos(p);
+      useBoardStore.getState().setItemDragRect({ id: item.id, x: p.x, y: p.y, width: item.boardW, height: item.boardH });
     };
     const cleanup = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      useBoardStore.getState().setItemDragRect(null);
       dragCleanupRef.current = null;
     };
     const onUp = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) / zoom;
       const dy = (ev.clientY - startY) / zoom;
       if (isDragging.current) {
-        moveBoardItem(boardId, item.id, Math.max(0, snap(origX + dx)), Math.max(0, snap(origY + dy)));
+        const p = snapped(dx, dy);
+        moveBoardItem(boardId, item.id, Math.round(p.x), Math.round(p.y));
       }
       setLivePos(null);
       isDragging.current = false;
@@ -111,7 +126,7 @@ export function BoardItemWidget({ item, boardId, isFinished, isSelected }: Props
         const origY = item.boardY;
         const origW = item.boardW;
         const origH = item.boardH;
-        const snap = (v: number) => magnetize(v, useBoardStore.getState().showGrid);
+        const snap = (v: number) => Math.round(magnetize(v, useBoardStore.getState().showGrid));
 
         const compute = (ev: PointerEvent) => {
           const dx = (ev.clientX - startX) / zoom;

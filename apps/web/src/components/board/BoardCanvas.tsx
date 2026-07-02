@@ -51,49 +51,39 @@ function CollabCursors({ cursors, zoom }: { cursors: CursorState[]; zoom: number
 
 const ALIGN_THRESHOLD = 8; // canvas px
 
-function AlignmentGuides({ boxes }: { boxes: import("@/store/boardStore").Box[] }) {
+function AlignmentGuides({ boxes, items }: { boxes: import("@/store/boardStore").Box[]; items: import("@/store/boardStore").BoardLevelItem[] }) {
   const dragPos = useBoardStore((s) => s.dragPos);
   const draggingId = useBoardStore((s) => s.draggingBlockId);
   const resizeState = useBoardStore((s) => s.resizeState);
+  const itemDrag = useBoardStore((s) => s.itemDragRect);
 
   const guideXs = new Set<number>();
   const guideYs = new Set<number>();
 
-  // Drag guides
+  // Whatever is currently moving — a dragged box, a resizing box, or a
+  // dragged board-level item — expressed as one rect.
+  let moving: { id: string; x: number; y: number; w: number; h: number } | null = null;
   if (dragPos && draggingId) {
-    const draggingBox = boxes.find((b) => b.id === draggingId);
-    if (draggingBox) {
-      const dL = dragPos.x, dR = dragPos.x + draggingBox.width, dCX = dragPos.x + draggingBox.width / 2;
-      const dT = dragPos.y, dB = dragPos.y + draggingBox.height, dCY = dragPos.y + draggingBox.height / 2;
-      for (const box of boxes) {
-        if (box.id === draggingId || box.deckOwnerId) continue;
-        const bL = box.x, bR = box.x + box.width, bCX = box.x + box.width / 2;
-        const bT = box.y, bB = box.y + box.height, bCY = box.y + box.height / 2;
-        for (const sx of [dL, dCX, dR])
-          for (const tx of [bL, bCX, bR])
-            if (Math.abs(sx - tx) < ALIGN_THRESHOLD) guideXs.add(tx);
-        for (const sy of [dT, dCY, dB])
-          for (const ty of [bT, bCY, bB])
-            if (Math.abs(sy - ty) < ALIGN_THRESHOLD) guideYs.add(ty);
-      }
-    }
+    const b = boxes.find((x) => x.id === draggingId);
+    if (b) moving = { id: draggingId, x: dragPos.x, y: dragPos.y, w: b.width, h: b.height };
+  } else if (resizeState) {
+    moving = { id: resizeState.id, x: resizeState.x, y: resizeState.y, w: resizeState.width, h: resizeState.height };
+  } else if (itemDrag) {
+    moving = { id: itemDrag.id, x: itemDrag.x, y: itemDrag.y, w: itemDrag.width, h: itemDrag.height };
   }
 
-  // Resize guides
-  if (resizeState) {
-    const { id, x, y, width, height } = resizeState;
-    const rL = x, rR = x + width, rCX = x + width / 2;
-    const rT = y, rB = y + height, rCY = y + height / 2;
-    for (const box of boxes) {
-      if (box.id === id || box.deckOwnerId) continue;
-      const bL = box.x, bR = box.x + box.width, bCX = box.x + box.width / 2;
-      const bT = box.y, bB = box.y + box.height, bCY = box.y + box.height / 2;
-      for (const sx of [rL, rCX, rR])
-        for (const tx of [bL, bCX, bR])
-          if (Math.abs(sx - tx) < ALIGN_THRESHOLD) guideXs.add(tx);
-      for (const sy of [rT, rCY, rB])
-        for (const ty of [bT, bCY, bB])
-          if (Math.abs(sy - ty) < ALIGN_THRESHOLD) guideYs.add(ty);
+  if (moving) {
+    const targets = [
+      ...boxes.filter((b) => b.id !== moving!.id && !b.deckOwnerId).map((b) => ({ x: b.x, y: b.y, w: b.width, h: b.height })),
+      ...items.filter((i) => i.id !== moving!.id).map((i) => ({ x: i.boardX, y: i.boardY, w: i.boardW, h: i.boardH })),
+    ];
+    const mXs = [moving.x, moving.x + moving.w / 2, moving.x + moving.w];
+    const mYs = [moving.y, moving.y + moving.h / 2, moving.y + moving.h];
+    for (const t of targets) {
+      const tXs = [t.x, t.x + t.w / 2, t.x + t.w];
+      const tYs = [t.y, t.y + t.h / 2, t.y + t.h];
+      for (const sx of mXs) for (const tx of tXs) if (Math.abs(sx - tx) < ALIGN_THRESHOLD) guideXs.add(tx);
+      for (const sy of mYs) for (const ty of tYs) if (Math.abs(sy - ty) < ALIGN_THRESHOLD) guideYs.add(ty);
     }
   }
 
@@ -748,7 +738,7 @@ export function BoardCanvas() {
             />
           ))}
 
-          <AlignmentGuides boxes={board.boxes} />
+          <AlignmentGuides boxes={board.boxes} items={board.boardItems ?? []} />
           <CollabCursors cursors={cursors} zoom={zoom} />
         </div>
       </div>

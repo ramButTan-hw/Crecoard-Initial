@@ -930,6 +930,8 @@ interface BoardState {
   draggingBlockId: string | null;
   dragPos: { x: number; y: number } | null;
   resizeState: { id: string; x: number; y: number; width: number; height: number } | null;
+  /** Live rect of a board-level item being moved — drives alignment guides. */
+  itemDragRect: { id: string; x: number; y: number; width: number; height: number } | null;
   showGrid: boolean;
   zoom: number;
   minZoom: number;
@@ -1018,6 +1020,7 @@ interface BoardState {
   setDraggingBlock: (id: string | null) => void;
   setDragPos: (pos: { x: number; y: number } | null) => void;
   setResizeState: (v: { id: string; x: number; y: number; width: number; height: number } | null) => void;
+  setItemDragRect: (v: { id: string; x: number; y: number; width: number; height: number } | null) => void;
   selectedBoardItemId: string | null;
   selectBoardItem: (id: string | null) => void;
 
@@ -1111,9 +1114,10 @@ export const useBoardStore = create<BoardState>()(
     draggingBlockId: null,
     dragPos: null,
     resizeState: null,
+    itemDragRect: null,
     copiedBox: null,
     selectedBoardItemId: null,
-    showGrid: true,
+    showGrid: false,
     zoom: 1,
     minZoom: 0.05,
     panOffset: { x: 0, y: 0 },
@@ -1690,6 +1694,7 @@ export const useBoardStore = create<BoardState>()(
     setExpandedBox: (id) => set((s) => { s.expandedBoxId = id; }),
     setDraggingBlock: (id) => set((s) => { s.draggingBlockId = id; }),
     setDragPos: (pos) => set((s) => { s.dragPos = pos; }),
+    setItemDragRect: (v) => set((s) => { s.itemDragRect = v; }),
     setResizeState: (v) => set((s) => { s.resizeState = v; }),
 
     selectBoardItem: (id) =>
