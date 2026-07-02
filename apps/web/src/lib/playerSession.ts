@@ -40,7 +40,7 @@ const IDLE_STATUS: SessionStatus = { active: false, hostName: null, participants
 interface StateMsg { t: "state"; idx: number; playing: boolean; pos: number; at: number }
 type SessionMsg = StateMsg | { t: "sync-req" } | { t: "ended" };
 
-interface PresenceMeta { userId: string; name: string; host: boolean }
+interface PresenceMeta { userId: string; name: string; host: boolean; canHost: boolean; joinedAt: number }
 
 interface Entry {
   channel: RealtimeChannel;
@@ -49,6 +49,8 @@ interface Entry {
   active: boolean;
   hostName: string | null;
   participants: number;
+  /** Pending "session over" timer while the host is gone (grace for handoff). */
+  endGrace: ReturnType<typeof setTimeout> | null;
 }
 
 const entries = new Map<string, Entry>();
@@ -63,6 +65,8 @@ let participation: {
   itemId: string;
   role: "host" | "listener";
   claim: PlayerClaim;
+  canHost: boolean;
+  joinedAt: number;
   heartbeat: ReturnType<typeof setInterval> | null;
 } | null = null;
 
@@ -108,7 +112,9 @@ function applyState(s: StateMsg) {
   const { claim } = participation;
   const item = lookupItem(claim);
   if (!item) return;
-  usePlayerStore.getState().claimPlayer(claim, { steal: true, userIntent: true });
+  // userIntent (→ autoplay) only when the host is actually playing — otherwise a
+  // listener joining a paused session would blip audio until the first pause.
+  usePlayerStore.getState().claimPlayer(claim, { steal: true, userIntent: s.playing });
   if (s.idx !== currentIdxOf(item)) {
     // Track change remounts the media; the next heartbeat aligns the position.
     patchItem(claim, { playlistCurrentIndex: s.idx });
@@ -144,14 +150,35 @@ function acquire(serverId: string, itemId: string): Entry {
     const e = entries.get(key);
     if (!e) return;
     const state = channel.presenceState<PresenceMeta>();
-    const metas = Object.values(state).map((m) => m[m.length - 1]).filter(Boolean);
-    const host = metas.find((m) => m.host);
+    const byKey = Object.entries(state).flatMap(([k, metas]) => {
+      const m = metas[metas.length - 1];
+      return m ? [{ k, m }] : [];
+    });
+    const host = byKey.find((x) => x.m.host)?.m ?? null;
     e.active = !!host;
     e.hostName = host?.name ?? null;
-    e.participants = metas.length;
-    // Host left → session over for listeners (playback keeps going locally).
-    if (!host && participation?.key === key && participation.role === "listener") {
-      clearParticipation();
+    e.participants = byKey.length;
+
+    if (host) {
+      if (e.endGrace) { clearTimeout(e.endGrace); e.endGrace = null; }
+    } else if (participation?.key === key && participation.role === "listener") {
+      // Host left. Deterministic handoff: the longest-tenured listener who may
+      // host promotes itself; everyone else gives the handoff a grace window
+      // before treating the session as over (playback keeps going locally).
+      const candidates = byKey
+        .filter((x) => x.m.canHost && !x.m.host)
+        .sort((a, b) => (a.m.joinedAt - b.m.joinedAt) || (a.k < b.k ? -1 : 1));
+      if (candidates[0]?.k === tabKey && participation.canHost) {
+        promoteToHost();
+      } else if (!e.endGrace) {
+        e.endGrace = setTimeout(() => {
+          const cur = entries.get(key);
+          if (cur) cur.endGrace = null;
+          if (!cur?.active && participation?.key === key && participation.role === "listener") {
+            clearParticipation();
+          }
+        }, 8000);
+      }
     }
     notify(key);
   });
@@ -168,9 +195,26 @@ function acquire(serverId: string, itemId: string): Entry {
     channel.subscribe((status) => { if (status === "SUBSCRIBED") resolve(); });
   });
 
-  entry = { channel, ready, observers: new Set(), active: false, hostName: null, participants: 0 };
+  entry = { channel, ready, observers: new Set(), active: false, hostName: null, participants: 0, endGrace: null };
   entries.set(key, entry);
   return entry;
+}
+
+/** Listener self-promotion after the host disappears (deterministic election). */
+function promoteToHost() {
+  if (!participation || participation.role !== "listener") return;
+  const entry = entries.get(participation.key);
+  if (!entry) return;
+  participation.role = "host";
+  participation.heartbeat = setInterval(sendState, 4000);
+  usePlayerStore.getState().setSession({ itemId: participation.itemId, role: "host" });
+  const identity = getSelfIdentity();
+  void entry.channel.track({
+    userId: identity.userId, name: identity.displayName,
+    host: true, canHost: true, joinedAt: participation.joinedAt,
+  } satisfies PresenceMeta);
+  sendState();
+  notify(participation.key);
 }
 
 function releaseIfUnused(key: string) {
@@ -208,6 +252,8 @@ function clearParticipation() {
   if (!participation) return;
   const { key, heartbeat } = participation;
   if (heartbeat) clearInterval(heartbeat);
+  const entry = entries.get(key);
+  if (entry?.endGrace) { clearTimeout(entry.endGrace); entry.endGrace = null; }
   participation = null;
   usePlayerStore.getState().setSession(null);
   notify(key);
@@ -233,29 +279,31 @@ export function startSession(serverId: string, itemId: string, claim: PlayerClai
   leaveSession();
   const key = keyOf(serverId, itemId);
   const entry = acquire(serverId, itemId);
+  const joinedAt = Date.now();
   participation = {
-    key, serverId, itemId, role: "host", claim,
+    key, serverId, itemId, role: "host", claim, canHost: true, joinedAt,
     heartbeat: setInterval(sendState, 4000),
   };
   usePlayerStore.getState().setSession({ itemId, role: "host" });
   const identity = getSelfIdentity();
   void entry.ready.then(() => {
-    void entry.channel.track({ userId: identity.userId, name: identity.displayName, host: true } satisfies PresenceMeta);
+    void entry.channel.track({ userId: identity.userId, name: identity.displayName, host: true, canHost: true, joinedAt } satisfies PresenceMeta);
     sendState();
   });
   notify(key);
 }
 
-export function joinSession(serverId: string, itemId: string, claim: PlayerClaim): void {
+export function joinSession(serverId: string, itemId: string, claim: PlayerClaim, canHost = false): void {
   if (!supabaseReady()) return;
   leaveSession();
   const key = keyOf(serverId, itemId);
   const entry = acquire(serverId, itemId);
-  participation = { key, serverId, itemId, role: "listener", claim, heartbeat: null };
+  const joinedAt = Date.now();
+  participation = { key, serverId, itemId, role: "listener", claim, canHost, joinedAt, heartbeat: null };
   usePlayerStore.getState().setSession({ itemId, role: "listener" });
   const identity = getSelfIdentity();
   void entry.ready.then(() => {
-    void entry.channel.track({ userId: identity.userId, name: identity.displayName, host: false } satisfies PresenceMeta);
+    void entry.channel.track({ userId: identity.userId, name: identity.displayName, host: false, canHost, joinedAt } satisfies PresenceMeta);
     void entry.channel.send({ type: "broadcast", event: "session", payload: { t: "sync-req" } satisfies SessionMsg });
   });
   notify(key);
@@ -291,7 +339,7 @@ export function usePlayerSession(serverId: string | null, itemId: string) {
   return {
     ...status,
     start: (claim: PlayerClaim) => { if (serverId) startSession(serverId, itemId, claim); },
-    join: (claim: PlayerClaim) => { if (serverId) joinSession(serverId, itemId, claim); },
+    join: (claim: PlayerClaim, canHost = false) => { if (serverId) joinSession(serverId, itemId, claim, canHost); },
     leave: leaveSession,
   };
 }

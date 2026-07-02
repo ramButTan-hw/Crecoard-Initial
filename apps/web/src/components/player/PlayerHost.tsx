@@ -77,6 +77,10 @@ export function PlayerHost() {
   volRef.current = vol;
   const advanceRef = useRef(advance);
   advanceRef.current = advance;
+  const spotifyOuterRef = useRef<HTMLDivElement>(null);
+  const spotifyCtrlRef = useRef<{ play: () => void; pause: () => void; togglePlay: () => void; seek: (sec: number) => void; destroy?: () => void } | null>(null);
+  const autoplayRef = useRef(autoplay);
+  autoplayRef.current = autoplay;
 
   const [docked, setDocked] = useState(false);
   const dockedRef = useRef(docked);
@@ -241,6 +245,64 @@ export function PlayerHost() {
     if (audioRef.current) audioRef.current.volume = vol / 100;
   }, [vol, embed?.url]);
 
+  // ── Spotify iFrame API: controller gives play/pause/seek + progress events ──
+  useEffect(() => {
+    if (embed?.platform !== "Spotify" || !embed.spotifyUri) return;
+    const outer = spotifyOuterRef.current;
+    if (!outer) return;
+    let destroyed = false;
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const init = (api: any) => {
+      if (destroyed || !spotifyOuterRef.current) return;
+      // The API replaces the element it's given — hand it a child we own
+      // imperatively so React never notices the swap.
+      const holder = document.createElement("div");
+      outer.innerHTML = "";
+      outer.appendChild(holder);
+      api.createController(holder, { uri: embed.spotifyUri, width: "100%", height: "100%" }, (c: any) => {
+        if (destroyed) { try { c.destroy?.(); } catch {} return; }
+        spotifyCtrlRef.current = c;
+        c.addListener("playback_update", (e: any) => {
+          const d = e?.data;
+          if (!d) return;
+          usePlayerStore.getState().setPlaying(!d.isPaused);
+          if (typeof d.position === "number") {
+            usePlayerStore.getState().setPosition({ sec: d.position / 1000, at: Date.now() });
+          }
+          if (d.duration > 0 && d.position >= d.duration) advanceRef.current(1, true);
+        });
+        if (autoplayRef.current) { try { c.play(); } catch {} }
+      });
+    };
+    const w = window as any;
+    if (w.__spotifyIframeApi) {
+      init(w.__spotifyIframeApi);
+    } else {
+      (w.__spotifyApiCbs ??= []).push(init);
+      if (!w.onSpotifyIframeApiReady) {
+        w.onSpotifyIframeApiReady = (api: any) => {
+          w.__spotifyIframeApi = api;
+          for (const cb of w.__spotifyApiCbs ?? []) cb(api);
+          w.__spotifyApiCbs = [];
+        };
+      }
+      if (!document.getElementById("spotify-iframe-api")) {
+        const s = document.createElement("script");
+        s.id = "spotify-iframe-api";
+        s.src = "https://open.spotify.com/embed/iframe-api/v1";
+        s.async = true;
+        document.head.appendChild(s);
+      }
+    }
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    return () => {
+      destroyed = true;
+      try { spotifyCtrlRef.current?.destroy?.(); } catch {}
+      spotifyCtrlRef.current = null;
+      if (outer) outer.innerHTML = "";
+    };
+  }, [embed?.spotifyUri, embed?.platform]);
+
   // ── Imperative controls registry (used by mini-player + live sessions) ─────
   useEffect(() => {
     if (!embed || embed.kind === "link") return;
@@ -265,6 +327,12 @@ export function PlayerHost() {
         play: () => { try { scWidgetRef.current?.play(); } catch {} },
         pause: () => { try { scWidgetRef.current?.pause(); } catch {} },
         seek: (sec) => { try { scWidgetRef.current?.seekTo(Math.max(0, sec) * 1000); } catch {} },
+      });
+    } else if (embed.platform === "Spotify") {
+      store.setControls({
+        play: () => { try { spotifyCtrlRef.current?.play(); } catch {} },
+        pause: () => { try { spotifyCtrlRef.current?.pause(); } catch {} },
+        seek: (sec) => { try { spotifyCtrlRef.current?.seek(Math.max(0, sec)); } catch {} },
       });
     } else {
       store.setControls(null);
@@ -291,10 +359,19 @@ export function PlayerHost() {
       );
     } else if (embed.platform === "SoundCloud") {
       try { scWidgetRef.current?.toggle(); } catch {}
+    } else if (embed.platform === "Spotify") {
+      try { spotifyCtrlRef.current?.togglePlay(); } catch {}
     }
   };
 
-  const media = embed.kind === "iframe" ? (
+  const media = embed.platform === "Spotify" && embed.spotifyUri ? (
+    // The Spotify iFrame API owns the DOM inside this wrapper (see effect above)
+    <div
+      ref={spotifyOuterRef} key={embed.spotifyUri}
+      className="w-full"
+      style={docked ? { height: Math.min(embed.fixedHeight ?? 152, 166) } : { height: "100%" }}
+    />
+  ) : embed.kind === "iframe" ? (
     <iframe
       ref={iframeRef} key={embed.url} src={embed.url}
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

@@ -15,6 +15,8 @@ export interface EmbedResult {
   fixedHeight?: number;
   /** True when the URL is a playlist/album (not a single track) */
   isPlaylist?: boolean;
+  /** Spotify URI (spotify:track:…) — drives the Spotify iFrame API controller for play/pause/seek */
+  spotifyUri?: string;
 }
 
 export function resolveEmbed(raw: string, autoplay: boolean): EmbedResult {
@@ -49,6 +51,17 @@ export function resolveEmbed(raw: string, autoplay: boolean): EmbedResult {
       aspectRatio: "16/9",
     };
   }
+
+  // Spotify — embed URL for display, URI for the iFrame API controller (playback control)
+  const spMatch = url.match(/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(track|album|playlist|artist|episode|show)\/([A-Za-z0-9]+)/);
+  if (spMatch) return {
+    kind: "iframe",
+    url: `https://open.spotify.com/embed/${spMatch[1]}/${spMatch[2]}`,
+    platform: "Spotify",
+    fixedHeight: spMatch[1] === "track" || spMatch[1] === "episode" ? 152 : 352,
+    isPlaylist: spMatch[1] !== "track" && spMatch[1] !== "episode",
+    spotifyUri: `spotify:${spMatch[1]}:${spMatch[2]}`,
+  };
 
   // SoundCloud
   if (/soundcloud\.com/.test(url)) return {
@@ -117,9 +130,9 @@ export function getStaticThumbnail(trackUrl: string): string | null {
   return null;
 }
 
-/** True when the app can programmatically control playback/volume for this platform. */
+/** True when the app can programmatically control playback for this platform. */
 export function platformControllable(platform: string): boolean {
-  return platform === "YouTube" || platform === "SoundCloud" || platform === "Audio file";
+  return platform === "YouTube" || platform === "SoundCloud" || platform === "Audio file" || platform === "Spotify";
 }
 
 /**

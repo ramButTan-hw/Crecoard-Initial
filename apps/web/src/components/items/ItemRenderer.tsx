@@ -46,6 +46,7 @@ import { useCanEditBoard, useServerBoard, roleAllowed } from "@/contexts/ServerB
 import { resolveEmbed, PLATFORM_COLORS, getStaticThumbnail, advancePlaylistIndex, playerKeyOf } from "@/lib/playlist";
 import { usePlayerStore } from "@/store/playerStore";
 import { usePlayerSession, announceSessionState } from "@/lib/playerSession";
+import { useBoardContributions } from "@/contexts/BoardContributionsContext";
 import { uploadFile } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 import { buildIcs } from "@/lib/ics";
@@ -8509,7 +8510,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
   const vol = item.playlistVolume ?? 80;
 
   // ── Granular per-function permissions (item.perms.fns — see lib/playlist) ──
-  const { serverId, viewerRole, viewerRoleIds } = useServerBoard();
+  const { serverId, viewerRole, viewerRoleIds, isDraftMode } = useServerBoard();
   const canFn = (fn: string) => roleAllowed(viewerRole, viewerRoleIds, item.perms?.fns?.[fn]);
   const canPlayback = canFn("playback");
   const canQueueAdd = canFn("queue-add");
@@ -8524,6 +8525,43 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
   // While listening to someone else's session, playback follows the host.
   const playbackLocked = session.joined && !session.isHost;
   const canPlaybackUI = canPlayback && !playbackLocked;
+
+  // ── Shared live queue (server boards): tracks added outside draft editing are
+  //    stored as contributions (durable + realtime-synced to every viewer) and
+  //    merged into the local store copy so playback/sessions see one list.
+  //    Draft item writes stay the owner's curated base list.
+  const contribCtx = useBoardContributions();
+  const { identity } = useUser();
+  const canEditQueueBase = useCanEditBoard(); // owner/admin
+  useEffect(() => {
+    if (!serverId) return;
+    return contribCtx.loadAndSubscribe(item.id, boardId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverId, item.id, boardId]);
+  const contributions = serverId ? (contribCtx.contributionsByItem[item.id] ?? []) : [];
+  const contribTracksJson = JSON.stringify(
+    contributions
+      .filter((c) => c.kind === "track" && c.approved)
+      .map((c) => {
+        try {
+          const d = JSON.parse(c.content) as { url?: string; title?: string };
+          if (!d.url) return null;
+          return { id: `c-${c.id}`, url: d.url, title: d.title || "Track", contribId: c.id, addedBy: c.authorName, authorId: c.authorId };
+        } catch { return null; }
+      })
+      .filter(Boolean)
+  );
+  useEffect(() => {
+    if (!serverId) return;
+    const contribTracks = JSON.parse(contribTracksJson) as PlaylistTrack[];
+    const cur = item.playlistTracks ?? [];
+    const merged = [...cur.filter((t) => !t.contribId), ...contribTracks];
+    if (merged.length === cur.length && merged.every((t, i) => t.id === cur[i]?.id)) return;
+    upd({ playlistTracks: merged });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contribTracksJson, serverId, item.playlistTracks]);
+  /** Adds go into the item only when curating the draft; everywhere else they're contributions. */
+  const addsAreContributions = !!serverId && !(canEditQueueBase && isDraftMode);
 
   // ── Global player claim: media lives in PlayerHost so playback survives board
   //    switches; this item registers its embed slot and PlayerHost pins over it.
@@ -8625,16 +8663,34 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
     const url = urlInput.trim();
     if (!url) return;
     const detected = resolveEmbed(url, false);
-    const track: PlaylistTrack = { id: nanoid(), url, title: titleInput.trim() || detected.platform + " track" };
-    upd({ playlistTracks: [...tracks, track] });
+    const title = titleInput.trim() || detected.platform + " track";
+    if (addsAreContributions) {
+      void contribCtx.addContribution(item.id, boardId, JSON.stringify({ url, title }), { kind: "track", approved: true });
+    } else {
+      const track: PlaylistTrack = { id: nanoid(), url, title };
+      // keep the curated base list ahead of contributed tracks
+      upd({ playlistTracks: [...tracks.filter((t) => !t.contribId), track, ...tracks.filter((t) => t.contribId)] });
+    }
     setUrlInput("");
     setTitleInput("");
   };
 
   const removeTrack = (id: string) => {
-    const newTracks = tracks.filter((t) => t.id !== id);
+    const t = tracks.find((x) => x.id === id);
+    if (t?.contribId) {
+      if (t.authorId === identity.userId) void contribCtx.removeOwn(t.contribId, item.id);
+      else if (canEditQueueBase) void contribCtx.moderateRemove(t.contribId, item.id);
+      return;
+    }
+    const newTracks = tracks.filter((x) => x.id !== id);
     upd({ playlistTracks: newTracks, playlistCurrentIndex: Math.min(currentIdx, Math.max(0, newTracks.length - 1)) });
   };
+
+  /** Snapshot tracks are removable only where edits are durable (draft / personal). */
+  const canRemoveTrack = (t: PlaylistTrack) =>
+    canQueueRemove && (t.contribId
+      ? (t.authorId === identity.userId || canEditQueueBase)
+      : (!serverId || (canEditQueueBase && isDraftMode)));
 
   // Detect importable playlist URLs (YouTube only for now)
   const importInfo = useMemo(() => {
@@ -8655,7 +8711,13 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
       if (!mountedRef.current) return;
       if (data.error) { setImportError(data.error); return; }
       const newTracks: PlaylistTrack[] = (data.tracks ?? []).map((t) => ({ id: nanoid(), url: t.url, title: t.title }));
-      upd({ playlistTracks: [...tracks, ...newTracks] });
+      if (addsAreContributions) {
+        for (const t of newTracks) {
+          void contribCtx.addContribution(item.id, boardId, JSON.stringify({ url: t.url, title: t.title }), { kind: "track", approved: true });
+        }
+      } else {
+        upd({ playlistTracks: [...tracks.filter((t) => !t.contribId), ...newTracks, ...tracks.filter((t) => t.contribId)] });
+      }
       setUrlInput("");
       setTitleInput("");
     } catch {
@@ -8791,7 +8853,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
                   {session.isHost ? "End" : "Leave"}
                 </button>
               ) : (
-                <button onClick={() => session.join(claimShape)}
+                <button onClick={() => session.join(claimShape, canHost)}
                   className="shrink-0 rounded px-2 py-0.5 text-white font-medium hover:opacity-90 transition-opacity"
                   style={{ backgroundColor: accent }}>
                   Join
@@ -8822,8 +8884,9 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
             onClick={() => goTo(i)}>
             <span className="text-[10px] tabular-nums w-4 shrink-0 text-center" style={{ color: active ? accent : "var(--text-muted)" }}>{i + 1}</span>
             <PlatformBadge platform={trackEmbed.platform} />
-            <span className={cn("flex-1 text-[11px] truncate", active ? "font-medium" : "text-[var(--text-secondary)]")} style={active ? { color: accent } : undefined}>{track.title}</span>
-            {canQueueRemove && (
+            <span className={cn("flex-1 text-[11px] truncate", active ? "font-medium" : "text-[var(--text-secondary)]")} style={active ? { color: accent } : undefined}
+              title={track.addedBy ? `Added by ${track.addedBy}` : undefined}>{track.title}</span>
+            {canRemoveTrack(track) && (
               <button onClick={(e) => { e.stopPropagation(); removeTrack(track.id); }}
                 className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-[var(--text-muted)] hover:text-red-400 transition-all">
                 <XIcon size={10} />

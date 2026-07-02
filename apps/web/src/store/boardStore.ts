@@ -266,6 +266,10 @@ export interface PlaylistTrack {
   id: string;
   url: string;
   title: string;
+  /** Set when the track came from a member contribution on a server board (durable, realtime-synced). */
+  contribId?: string;
+  addedBy?: string;
+  authorId?: string;
 }
 
 export interface ListEntry {
