@@ -118,8 +118,17 @@ export async function POST(req: NextRequest) {
     .in("user_id", targets);
   if (!subs || subs.length === 0) return NextResponse.json({ sent: 0 });
 
+  // Resolve mention tokens to display names for the push preview.
+  const nameOf = new Map<string, string>();
+  if (mentioned.size > 0) {
+    const { data: profs } = await db
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", [...mentioned]);
+    for (const pr of profs ?? []) nameOf.set(pr.id as string, (pr.display_name as string) || "user");
+  }
   const preview = ((msg.content as string) ?? "")
-    .replace(MENTION_TOKEN, "@…")
+    .replace(MENTION_TOKEN, (_, id: string) => `@${nameOf.get(id) ?? "user"}`)
     .replace(/<box:[^>]+>/g, "▦")
     .slice(0, 120) || "sent a message";
 

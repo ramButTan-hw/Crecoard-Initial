@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { X, Hash } from "lucide-react";
 import { useNotifications, type ChatToast } from "@/contexts/NotificationContext";
+import { useProfiles } from "@/contexts/ProfilesContext";
 import { cn } from "@/lib/utils";
 
 export function Toaster() {
@@ -18,6 +19,7 @@ export function Toaster() {
 
 function ToastCard({ toast, onDismiss }: { toast: ChatToast; onDismiss: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const profiles = useProfiles();
 
   // Slide-in on mount
   useEffect(() => {
@@ -32,8 +34,12 @@ function ToastCard({ toast, onDismiss }: { toast: ChatToast; onDismiss: () => vo
     });
   }, []);
 
-  const preview = toast.content
-    ? toast.content.slice(0, 80) + (toast.content.length > 80 ? "…" : "")
+  // Resolve mention/box tokens — raw <@uuid> in a toast reads like a bug.
+  const readable = (toast.content ?? "")
+    .replace(/<@([0-9a-fA-F-]{36})>/g, (_, id: string) => `@${profiles.get(id)?.displayName ?? "user"}`)
+    .replace(/<box:[^>]+>/g, "▦");
+  const preview = readable
+    ? readable.slice(0, 80) + (readable.length > 80 ? "…" : "")
     : toast.isMention ? "mentioned you" : "sent a message";
 
   return (
