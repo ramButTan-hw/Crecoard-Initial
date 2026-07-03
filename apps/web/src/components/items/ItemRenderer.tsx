@@ -18,7 +18,7 @@ import {
   ScatterChart, Scatter, ZAxis,
   XAxis, YAxis, Tooltip, Legend, CartesianGrid, LabelList,
 } from "recharts";
-import { BlockItem, BoardLevelItem, CalendarEvent, CalendarFeed, TableLink, TableColumn, TableRow, TableFilter, FilterOp, ListEntry, PlaylistTrack, GraphPoint, KanbanCard, KanbanColumn, useBoardStore, type Board } from "@/store/boardStore";
+import { BlockItem, BoardLevelItem, CalendarEvent, CalendarFeed, TableLink, SourceLink, TableColumn, TableRow, TableFilter, FilterOp, ListEntry, PlaylistTrack, GraphPoint, KanbanCard, KanbanColumn, useBoardStore, type Board } from "@/store/boardStore";
 import {
   DndContext, DragOverlay, PointerSensor, KeyboardSensor,
   useSensor, useSensors, useDroppable, closestCorners,
@@ -54,6 +54,9 @@ import { supabase } from "@/lib/supabase";
 import { buildIcs } from "@/lib/ics";
 import { REMINDER_LEADS, eventStartDate, createReminder } from "@/lib/reminders";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
+import { DueChip, MemberAvatar, AssigneeRows, TaskFieldsPopover, MemberPickerPopover, RemindMeControl } from "@/components/items/TaskFields";
+import { htmlToPlainText } from "@/lib/taskFacts";
+import type { ServerMember } from "@/types/server";
 
 const CHART_COLORS = ["#d59ee8", "#48cfa6", "#f2994a", "#eb5757", "#9b51e0", "#2d9cdb"];
 
@@ -184,7 +187,7 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     case "table":    return <TableItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
     case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "playlist": return <PlaylistItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} canInteract={canInteract} extraContextItems={extraContextItems} />;
-    case "kanban":   return <KanbanItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
+    case "kanban":   return <KanbanItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} boardId={boardId} />;
     // Items whose renderer builds no context menu of its own — wrap so right-click
     // opens the standard item menu (Duplicate/Delete/…) right at the block.
     case "chat":     return <WithItemMenu items={extraContextItems}><ChatBlockRenderer item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} /></WithItemMenu>;
@@ -2185,6 +2188,9 @@ function ListItem({ item, upd, collapsed, isFinished, canInput, canContribute, b
   const [locked, setLocked] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [taskPopover, setTaskPopover] = useState<{ entryId: string; x: number; y: number } | null>(null);
+  const { members } = useServerBoard();
+  const memberById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members]);
   const marker = item.listMarker ?? "checkbox";
   const hasBorder = (item.listBorderWidth ?? 0) > 0;
 
@@ -2473,8 +2479,28 @@ function ListItem({ item, upd, collapsed, isFinished, canInput, canContribute, b
                 }}
               />
             )}
+            {(entry.due || entry.assigneeId) && (
+              <span className="flex flex-shrink-0 items-center gap-1.5">
+                {entry.due && <DueChip due={entry.due} done={entry.checked && marker === "checkbox"} />}
+                {entry.assigneeId && memberById.get(entry.assigneeId) && (
+                  <MemberAvatar member={memberById.get(entry.assigneeId)!} size={14} />
+                )}
+              </span>
+            )}
             {!isFinished && !collapsed && (
               <div className="flex items-center gap-0.5 flex-shrink-0">
+                {canInput !== false && (
+                  <button
+                    onClick={(e) => {
+                      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      setTaskPopover({ entryId: entry.id, x: r.right - 220, y: r.bottom + 6 });
+                    }}
+                    title="Due date & assignee"
+                    className="text-[var(--text-muted)] opacity-0 group-hover/le:opacity-100 hover:text-[var(--text-primary)] transition-colors rounded p-0.5"
+                  >
+                    <CalendarDays size={11} />
+                  </button>
+                )}
                 <span
                   draggable
                   onDragStart={(e) => { setDragId(entry.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", entry.id); }}
@@ -2569,6 +2595,21 @@ function ListItem({ item, upd, collapsed, isFinished, canInput, canContribute, b
         />,
         document.body
       )}
+      {taskPopover && (() => {
+        const entry = entries.find((x) => x.id === taskPopover.entryId);
+        if (!entry) return null;
+        return (
+          <TaskFieldsPopover
+            x={taskPopover.x}
+            y={taskPopover.y}
+            due={entry.due}
+            assigneeId={entry.assigneeId}
+            onChange={(p) => setEntries(entries.map((x) => x.id === entry.id ? { ...x, due: p.due, assigneeId: p.assigneeId } : x))}
+            onClose={() => setTaskPopover(null)}
+            remind={{ title: htmlToPlainText(entry.text) || "Task", boardId, itemId: item.id }}
+          />
+        );
+      })()}
       {contextMenu && (() => {
         const tmp = document.createElement("div");
         const ctxItems: ContextMenuEntry[] = [
@@ -5566,24 +5607,58 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished, extraC
     return [];
   }, [item.calendarLinkedTables, item.calendarLinkedTableId, item.calendarLinkedDateCol, item.calendarLinkedTitleCol, item.calendarLinkedColorCol, accent]);
 
-  // Return all linked tables' rows as a stable map (tableId → rows[])
-  const linkedTablesData = useBoardStore(useShallow(s => {
-    if (!boardId || !boxId || links.length === 0) return {} as Record<string, typeof s.boards[0]["boxes"][0]["items"][0]["tableRows"]>;
+  // Return all linked source items as a stable map (sourceId → item ref)
+  const linkedSourceItems = useBoardStore(useShallow(s => {
+    if (!boardId || !boxId || links.length === 0) return {} as Record<string, BlockItem>;
     const box = (s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId])?.boxes.find(b => b.id === boxId);
-    const result: Record<string, BlockItem["tableRows"]> = {};
+    const result: Record<string, BlockItem> = {};
     for (const lk of links) {
-      const tableItem = box?.items.find(i => i.id === lk.tableId);
-      if (tableItem?.tableRows) result[lk.tableId] = tableItem.tableRows;
+      const src = box?.items.find(i => i.id === lk.tableId);
+      if (src) result[lk.tableId] = src;
     }
     return result;
   }));
 
-  const linkedTableEvents = useMemo<CalendarEvent[]>(() => {
+  const linkedSourceEvents = useMemo<CalendarEvent[]>(() => {
     const events: CalendarEvent[] = [];
     for (const lk of links) {
-      const rows = linkedTablesData[lk.tableId];
-      if (!rows) continue;
+      const src = linkedSourceItems[lk.tableId];
+      if (!src) continue;
       const fallback = lk.color ?? accent;
+      const kind = lk.kind ?? "table";
+
+      if (kind === "kanban") {
+        const doneColIds = new Set((src.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).filter(c => c.isDone).map(c => c.id));
+        for (const card of src.kanbanCards ?? []) {
+          if (!card.due) continue;
+          const done = doneColIds.has(card.columnId);
+          events.push({
+            id: `linked-${lk.tableId}-${card.id}`,
+            date: card.due,
+            title: `${done ? "✓ " : ""}${card.text || "(untitled)"}`,
+            color: card.color || fallback,
+            description: card.description,
+            feedId: `kanban:${lk.tableId}`,
+          });
+        }
+        continue;
+      }
+
+      if (kind === "list") {
+        for (const entry of src.listItems ?? []) {
+          if (!entry.due) continue;
+          events.push({
+            id: `linked-${lk.tableId}-${entry.id}`,
+            date: entry.due,
+            title: `${entry.checked ? "✓ " : ""}${htmlToPlainText(entry.text) || "(untitled)"}`,
+            color: fallback,
+            feedId: `list:${lk.tableId}`,
+          });
+        }
+        continue;
+      }
+
+      const rows = src.tableRows ?? [];
       for (const r of rows) {
         const rawDate = r.cells[lk.dateCol] as string | undefined;
         if (!rawDate) continue;
@@ -5608,9 +5683,9 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished, extraC
       }
     }
     return events;
-  }, [links, linkedTablesData, accent]);
+  }, [links, linkedSourceItems, accent]);
 
-  const allEvents = [...localEvents, ...feedEvents, ...linkedTableEvents];
+  const allEvents = [...localEvents, ...feedEvents, ...linkedSourceEvents];
 
   const eventsOnDate = (key: string) => allEvents.filter(e => e.date === key).sort((a,b) => (a.startTime ?? "00:00").localeCompare(b.startTime ?? "00:00"));
 
@@ -6115,12 +6190,16 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
   const cellBgFileRef = useRef<HTMLInputElement>(null);
   const wkndCellBgFileRef = useRef<HTMLInputElement>(null);
 
-  // All table items in this box — top-level hook
-  const tableItems = useBoardStore(useShallow(s => {
+  // All linkable source items in this box (tables, kanbans, lists) — top-level hook
+  const linkableItems = useBoardStore(useShallow(s => {
     if (!boardId || !boxId) return [] as BlockItem[];
     const box = (s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId])?.boxes.find(b => b.id === boxId);
-    return (box?.items ?? []).filter(i => i.type === "table");
+    return (box?.items ?? []).filter(i => i.type === "table" || i.type === "kanban" || i.type === "list");
   }));
+  const sourceLabel = (i: BlockItem) =>
+    i.type === "table" ? `${i.tableTitle || "Untitled table"} (table)`
+    : i.type === "kanban" ? `Kanban (${(i.kanbanCards ?? []).length} cards)`
+    : `${i.listTitle || "Untitled list"} (list)`;
 
   // Current multi-link config (migrate legacy single-link on the fly)
   const links: TableLink[] = useMemo(() => {
@@ -6159,47 +6238,72 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
   return (
     <div className="flex flex-col gap-4 p-3 text-xs">
 
-      {/* Linked Tables */}
+      {/* Linked items */}
       <section>
         <div className="mb-1 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Linked Tables</p>
-          {boardId && boxId && tableItems.length > 0 && (
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Linked Items</p>
+          {boardId && boxId && linkableItems.length > 0 && (
             <button onClick={addLink}
               className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] bg-[var(--accent)] text-white hover:opacity-80 transition-opacity">
               <Plus size={9} /> Add link
             </button>
           )}
         </div>
-        <p className="mb-2 text-[10px] text-[var(--text-muted)]">Show rows from one or more tables as calendar events. Tables must be in the same block.</p>
+        <p className="mb-2 text-[10px] text-[var(--text-muted)]">Show table rows, kanban cards, and list entries with due dates as calendar events. Sources must be in the same block.</p>
         {!boardId || !boxId ? (
-          <p className="text-[10px] text-orange-400/80">Open the block to enable table linking.</p>
-        ) : tableItems.length === 0 ? (
-          <p className="text-[10px] text-orange-400/80">No table items in this block yet. Add a Table item first.</p>
+          <p className="text-[10px] text-orange-400/80">Open the block to enable item linking.</p>
+        ) : linkableItems.length === 0 ? (
+          <p className="text-[10px] text-orange-400/80">No table, kanban, or list items in this block yet. Add one first.</p>
         ) : links.length === 0 ? (
           <button onClick={addLink}
             className="w-full rounded border border-dashed border-[var(--border)] py-2 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors">
-            + Link a table
+            + Link an item
           </button>
         ) : (
           <div className="flex flex-col gap-3">
             {links.map((lk, idx) => {
-              const linkedTable = tableItems.find(t => t.id === lk.tableId);
+              const linkedSource = linkableItems.find(t => t.id === lk.tableId);
+              const linkKind = lk.kind ?? "table";
+              const linkedTable = linkKind === "table" ? linkedSource : undefined;
               const cols = linkedTable?.tableColumns ?? [];
               const dateCols = cols.filter(c => c.type === "date" || c.type === "text");
               const textCols = cols.filter(c => c.type === "text" || c.type === "select");
               const colorCols = cols.filter(c => c.type === "text" || c.type === "select");
+              const dueCount = linkedSource && linkKind === "kanban"
+                ? (linkedSource.kanbanCards ?? []).filter(c => c.due).length
+                : linkedSource && linkKind === "list"
+                  ? (linkedSource.listItems ?? []).filter(e => e.due).length
+                  : 0;
               return (
                 <div key={lk.id} className="rounded-lg border border-[var(--border)] p-2 flex flex-col gap-1.5">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] text-[var(--text-muted)] font-semibold shrink-0">#{idx + 1}</span>
                     <select value={lk.tableId}
-                      onChange={e => patchLink(lk.id, { tableId: e.target.value, dateCol: "", titleCol: "", colorCol: undefined })}
+                      onChange={e => {
+                        const src = linkableItems.find(t => t.id === e.target.value);
+                        patchLink(lk.id, { tableId: e.target.value, kind: (src?.type as SourceLink["kind"]) ?? "table", dateCol: "", titleCol: "", colorCol: undefined });
+                      }}
                       className="flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none">
-                      <option value="">— Pick table —</option>
-                      {tableItems.map(t => <option key={t.id} value={t.id}>{t.tableTitle || "Untitled table"}</option>)}
+                      <option value="">— Pick item —</option>
+                      {linkableItems.map(t => <option key={t.id} value={t.id}>{sourceLabel(t)}</option>)}
                     </select>
                     <button onClick={() => removeLink(lk.id)} className="text-[var(--text-muted)] hover:text-red-400 transition-colors shrink-0"><XIcon size={11} /></button>
                   </div>
+                  {linkedSource && linkKind !== "table" && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[var(--text-muted)] w-10 shrink-0 text-[11px]">Color</span>
+                        <input type="color" value={lk.color ?? accent} onChange={e => patchLink(lk.id, { color: e.target.value })}
+                          title="Event color" className="h-6 w-6 shrink-0 cursor-pointer rounded border border-[var(--border)] bg-transparent p-0.5" />
+                        <span className="text-[10px] text-[var(--text-muted)]">{linkKind === "kanban" ? "Cards keep their own color if set" : "Applied to all entries"}</span>
+                      </div>
+                      <p className={cn("text-[10px]", dueCount > 0 ? "text-green-400/80" : "text-[var(--text-muted)]")}>
+                        {dueCount > 0
+                          ? `✓ ${dueCount} ${linkKind === "kanban" ? "card(s)" : "entr(ies)"} with a due date`
+                          : `No due dates set yet — ${linkKind === "kanban" ? "add one from a card's edit dialog" : "use the calendar button on a list row"}`}
+                      </p>
+                    </>
+                  )}
                   {linkedTable && (
                     <>
                       <div className="flex items-center gap-2">
@@ -6531,7 +6635,7 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
 // ─── Table ───────────────────────────────────────────────────────────────────
 
-const COL_TYPE_ICONS: Record<string, string> = { text: "T", number: "#", checkbox: "☑", select: "▾", date: "📅", url: "🔗" };
+const COL_TYPE_ICONS: Record<string, string> = { text: "T", number: "#", checkbox: "☑", select: "▾", date: "📅", url: "🔗", member: "@" };
 
 function idxToColLetter(idx: number): string {
   let result = '';
@@ -6542,7 +6646,7 @@ function idxToColLetter(idx: number): string {
   }
   return result;
 }
-const DEFAULT_COL_TYPES = ["text","number","checkbox","select","date","url"] as const;
+const DEFAULT_COL_TYPES = ["text","number","checkbox","select","date","url","member"] as const;
 
 // ── Formula evaluation engine ─────────────────────────────────────────────────
 
@@ -6774,12 +6878,53 @@ function TableCell({ col, value, onChange, isFinished, onKeyDown, fontColor, fon
   onCellFocus?: (ref: string, formula?: string) => void; onCellBlur?: () => void;
 }) {
   const [focused, setFocused] = useState(false);
+  const [memberPickerAt, setMemberPickerAt] = useState<{ x: number; y: number } | null>(null);
+  const { members } = useServerBoard();
   const base = "w-full bg-transparent outline-none placeholder:text-[var(--text-muted)]";
   const cellStyle: React.CSSProperties = {
     color: fontColor ?? "var(--text-primary)",
     fontSize: fontSize ?? 12,
     fontFamily: fontFamily ?? "inherit",
   };
+
+  if (col.type === "member") {
+    const member = value ? members.find((m) => m.userId === value) : undefined;
+    return (
+      <>
+        <button
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => {
+            e.stopPropagation();
+            if (isFinished) return;
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            setMemberPickerAt({ x: r.left, y: r.bottom + 4 });
+          }}
+          className="flex w-full min-w-0 items-center gap-1.5 text-left"
+          style={{ ...cellStyle, cursor: isFinished ? "default" : "pointer" }}
+        >
+          {member ? (
+            <>
+              <MemberAvatar member={member} size={14} title={member.username} />
+              <span className="truncate">{member.username}</span>
+            </>
+          ) : value ? (
+            <span className="italic" style={{ color: "var(--text-muted)" }}>Unknown member</span>
+          ) : (
+            <span style={{ color: "var(--text-muted)" }}>{isFinished ? "—" : "Assign…"}</span>
+          )}
+        </button>
+        {memberPickerAt && (
+          <MemberPickerPopover
+            x={memberPickerAt.x}
+            y={memberPickerAt.y}
+            assigneeId={(value as string) || undefined}
+            onPick={(id) => { onChange(id ?? ""); setMemberPickerAt(null); }}
+            onClose={() => setMemberPickerAt(null)}
+          />
+        )}
+      </>
+    );
+  }
 
   if (col.type === "checkbox") {
     const checked = !!value;
@@ -6915,7 +7060,7 @@ function getFilterOps(col: TableColumn | undefined): { value: FilterOp; label: s
   if (!col) return TEXT_OPS;
   if (col.type === "number") return NUMBER_OPS;
   if (col.type === "checkbox") return CHECKBOX_OPS;
-  if (col.type === "select") return SELECT_OPS;
+  if (col.type === "select" || col.type === "member") return SELECT_OPS;
   return TEXT_OPS;
 }
 
@@ -6924,6 +7069,7 @@ function FilterPanel({ cols, filters, onChange }: {
   filters: TableFilter[];
   onChange: (f: TableFilter[]) => void;
 }) {
+  const { members } = useServerBoard();
   const addFilter = () =>
     onChange([...filters, { id: crypto.randomUUID(), colId: cols[0]?.id ?? "", op: "contains", value: "" }]);
   const updateFilter = (id: string, patch: Partial<TableFilter>) =>
@@ -6976,6 +7122,15 @@ function FilterPanel({ cols, filters, onChange }: {
                   >
                     <option value="">Any</option>
                     {(col.options ?? []).map(o => <option key={o} value={o.toLowerCase()}>{o}</option>)}
+                  </select>
+                ) : col?.type === "member" ? (
+                  <select
+                    value={f.value}
+                    onChange={e => updateFilter(f.id, { value: e.target.value })}
+                    className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)] outline-none"
+                  >
+                    <option value="">Any</option>
+                    {members.map(m => <option key={m.userId} value={m.userId.toLowerCase()}>{m.username}</option>)}
                   </select>
                 ) : col?.type === "checkbox" ? (
                   <select
@@ -7054,6 +7209,15 @@ function computeColSummary(col: TableColumn, rows: TableRow[]): string {
 function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraContextItems }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; boardId?: string; boxId?: string; extraContextItems?: ContextMenuEntry[] }) {
   const cols: TableColumn[] = item.tableColumns ?? [{ id: "c1", name: "Name", type: "text" }];
   const rows: TableRow[] = item.tableRows ?? [];
+  const { members } = useServerBoard();
+  const memberById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members]);
+  // Human-readable cell value — member cells store userIds; resolve to username for search/sort/export.
+  const cellDisplay = useCallback((c: TableColumn, raw: string | boolean | undefined): string => {
+    if (typeof raw === "boolean") return raw ? "true" : "false";
+    const s = (raw as string) ?? "";
+    if (c.type === "member" && s) return memberById.get(s)?.username ?? s;
+    return s;
+  }, [memberById]);
   const striped = item.tableStriped ?? false;
   const headerColor = item.tableHeaderColor;
   const headerFontColor = item.tableHeaderFontColor;
@@ -7260,12 +7424,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(r =>
-        cols.some(c => {
-          const v = r.cells[c.id];
-          return typeof v === "boolean"
-            ? (v ? "true" : "false").includes(q)
-            : ((v as string) ?? "").toLowerCase().includes(q);
-        })
+        cols.some(c => cellDisplay(c, r.cells[c.id]).toLowerCase().includes(q))
       );
     }
     for (const f of filters) {
@@ -7298,13 +7457,13 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
           const bn = parseFloat(bv as string ?? "0");
           return dir === "asc" ? an - bn : bn - an;
         }
-        const as_ = typeof av === "boolean" ? (av ? "1" : "0") : ((av as string) ?? "");
-        const bs_ = typeof bv === "boolean" ? (bv ? "1" : "0") : ((bv as string) ?? "");
+        const as_ = typeof av === "boolean" ? (av ? "1" : "0") : (col ? cellDisplay(col, av) : ((av as string) ?? ""));
+        const bs_ = typeof bv === "boolean" ? (bv ? "1" : "0") : (col ? cellDisplay(col, bv) : ((bv as string) ?? ""));
         return dir === "asc" ? as_.localeCompare(bs_) : bs_.localeCompare(as_);
       });
     }
     return result;
-  }, [rows, search, filters, sortBy, cols]);
+  }, [rows, search, filters, sortBy, cols, cellDisplay]);
 
   const cellBorder = `${bw}px solid ${borderColor}`;
 
@@ -7318,7 +7477,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
           <div key={r.id} className="flex gap-2 text-[11px] text-[var(--text-primary)]">
             {cols.slice(0, 3).map(c => (
               <span key={c.id} className="flex-1 truncate">
-                {c.type === "checkbox" ? (r.cells[c.id] ? "✓" : "—") : (r.cells[c.id] as string) || "—"}
+                {c.type === "checkbox" ? (r.cells[c.id] ? "✓" : "—") : cellDisplay(c, r.cells[c.id]) || "—"}
               </span>
             ))}
           </div>
@@ -7866,7 +8025,7 @@ function TableItem({ item, upd, collapsed, isFinished, boardId, boxId, extraCont
               onClick: () => {
                 const header = cols.map(c => c.name).join(",");
                 const body = rows.map(r => cols.map(c => {
-                  const v = String(r.cells[c.id] ?? "");
+                  const v = cellDisplay(c, r.cells[c.id]);
                   return v.includes(",") ? `"${v}"` : v;
                 }).join(",")).join("\n");
                 navigator.clipboard.writeText(header + "\n" + body);
@@ -9555,16 +9714,18 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
 const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
   { id: "col-todo",       title: "To Do",       color: "#d59ee8" },
   { id: "col-inprogress", title: "In Progress",  color: "#f2994a" },
-  { id: "col-done",       title: "Done",         color: "#48cfa6" },
+  { id: "col-done",       title: "Done",         color: "#48cfa6", isDone: true },
 ];
 
 function KanbanSortableCard({
   card, isFinished, onEdit, onDelete,
   cardBg, fontSize, fontFamily, borderRadius, cardGap,
+  assignee, inDoneColumn,
 }: {
   card: KanbanCard; isFinished: boolean;
   onEdit: (id: string) => void; onDelete: (id: string) => void;
   cardBg: string; fontSize: number; fontFamily: string; borderRadius: number; cardGap: number;
+  assignee?: ServerMember; inDoneColumn?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
@@ -9610,22 +9771,33 @@ function KanbanSortableCard({
           {card.description}
         </p>
       )}
+      {(card.due || assignee) && (
+        <div className="flex items-center justify-between gap-2" style={{ marginTop: 5 }}>
+          {card.due ? <DueChip due={card.due} done={inDoneColumn} fontSize={Math.max(10, fontSize - 3)} /> : <span />}
+          {assignee && <MemberAvatar member={assignee} size={16} />}
+        </div>
+      )}
     </div>
   );
 }
 
 // Bug fix: accept onCancel so empty new-card can be cleaned up on dismiss
 function KanbanEditModal({
-  card, onSave, onClose, onCancel,
+  card, onSave, onClose, onCancel, boardId, itemId,
 }: {
   card: KanbanCard;
   onSave: (patch: Partial<KanbanCard>) => void;
   onClose: () => void;
   onCancel?: () => void;
+  boardId?: string;
+  itemId?: string;
 }) {
   const [text, setText] = useState(card.text);
   const [desc, setDesc] = useState(card.description ?? "");
   const [color, setColor] = useState(card.color ?? "");
+  const [due, setDue] = useState(card.due ?? "");
+  const [assigneeId, setAssigneeId] = useState(card.assigneeId ?? "");
+  const { members } = useServerBoard();
 
   const handleDismiss = () => {
     if (!text.trim() && onCancel) { onCancel(); } else { onClose(); }
@@ -9670,8 +9842,23 @@ function KanbanEditModal({
             <button onClick={() => setColor("")} className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <span className="flex-shrink-0 text-xs text-[var(--text-muted)]">Due date</span>
+          <input type="date" value={due} onChange={(e) => setDue(e.target.value)}
+            className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]" />
+          {due && (
+            <button onClick={() => setDue("")} className="flex-shrink-0 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Clear</button>
+          )}
+        </div>
+        {members.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs text-[var(--text-muted)]">Assignee</span>
+            <AssigneeRows members={members} assigneeId={assigneeId || undefined} onPick={(id) => setAssigneeId(id ?? "")} />
+          </div>
+        )}
+        {due && <RemindMeControl title={text} due={due} boardId={boardId} itemId={itemId} />}
         <button
-          onClick={() => { onSave({ text: text.trim(), description: desc.trim() || undefined, color: color || undefined }); onClose(); }}
+          onClick={() => { onSave({ text: text.trim(), description: desc.trim() || undefined, color: color || undefined, due: due || undefined, assigneeId: assigneeId || undefined }); onClose(); }}
           disabled={!text.trim()}
           className="rounded-lg py-1.5 text-sm font-semibold transition-colors disabled:opacity-40"
           style={{ background: "var(--accent)", color: "#fff" }}
@@ -9687,7 +9874,8 @@ function KanbanEditModal({
 // Bug fix: useDroppable per column so empty columns accept drops
 function KanbanColumnContainer({
   col, colCards, isFinished, renamingColId, renameVal, setRenamingColId, setRenameVal,
-  renameColumn, deleteColumn, addCard, deleteCard, setEditCardId, showCount,
+  renameColumn, deleteColumn, toggleDoneColumn, addCard, deleteCard, setEditCardId, showCount,
+  memberById,
   headerBg, accent, columnBg, borderRadius, cardBg, fontSize, fontFamily, cardGap,
 }: {
   col: KanbanColumn;
@@ -9699,10 +9887,12 @@ function KanbanColumnContainer({
   setRenameVal: (v: string) => void;
   renameColumn: (colId: string, title: string) => void;
   deleteColumn: (colId: string) => void;
+  toggleDoneColumn: (colId: string) => void;
   addCard: (colId: string) => void;
   deleteCard: (cardId: string) => void;
   setEditCardId: (id: string) => void;
   showCount: boolean;
+  memberById: Map<string, ServerMember>;
   headerBg: string;
   accent: string;
   columnBg: string;
@@ -9732,7 +9922,7 @@ function KanbanColumnContainer({
     >
       {/* Column header */}
       <div
-        className="flex items-center gap-1.5 px-2.5 py-2"
+        className="group/kcolh flex items-center gap-1.5 px-2.5 py-2"
         style={{ background: headerBg, borderBottom: `2px solid ${col.color ?? accent}` }}
       >
         <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: col.color ?? accent }} />
@@ -9770,6 +9960,21 @@ function KanbanColumnContainer({
         {!isFinished && (
           <button
             onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => toggleDoneColumn(col.id)}
+            title={col.isDone ? "Done column — cards here count as complete" : "Mark as Done column"}
+            className={cn(
+              "flex-shrink-0 transition-all ml-0.5",
+              col.isDone
+                ? "text-[var(--accent)]"
+                : "text-[var(--text-muted)] opacity-0 group-hover/kcolh:opacity-100 hover:text-[var(--text-primary)]",
+            )}
+          >
+            <CheckSquare size={11} />
+          </button>
+        )}
+        {!isFinished && (
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={() => deleteColumn(col.id)}
             className="flex-shrink-0 text-[var(--text-muted)] hover:text-red-400 transition-colors ml-0.5"
           >
@@ -9796,6 +10001,8 @@ function KanbanColumnContainer({
                 fontFamily={fontFamily}
                 borderRadius={borderRadius}
                 cardGap={cardGap}
+                assignee={card.assigneeId ? memberById.get(card.assigneeId) : undefined}
+                inDoneColumn={!!col.isDone}
               />
             </div>
           ))}
@@ -9819,12 +10026,14 @@ function KanbanColumnContainer({
 }
 
 function KanbanItem({
-  item, upd, collapsed, isFinished: isFinishedProp, extraContextItems,
-}: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; extraContextItems?: ContextMenuEntry[] }) {
+  item, upd, collapsed, isFinished: isFinishedProp, extraContextItems, boardId,
+}: { item: BlockItem; upd: (p: Partial<BlockItem>) => void; collapsed?: boolean; isFinished?: boolean; extraContextItems?: ContextMenuEntry[]; boardId?: string }) {
   const isFinished = isFinishedProp ?? false;
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const columns: KanbanColumn[] = item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS;
   const cards: KanbanCard[] = item.kanbanCards ?? [];
+  const { members } = useServerBoard();
+  const memberById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members]);
   const accent = item.kanbanAccentColor ?? "#d59ee8";
   const fontSize = item.kanbanFontSize ?? 13;
   const fontFamily = item.kanbanFontFamily ?? "";
@@ -9983,6 +10192,10 @@ function KanbanItem({
     upd({ kanbanColumns: columns.map((c) => c.id === colId ? { ...c, title } : c) });
   }, [columns, upd]);
 
+  const toggleDoneColumn = useCallback((colId: string) => {
+    upd({ kanbanColumns: columns.map((c) => c.id === colId ? { ...c, isDone: !c.isDone } : c) });
+  }, [columns, upd]);
+
   const handleEditSave = useCallback((cardId: string, patch: Partial<KanbanCard>) => {
     newCardIdRef.current = null;
     updateCard(cardId, patch);
@@ -10077,10 +10290,12 @@ function KanbanItem({
           setRenameVal={setRenameVal}
           renameColumn={renameColumn}
           deleteColumn={deleteColumn}
+          toggleDoneColumn={toggleDoneColumn}
           addCard={addCard}
           deleteCard={deleteCard}
           setEditCardId={setEditCardId}
           showCount={showCount}
+          memberById={memberById}
           headerBg={headerBg}
           accent={accent}
           columnBg={columnBg}
@@ -10153,6 +10368,8 @@ function KanbanItem({
           onSave={(patch) => handleEditSave(editCard.id, patch)}
           onClose={() => handleEditClose(editCard.id)}
           onCancel={() => handleEditCancel(editCard.id)}
+          boardId={boardId}
+          itemId={item.id}
         />
       )}
       {ctxMenu && (

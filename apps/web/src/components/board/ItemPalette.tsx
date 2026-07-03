@@ -129,7 +129,7 @@ export const ITEM_DEFINITIONS: {
       kanbanColumns: [
         { id: "col-todo",       title: "To Do",       color: "#d59ee8" },
         { id: "col-inprogress", title: "In Progress",  color: "#f2994a" },
-        { id: "col-done",       title: "Done",         color: "#48cfa6" },
+        { id: "col-done",       title: "Done",         color: "#48cfa6", isDone: true },
       ],
       kanbanCards: [
         { id: nanoid(), columnId: "col-todo",       text: "Plan the week",   order: 0 },

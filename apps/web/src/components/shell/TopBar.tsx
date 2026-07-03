@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Globe, Lock, Grid3X3, ZoomIn, ZoomOut,
   Pencil, CheckCircle2, Edit3, Palette, Share2,
-  Minus, Square, X,
+  Minus, Square, X, ListTodo,
 } from "lucide-react";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
 import { useHasAppBg } from "@/lib/useHasAppBg";
@@ -12,6 +12,7 @@ import { useCollab } from "@/lib/useCollabSession";
 import { useBoardSync } from "@/contexts/BoardSyncContext";
 import { ThemePanel } from "./ThemePanel";
 import { ShareModal } from "./ShareModal";
+import { TodayPanel } from "./TodayPanel";
 import { cn } from "@/lib/utils";
 
 function Avatar({ name, color, size = 24, title }: { name: string; color: string; size?: number; title?: string }) {
@@ -49,6 +50,7 @@ export function TopBar() {
   const [nameInput, setNameInput] = useState(board?.name ?? "");
   const [showThemePanel, setShowThemePanel] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [showToday, setShowToday] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [windowMaximized, setWindowMaximized] = useState(false);
   const [confirmFinish, setConfirmFinish] = useState(false);
@@ -202,6 +204,16 @@ export function TopBar() {
           </div>
         )}
 
+        {/* Today — cross-board agenda */}
+        <ToolbarButton
+          onClick={() => setShowToday((v) => !v)}
+          title="Today — due & assigned across boards"
+          active={showToday}
+          desktop={isDesktop}
+        >
+          <ListTodo size={15} />
+        </ToolbarButton>
+
         {/* Board theme */}
         <ToolbarButton
           onClick={() => setShowThemePanel((v) => !v)}
@@ -290,6 +302,8 @@ export function TopBar() {
       )}
 
       {showShare && <ShareModal onClose={() => setShowShare(false)} />}
+
+      {showToday && <TodayPanel onClose={() => setShowToday(false)} />}
     </>
   );
 }

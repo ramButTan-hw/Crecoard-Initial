@@ -214,6 +214,8 @@ export interface KanbanCard {
   description?: string;
   color?: string;
   order: number;
+  due?: string;        // YYYY-MM-DD
+  assigneeId?: string; // ServerMember.userId of the assignee
 }
 
 export interface KanbanColumn {
@@ -221,6 +223,7 @@ export interface KanbanColumn {
   title: string;
   color?: string;
   limit?: number;
+  isDone?: boolean; // cards in this column count as complete
 }
 
 export type FilterOp =
@@ -239,7 +242,7 @@ export interface TableFilter {
 export interface TableColumn {
   id: string;
   name: string;
-  type: "text" | "number" | "checkbox" | "select" | "date" | "url";
+  type: "text" | "number" | "checkbox" | "select" | "date" | "url" | "member"; // member cells store a ServerMember.userId
   width?: number;
   options?: string[];
   summaryFn?: "none" | "sum" | "avg" | "count" | "min" | "max" | "count_checked" | "percent_checked" | "count_empty" | "count_filled";
@@ -273,14 +276,21 @@ export interface CalendarFeed {
   lastError?: string;    // last sync error message (cleared on success)
 }
 
-export interface TableLink {
+/**
+ * Projects task-shaped items in the same box onto a calendar as read-only events.
+ * Tables map explicit columns; kanban cards and list entries use their `due` field.
+ */
+export interface SourceLink {
   id: string;         // link config id
-  tableId: string;    // item id of the table in the same box
-  dateCol: string;    // column id used as event date
-  titleCol: string;   // column id used as event title
-  colorCol?: string;  // column id used as event color (optional)
+  kind?: "table" | "kanban" | "list"; // undefined = "table" (rows stored before this field existed)
+  tableId: string;    // item id of the linked source in the same box (field name kept for stored-data compat)
+  dateCol: string;    // table only: column id used as event date ("" for kanban/list)
+  titleCol: string;   // table only: column id used as event title ("" for kanban/list)
+  colorCol?: string;  // table only: column id used as event color (optional)
   color?: string;     // fallback accent color for events from this link
 }
+/** Back-compat alias — existing code and stored boards use the original name. */
+export type TableLink = SourceLink;
 
 export interface PlaylistTrack {
   id: string;
@@ -297,6 +307,8 @@ export interface ListEntry {
   text: string;
   checked: boolean;
   depth?: number; // indentation level for nested sub-items (0 = top level)
+  due?: string;        // YYYY-MM-DD
+  assigneeId?: string; // ServerMember.userId of the assignee
 }
 export interface GraphPoint { label: string; [key: string]: string | number }
 export interface PollOption { id: string; label: string }
