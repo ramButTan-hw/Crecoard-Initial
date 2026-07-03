@@ -16,6 +16,20 @@
  * Full developer reference: docs/widget-api.md
  */
 
+/** Bumped on breaking protocol changes; widgets can branch on system.getInfo().apiVersion. */
+export const WIDGET_API_VERSION = 1;
+
+/** Machine-readable error codes so widget code can branch without string matching. */
+export type WidgetApiErrorCode =
+  | "UNKNOWN_METHOD"
+  | "RATE_LIMITED"
+  | "PERMISSION_DENIED"
+  | "VIEWER_FORBIDDEN"
+  | "BOARD_LOCKED"
+  | "INVALID_ARGS"
+  | "NO_CONTEXT"
+  | "NOT_FOUND";
+
 export type WidgetPermission = "self:move" | "board:read" | "members:read";
 
 export interface WidgetPermissionDef {
@@ -42,8 +56,9 @@ export const WIDGET_PERMISSIONS: WidgetPermissionDef[] = [
   },
 ];
 
-/** Method → required permission (null = free: a widget may always inspect itself). */
+/** Method → required permission (null = free: a widget may always inspect itself and its host). */
 export const METHOD_PERMISSIONS: Record<string, WidgetPermission | null> = {
+  "system.getInfo": null,
   "self.getRect": null,
   "self.move": "self:move",
   "self.resize": "self:move",
@@ -62,8 +77,10 @@ export interface WidgetApiResponse {
   type: "plancraft-api-result";
   id: string | number;
   ok: boolean;
+  apiVersion: number;
   data?: unknown;
   error?: string;
+  code?: WidgetApiErrorCode;
 }
 
 /** Coordinate/size clamps — keeps runaway widget code from flinging boxes into deep space. */

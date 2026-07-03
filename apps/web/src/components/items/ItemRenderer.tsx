@@ -56,7 +56,7 @@ import { REMINDER_LEADS, eventStartDate, createReminder } from "@/lib/reminders"
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { DueChip, MemberAvatar, AssigneeRows, TaskFieldsPopover, MemberPickerPopover, RemindMeControl } from "@/components/items/TaskFields";
 import { htmlToPlainText } from "@/lib/taskFacts";
-import { WIDGET_PERMISSIONS, METHOD_PERMISSIONS, RateLimiter, clampCoord, clampSize, type WidgetApiResponse } from "@/lib/widgetApi";
+import { WIDGET_PERMISSIONS, METHOD_PERMISSIONS, WIDGET_API_VERSION, RateLimiter, clampCoord, clampSize, type WidgetApiResponse, type WidgetApiErrorCode } from "@/lib/widgetApi";
 import { useCollab } from "@/lib/useCollabSession";
 import type { ServerMember } from "@/types/server";
 
@@ -187,7 +187,7 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     case "api":      return <ApiItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "calendar": return <CalendarItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "table":    return <TableItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
-    case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} boardId={boardId} boxId={boxId} />;
+    case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} boardId={boardId} boxId={boxId} canInteract={canInteract} />;
     case "playlist": return <PlaylistItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} canInteract={canInteract} extraContextItems={extraContextItems} />;
     case "kanban":   return <KanbanItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} boardId={boardId} />;
     // Items whose renderer builds no context menu of its own — wrap so right-click
@@ -8510,7 +8510,7 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
 // ─── Custom Widget ────────────────────────────────────────────────────────────
 
-function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems, boardId, boxId }: {
+function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems, boardId, boxId, canInteract }: {
   item: BlockItem;
   upd: (p: Partial<BlockItem>) => void;
   vars: Record<string, number>;
@@ -8519,6 +8519,7 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems,
   extraContextItems?: ContextMenuEntry[];
   boardId?: string;
   boxId?: string; // "" for canvas-level widgets (BoardItemWidget convention)
+  canInteract?: boolean;
 }) {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [tab, setTab] = useState<"preview" | "code" | "perms">("preview");
@@ -8526,12 +8527,15 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems,
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { members } = useServerBoard();
+  const { members, serverId } = useServerBoard();
   const { broadcastOp } = useCollab();
+  // Viewer-privilege principle: the widget can never do what the viewing user
+  // couldn't do by hand — mutations require the viewer's own edit rights.
+  const canEditBoard = useCanEditBoard();
   const apiLimiterRef = useRef(new RateLimiter(20, 10));
   // Live refs so the mount-once message listener never acts on stale props
-  const liveRef = useRef({ upd, isFinished, item, members, broadcastOp, boardId, boxId });
-  liveRef.current = { upd, isFinished, item, members, broadcastOp, boardId, boxId };
+  const liveRef = useRef({ upd, isFinished, item, members, broadcastOp, boardId, boxId, canEditBoard, canInteract, serverId });
+  liveRef.current = { upd, isFinished, item, members, broadcastOp, boardId, boxId, canEditBoard, canInteract, serverId };
 
   useEffect(() => {
     return () => {
@@ -8544,45 +8548,59 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems,
   // See lib/widgetApi.ts for the protocol and docs/widget-api.md for the reference.
   const handleApiCall = (data: { id?: unknown; method?: unknown; args?: unknown }) => {
     const id = (typeof data.id === "string" || typeof data.id === "number") ? data.id : "";
-    const respond = (ok: boolean, payload?: unknown, error?: string) => {
-      const msg: WidgetApiResponse = { type: "plancraft-api-result", id, ok, data: payload, error };
+    const respond = (ok: boolean, payload?: unknown, error?: string, code?: WidgetApiErrorCode) => {
+      const msg: WidgetApiResponse = { type: "plancraft-api-result", id, ok, apiVersion: WIDGET_API_VERSION, data: payload, error, code };
       iframeRef.current?.contentWindow?.postMessage(msg, "*");
     };
     const method = typeof data.method === "string" ? data.method : "";
-    if (!(method in METHOD_PERMISSIONS)) { respond(false, undefined, `Unknown method: ${method}`); return; }
-    if (!apiLimiterRef.current.allow()) { respond(false, undefined, "Rate limit exceeded"); return; }
+    if (!(method in METHOD_PERMISSIONS)) { respond(false, undefined, `Unknown method: ${method}`, "UNKNOWN_METHOD"); return; }
+    if (!apiLimiterRef.current.allow()) { respond(false, undefined, "Rate limit exceeded", "RATE_LIMITED"); return; }
 
     const live = liveRef.current;
     const required = METHOD_PERMISSIONS[method];
     const granted = new Set(live.item.widgetPermissions ?? []);
     if (required && !granted.has(required)) {
-      respond(false, undefined, `Permission "${required}" not granted — a board editor can enable it in this widget's Permissions tab`);
+      respond(false, undefined, `Permission "${required}" not granted — a board editor can enable it in this widget's Permissions tab`, "PERMISSION_DENIED");
       return;
     }
 
     const store = useBoardStore.getState();
     const board = store.boards.find((b) => b.id === live.boardId) ?? (live.boardId ? store.serverBoards[live.boardId] : undefined);
-    if (!board || !live.boardId) { respond(false, undefined, "No board context"); return; }
+    if (!board || !live.boardId) { respond(false, undefined, "No board context", "NO_CONTEXT"); return; }
     const inBox = !!live.boxId;
     const args = (data.args && typeof data.args === "object" ? data.args : {}) as Record<string, unknown>;
+    // Mutations run as the viewing user — read-only viewers' widgets can't change the board.
+    const viewerCanMutate = live.canEditBoard && !live.isFinished;
 
     switch (method) {
+      case "system.getInfo": {
+        respond(true, {
+          apiVersion: WIDGET_API_VERSION,
+          container: inBox ? "box" : "canvas",
+          permissions: [...granted],
+          canEdit: viewerCanMutate,
+          isFinished: !!live.isFinished,
+          boardKind: live.serverId ? "server" : "personal",
+        });
+        return;
+      }
       case "self.getRect": {
         if (inBox) {
           const box = board.boxes.find((b) => b.id === live.boxId);
-          if (!box) { respond(false, undefined, "Own block not found"); return; }
+          if (!box) { respond(false, undefined, "Own block not found", "NOT_FOUND"); return; }
           respond(true, { x: box.x, y: box.y, width: box.width, height: box.height, container: "box" });
         } else {
           const bi = board.boardItems?.find((i) => i.id === live.item.id);
-          if (!bi) { respond(false, undefined, "Own item not found"); return; }
+          if (!bi) { respond(false, undefined, "Own item not found", "NOT_FOUND"); return; }
           respond(true, { x: bi.boardX, y: bi.boardY, width: bi.boardW, height: bi.boardH, container: "canvas" });
         }
         return;
       }
       case "self.move": {
-        if (live.isFinished) { respond(false, undefined, "Board is locked"); return; }
+        if (live.isFinished) { respond(false, undefined, "Board is locked", "BOARD_LOCKED"); return; }
+        if (!live.canEditBoard) { respond(false, undefined, "The viewing user can't edit this board", "VIEWER_FORBIDDEN"); return; }
         const x = clampCoord(args.x); const y = clampCoord(args.y);
-        if (x === null || y === null) { respond(false, undefined, "x and y must be finite numbers"); return; }
+        if (x === null || y === null) { respond(false, undefined, "x and y must be finite numbers", "INVALID_ARGS"); return; }
         if (inBox) {
           store.moveBox(live.boardId, live.boxId!, x, y);
           live.broadcastOp({ op: "moveBox", boardId: live.boardId, boxId: live.boxId!, x, y });
@@ -8593,9 +8611,10 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems,
         return;
       }
       case "self.resize": {
-        if (live.isFinished) { respond(false, undefined, "Board is locked"); return; }
+        if (live.isFinished) { respond(false, undefined, "Board is locked", "BOARD_LOCKED"); return; }
+        if (!live.canEditBoard) { respond(false, undefined, "The viewing user can't edit this board", "VIEWER_FORBIDDEN"); return; }
         const w = clampSize(args.width); const h = clampSize(args.height);
-        if (w === null || h === null) { respond(false, undefined, "width and height must be finite numbers"); return; }
+        if (w === null || h === null) { respond(false, undefined, "width and height must be finite numbers", "INVALID_ARGS"); return; }
         if (inBox) {
           store.resizeBox(live.boardId, live.boxId!, w, h);
           live.broadcastOp({ op: "resizeBox", boardId: live.boardId, boxId: live.boxId!, width: w, height: h });
@@ -8641,7 +8660,11 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems,
         return;
       }
       if (data.type !== "plancraft-save-state") return;
-      if (liveRef.current.isFinished) return; // locked board = read-only
+      const l = liveRef.current;
+      if (l.isFinished) return; // locked board = read-only
+      // State saves need edit rights OR the item's "interact" permission
+      // (so e.g. a pet can be feedable by visitors when the owner allows it).
+      if (!l.canEditBoard && l.canInteract === false) return;
       let json: string | undefined;
       try { json = JSON.stringify(data.state); } catch { return; }
       if (json === undefined || json.length > 8192) return; // cap — state lives in the board JSONB
@@ -8659,6 +8682,35 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems,
     setDraft(code);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => upd({ widgetCode: code }), 600);
+  };
+
+  // File-based workflow: build widget.html locally, upload/drop it here (no pasting)
+  const codeFileRef = useRef<HTMLInputElement>(null);
+  const [codeMsg, setCodeMsg] = useState<string | null>(null);
+  const flashCodeMsg = (msg: string) => {
+    setCodeMsg(msg);
+    setTimeout(() => setCodeMsg(null), 3000);
+  };
+  const loadCodeFile = (file: File) => {
+    if (file.size > 262_144) { flashCodeMsg("File too large (max 256 KB)"); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      if (!text.trim()) { flashCodeMsg("File is empty"); return; }
+      handleCodeChange(text);
+      flashCodeMsg(`Loaded ${file.name}`);
+      setTab("preview");
+    };
+    reader.readAsText(file);
+  };
+  const downloadCode = () => {
+    const blob = new Blob([draft], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "widget.html";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   // Send vars whenever they change or iframe (re)loads
@@ -8716,8 +8768,29 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems,
               {t === "code" ? "< Code >" : t === "perms" ? "Permissions" : "Preview"}
             </button>
           ))}
+          <button
+            onClick={() => codeFileRef.current?.click()}
+            title="Upload an .html file as this widget's code"
+            className="ml-1 flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <Upload size={11} /> Upload
+          </button>
+          <button
+            onClick={downloadCode}
+            title="Download the current code as widget.html"
+            className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <FileDown size={11} /> Download
+          </button>
+          <input
+            ref={codeFileRef}
+            type="file"
+            accept=".html,.htm,.txt"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) loadCodeFile(f); }}
+          />
           <span className="ml-auto text-[11px] text-[var(--text-muted)]">
-            {(item.widgetPermissions?.length ?? 0) > 0 ? `${item.widgetPermissions!.length} permission(s)` : "HTML · CSS · JS"}
+            {codeMsg ?? ((item.widgetPermissions?.length ?? 0) > 0 ? `${item.widgetPermissions!.length} permission(s)` : "HTML · CSS · JS")}
           </span>
         </div>
       )}
@@ -8775,6 +8848,14 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems,
           value={draft}
           onChange={(e) => handleCodeChange(e.target.value)}
           spellCheck={false}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const f = e.dataTransfer.files?.[0];
+            if (f) loadCodeFile(f);
+          }}
+          placeholder="Paste widget code, or drop an .html file here…"
           className="flex-1 w-full min-h-0 resize-none outline-none p-3 font-mono text-[11px] leading-relaxed"
           style={{
             background: "var(--surface)",

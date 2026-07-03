@@ -4,6 +4,13 @@ Custom Widget items run your HTML/CSS/JS inside a **sandboxed iframe** (opaque o
 cookies, no storage, no access to the app). You have full creative control over your UI;
 everything else goes through a message-based API that the host validates.
 
+## Local development workflow
+
+Build your widget as a single `widget.html` in your own editor, then load it via the
+Code tab's **Upload** button — or just drag the file onto the code editor. **Download**
+exports the current code back out (round-trip friendly). Max 256 KB. No pasting required;
+the file is stored with the item and syncs like any other board content.
+
 ## How calls work
 
 Send a request, get a response with the same `id`:
@@ -55,7 +62,16 @@ stripped on install. Design your widget to degrade gracefully when a call is den
 | `board:read` | `board.getRects` |
 | `members:read` | `members.list` |
 
+Responses carry `apiVersion` (currently `1`) and, on failure, a machine-readable `code`:
+`UNKNOWN_METHOD`, `RATE_LIMITED`, `PERMISSION_DENIED`, `VIEWER_FORBIDDEN` (the *viewing
+user* lacks edit rights — mutations always run as the viewer), `BOARD_LOCKED`,
+`INVALID_ARGS`, `NO_CONTEXT`, `NOT_FOUND`. Branch on `code`, not on message text.
+
 ## Methods
+
+### `system.getInfo` → `{ apiVersion, container, permissions, canEdit, isFinished, boardKind }`
+Free. Call this first: adapt your UI to granted permissions and `canEdit` instead of
+discovering them through failed calls. `boardKind` is `"personal"` or `"server"`.
 
 ### `self.getRect` → `{ x, y, width, height, container }`
 Your own position/size. `container` is `"box"` (widget lives inside a block) or

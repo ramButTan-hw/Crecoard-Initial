@@ -84,7 +84,16 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
 
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        // Guest ("Continue without account") — there is no Supabase row to load,
+        // so restore boards from the local cache. Without this, the boot default
+        // stays in memory and would be persisted over the guest's saved boards.
+        // skipNextChange: guest boards must never queue for a Supabase write.
+        skipNextChange.current = true;
+        useBoardStore.getState().hydrateBoards();
+        skipNextChange.current = false;
+        return;
+      }
 
       // Scope all localStorage board caching to this account before any persist
       // fires, so two accounts on one browser never share the unscoped key.
@@ -138,7 +147,8 @@ export function BoardSyncProvider({ children }: { children: React.ReactNode }) {
             liveBoards.find((b) => b.id === s.activeBoardId && !b.deletedAt)?.id ??
             liveBoards.find((b) => !b.deletedAt)?.id ??
             "";
-          return { boards: liveBoards, activeBoardId: safeActiveId };
+          // boardsHydrated unlocks persistBoards — real boards are loaded now.
+          return { boards: liveBoards, activeBoardId: safeActiveId, boardsHydrated: true };
         });
         skipNextChange.current = false;
       }

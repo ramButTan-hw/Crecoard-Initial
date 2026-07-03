@@ -19,7 +19,8 @@
   "allowScripts": {
     "electron@33.4.11": true,
     "sharp@0.34.5": true,
-    "unrs-resolver@1.12.2": true
+    "unrs-resolver@1.12.2": true,
+    "electron-winstaller@5.4.0": true
   },
   "dependencies": {
     "supabase": "^2.108.0"

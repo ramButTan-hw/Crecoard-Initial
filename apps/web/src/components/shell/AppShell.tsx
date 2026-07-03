@@ -334,7 +334,9 @@ function AppShellInner() {
 
   // Re-apply app theme vars and font on mount (SSR → client hydration).
   // Skip localStorage board hydration when Supabase is configured — BoardSyncContext
-  // is the source of truth for logged-in users and will replace boards after auth.
+  // loads boards once auth resolves (Supabase for logged-in users, the unscoped
+  // localStorage key for guests). persistBoards stays a no-op until either source
+  // loads, so the boot default can never overwrite stored boards.
   useEffect(() => {
     applyThemeVars(themeVars);
     applyAppFont(appFont);

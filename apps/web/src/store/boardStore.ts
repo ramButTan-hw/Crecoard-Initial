@@ -1101,6 +1101,10 @@ interface BoardState {
   removeUserFont: (name: string) => void;
 
   // Board persistence
+  // True once boards were loaded from a real source (localStorage or Supabase).
+  // persistBoards no-ops until then, so the in-memory boot default can never
+  // overwrite stored boards during the load race.
+  boardsHydrated: boolean;
   persistBoards: () => void;
   hydrateBoards: (uid?: string) => void;
   setSharedBoardIds: (ids: string[]) => void;
@@ -1179,6 +1183,7 @@ export const useBoardStore = create<BoardState>()(
     appFont: getSavedFont(),
     appBg: getSavedAppBg(),
     currentUserId: null,
+    boardsHydrated: false,
     trashToast: null,
     userFonts: [],
 
@@ -1991,6 +1996,10 @@ export const useBoardStore = create<BoardState>()(
     setReadonlyBoardIds: (ids) => set((s) => { s.readonlyBoardIds = ids; }),
 
     persistBoards: () => {
+      // Until boards are loaded (hydrateBoards or Supabase), the store only holds
+      // the boot default — writing it would destroy the stored boards (guest data
+      // loss on every reload).
+      if (!get().boardsHydrated) return;
       try {
         const { boards, activeBoardId, currentUserId } = get();
         const uid = currentUserId ?? getLastUserId();
@@ -2041,7 +2050,11 @@ export const useBoardStore = create<BoardState>()(
         }
         const _boards = personalBoards;
         const _safeId = safeId;
-        set((s) => { s.boards = _boards; s.activeBoardId = _safeId; });
+        set((s) => { s.boards = _boards; s.activeBoardId = _safeId; s.boardsHydrated = true; });
+      } else {
+        // Nothing stored (or corrupt) — the in-memory default is now the real
+        // state for this key, so persisting is safe from here on.
+        set((s) => { s.boardsHydrated = true; });
       }
     },
   }))

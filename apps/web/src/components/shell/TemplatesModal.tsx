@@ -9,7 +9,7 @@ import {
   TEMPLATE_CATEGORIES, TEMPLATE_KINDS, fetchCommunityBoards, publishCommunityBoard,
   trackBoardUse, likeCommunityBoard, fetchMyLikes, PublishBoardInput, TemplateBox,
 } from "@/lib/communityTemplates";
-import { useBoardStore, useActiveBoard } from "@/store/boardStore";
+import { useBoardStore, useActiveBoard, type BlockItem, type BoardLevelItem } from "@/store/boardStore";
 import { useUser } from "@/contexts/UserContext";
 import { WIDGET_PERMISSIONS, collectTemplatePermissions, type WidgetPermission } from "@/lib/widgetApi";
 import { installItem } from "@/lib/installedItems";
@@ -456,10 +456,14 @@ function PublishModal({ onClose, onPublished }: { onClose: () => void; onPublish
 
   // Sharable blocks (decks and deck slides excluded — they don't round-trip cleanly)
   const shareableBoxes = (board?.boxes ?? []).filter((b) => !b.deckOwnerId && !b.isDeck);
+  // Canvas-level items (widgets/pets placed directly on the board) are publishable too
+  const CANVAS_SOURCE = "__canvas__";
+  const canvasItems = board?.boardItems ?? [];
   const [boxId, setBoxId] = useState<string>("");
-  const selectedBox = shareableBoxes.find((b) => b.id === boxId);
+  const selectedBox = boxId === CANVAS_SOURCE ? undefined : shareableBoxes.find((b) => b.id === boxId);
   const [itemId, setItemId] = useState<string>("");
-  const selectedItem = selectedBox?.items.find((i) => i.id === itemId);
+  const sourceItems: (BlockItem | BoardLevelItem)[] = boxId === CANVAS_SOURCE ? canvasItems : (selectedBox?.items ?? []);
+  const selectedItem = sourceItems.find((i) => i.id === itemId);
 
   const addTag = () => {
     const t = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
@@ -471,7 +475,13 @@ function PublishModal({ onClose, onPublished }: { onClose: () => void; onPublish
 
   const removeTag = (t: string) => setTags((prev) => prev.filter((x) => x !== t));
 
-  const stripItem = ({ id: _id, showInCollapsed: _sc, ...rest }: (typeof shareableBoxes)[number]["items"][number]) => rest;
+  // Published items must not carry instance identity, private widget state, or canvas placement
+  const stripItem = (raw: BlockItem | BoardLevelItem): Omit<BlockItem, "id" | "showInCollapsed"> => {
+    const { id: _id, showInCollapsed: _sc, widgetState: _ws, ...rest } = raw as BlockItem & Partial<BoardLevelItem>;
+    const r = rest as Record<string, unknown>;
+    delete r.boardX; delete r.boardY; delete r.boardW; delete r.boardH; delete r.zIndex; delete r.locked;
+    return rest as Omit<BlockItem, "id" | "showInCollapsed">;
+  };
 
   const toTemplateBox = (b: (typeof shareableBoxes)[number], atOrigin: boolean): TemplateBox => ({
     title: b.title,
@@ -497,7 +507,7 @@ function PublishModal({ onClose, onPublished }: { onClose: () => void; onPublish
     }
     if (!board) return;
     if (kind === "box" && !selectedBox) { setErrorMsg("Pick a block to share."); return; }
-    if (kind === "item" && (!selectedBox || !selectedItem)) { setErrorMsg("Pick a block and an item to share."); return; }
+    if (kind === "item" && !selectedItem) { setErrorMsg("Pick a source and an item to share."); return; }
     setStatus("loading");
     setErrorMsg("");
 
@@ -514,8 +524,8 @@ function PublishModal({ onClose, onPublished }: { onClose: () => void; onPublish
                 title: name.trim(),
                 x: 0,
                 y: 0,
-                width: 340,
-                height: 400,
+                width: (selectedItem as Partial<BoardLevelItem>).boardW ?? 340,
+                height: (selectedItem as Partial<BoardLevelItem>).boardH ?? 400,
                 items: [stripItem(selectedItem!)],
               }],
             };
@@ -586,14 +596,17 @@ function PublishModal({ onClose, onPublished }: { onClose: () => void; onPublish
           </Field>
 
           {kind !== "board" && (
-            <Field label="Block">
+            <Field label={kind === "item" ? "Source" : "Block"}>
               <div className="relative">
                 <select
                   value={boxId}
                   onChange={(e) => { setBoxId(e.target.value); setItemId(""); }}
                   className="w-full appearance-none rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-2 pr-8 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/60 cursor-pointer"
                 >
-                  <option value="">— Pick a block —</option>
+                  <option value="">— Pick {kind === "item" ? "a source" : "a block"} —</option>
+                  {kind === "item" && canvasItems.length > 0 && (
+                    <option value={CANVAS_SOURCE}>Canvas ({canvasItems.length} items placed on the board)</option>
+                  )}
                   {shareableBoxes.map((b) => (
                     <option key={b.id} value={b.id}>{b.title || "Untitled block"} ({b.items.length} items)</option>
                   ))}
@@ -603,7 +616,7 @@ function PublishModal({ onClose, onPublished }: { onClose: () => void; onPublish
             </Field>
           )}
 
-          {kind === "item" && selectedBox && (
+          {kind === "item" && boxId && (
             <Field label="Item">
               <div className="relative">
                 <select
@@ -612,7 +625,7 @@ function PublishModal({ onClose, onPublished }: { onClose: () => void; onPublish
                   className="w-full appearance-none rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-2 pr-8 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/60 cursor-pointer"
                 >
                   <option value="">— Pick an item —</option>
-                  {selectedBox.items.map((it) => (
+                  {sourceItems.map((it) => (
                     <option key={it.id} value={it.id}>
                       {it.type.charAt(0).toUpperCase() + it.type.slice(1)}
                     </option>
