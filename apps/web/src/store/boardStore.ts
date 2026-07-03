@@ -871,6 +871,11 @@ export interface Board {
   backgroundFilter?: string;
   backgroundOverlayColor?: string;
   backgroundOverlayOpacity?: number;
+  // Live wallpaper — an animated board background (overrides the static bg when set)
+  backgroundVideo?: string;        // looping video URL
+  backgroundLiveEffect?: string;   // visualizer effect id ("aurora"|"starfield"|"particles"|"rain"|"bars"|"wave"|"radial")
+  backgroundLiveColor?: string;
+  backgroundLiveColor2?: string;
   // Theme (outer) background — fills the viewport behind the canvas; doesn't move
   themeBgColor?: string;
   themeBgImage?: string;

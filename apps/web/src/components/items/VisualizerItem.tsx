@@ -327,15 +327,23 @@ export function VisualizerItem({ item }: { item: BlockItem; upd: Upd; collapsed?
     let stars: Star3[] = [];
 
     const resize = () => {
-      const r = canvas.getBoundingClientRect();
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      canvas.width = Math.max(1, Math.round(r.width * dpr));
-      canvas.height = Math.max(1, Math.round(r.height * dpr));
+      // clientWidth/Height = layout size BEFORE any ancestor CSS transform (the
+      // board's zoom). getBoundingClientRect would return the already-zoomed size
+      // and double-scale the canvas → distortion. Let the browser scale uniformly.
+      const cssW = Math.max(1, canvas.clientWidth), cssH = Math.max(1, canvas.clientHeight);
+      // Cap the backing store so a fullscreen/huge window can't exceed the
+      // canvas allocation limit (which silently blanks the canvas).
+      const maxSide = 4096;
+      let dpr = Math.min(2, window.devicePixelRatio || 1);
+      dpr = Math.max(0.5, Math.min(dpr, maxSide / cssW, maxSide / cssH));
+      canvas.width = Math.max(1, Math.round(cssW * dpr));
+      canvas.height = Math.max(1, Math.round(cssH * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
+    window.addEventListener("resize", resize); // backup for cases RO can miss (window maximize)
 
     (async () => {
       if (source === "off") return;
@@ -368,8 +376,8 @@ export function VisualizerItem({ item }: { item: BlockItem; upd: Upd; collapsed?
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       const p = paramsRef.current;
-      const r = canvas.getBoundingClientRect();
-      const w = r.width, h = r.height;
+      // Draw in layout pixels (unaffected by the board zoom); browser scales the canvas.
+      const w = canvas.clientWidth, h = canvas.clientHeight;
       if (w < 2 || h < 2) return;
       const t = ((now - start) / 1000) * p.speed;
 
@@ -429,6 +437,7 @@ export function VisualizerItem({ item }: { item: BlockItem; upd: Upd; collapsed?
       cancelled = true;
       cancelAnimationFrame(raf);
       ro.disconnect();
+      window.removeEventListener("resize", resize);
       stream?.getTracks().forEach((t) => t.stop());
       audioCtx?.close().catch(() => {});
     };

@@ -171,6 +171,7 @@ function createPopoutWindow(boardId, saved) {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
+      backgroundThrottling: false, // keep live wallpapers / visualizers animating while occluded
     },
   });
 

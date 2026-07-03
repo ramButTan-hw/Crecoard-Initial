@@ -9,6 +9,7 @@ import { nanoid } from "nanoid";
 import { useBoardStore, useActiveBoard, DEFAULT_BOX_STYLE } from "@/store/boardStore";
 import { ITEM_DEFINITIONS } from "./ItemPalette";
 import { BoardItemWidget } from "./BoardItemWidget";
+import { LiveWallpaper, hasLiveWallpaper } from "./LiveWallpaper";
 import { useCollab } from "@/lib/useCollabSession";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import type { CursorState } from "@/lib/collaboration";
@@ -762,6 +763,9 @@ export function BoardCanvas() {
         />
       )}
 
+      {/* Live wallpaper — animated background, fixed to the viewport behind the board */}
+      {hasLiveWallpaper(board) && <LiveWallpaper board={board} />}
+
       <div
         ref={viewportRef}
         className="absolute inset-0 overflow-hidden"
@@ -783,10 +787,12 @@ export function BoardCanvas() {
             cursor: panning ? "grabbing" : "grab",
           }}
         >
-          {/* ── Background layers: move & scale with canvas ── */}
+          {/* ── Background layers: move & scale with canvas ──
+              When a live wallpaper is set, the board surface is transparent so
+              the fixed animated layer behind shows through. */}
           <div aria-hidden className="absolute inset-0 pointer-events-none"
-            style={{ backgroundColor: board.backgroundColor ?? "#1a1b1e" }} />
-          {board.backgroundImage && (
+            style={{ backgroundColor: hasLiveWallpaper(board) ? "transparent" : (board.backgroundColor ?? "#1a1b1e") }} />
+          {!hasLiveWallpaper(board) && board.backgroundImage && (
             <div
               aria-hidden
               className="absolute inset-0 pointer-events-none"

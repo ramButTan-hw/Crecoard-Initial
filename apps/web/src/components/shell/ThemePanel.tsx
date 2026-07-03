@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useUser } from "@/contexts/UserContext";
 import { uploadFile } from "@/lib/storage";
+import { VISUALIZER_EFFECTS } from "@/components/items/VisualizerItem";
 
 interface ThemePanelProps {
   onClose: () => void;
@@ -299,6 +300,32 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">
                 Board Background <span className="normal-case text-[var(--text-muted)] font-normal tracking-normal">· moves with canvas</span>
               </p>
+
+              <div>
+                <SectionLabel>Live Wallpaper</SectionLabel>
+                <select
+                  value={board.backgroundLiveEffect ?? ""}
+                  onChange={(e) => upd({ backgroundLiveEffect: e.target.value || undefined, backgroundVideo: e.target.value ? undefined : board.backgroundVideo })}
+                  className="mb-1.5 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                >
+                  <option value="">None (static background)</option>
+                  {VISUALIZER_EFFECTS.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
+                </select>
+                {board.backgroundLiveEffect && (
+                  <div className="mb-1.5 flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                    <span>Colors</span>
+                    <input type="color" value={board.backgroundLiveColor || "#d59ee8"} onChange={(e) => upd({ backgroundLiveColor: e.target.value })} className="h-6 w-8 cursor-pointer rounded border-0 p-0" />
+                    <input type="color" value={board.backgroundLiveColor2 || "#48cfa6"} onChange={(e) => upd({ backgroundLiveColor2: e.target.value })} className="h-6 w-8 cursor-pointer rounded border-0 p-0" />
+                  </div>
+                )}
+                <input
+                  className="mb-1 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  placeholder="… or paste a looping video URL (.mp4/.webm)"
+                  value={board.backgroundVideo ?? ""}
+                  onChange={(e) => upd({ backgroundVideo: e.target.value || undefined, backgroundLiveEffect: e.target.value ? undefined : board.backgroundLiveEffect })}
+                />
+                <p className="text-[10px] text-[var(--text-muted)]">A live wallpaper replaces the static color/image below.</p>
+              </div>
 
               <div>
                 <SectionLabel>Color</SectionLabel>
