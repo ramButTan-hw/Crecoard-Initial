@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { X, Plus, Trash2, Edit2, Camera, Upload, Check, Crown, Activity, Eye, RotateCcw, Archive, Save, Zap, Copy, RefreshCw } from "lucide-react";
+import { X, Plus, Trash2, Edit2, Camera, Upload, Check, Crown, Activity, Eye, RotateCcw, Archive, Save, Zap, Copy, RefreshCw, Bot } from "lucide-react";
+import { BotsPanel } from "@/components/server/BotsPanel";
 import { logServerAction, fetchServerPublishes, formatRelativeTime } from "@/lib/serverAudit";
 import type { PublishEntry } from "@/lib/serverAudit";
 import { useBoardSync } from "@/contexts/BoardSyncContext";
@@ -30,7 +31,7 @@ interface ServerSettingsProps {
   onClose: () => void;
 }
 
-type Tab = "overview" | "appearance" | "roles" | "members" | "audit" | "backups" | "webhooks";
+type Tab = "overview" | "appearance" | "roles" | "members" | "audit" | "backups" | "webhooks" | "bots";
 
 const COLOR_KEYS: { key: keyof ThemeVarMap; label: string }[] = [
   { key: "surface",        label: "Surface" },
@@ -282,6 +283,7 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
     { id: "audit",      label: "Publish History", icon: <Activity size={13} /> },
     { id: "backups",    label: "Backups", icon: <Archive size={13} /> },
     { id: "webhooks",   label: "Webhooks", icon: <Zap size={13} /> },
+    { id: "bots",       label: "Bots", icon: <Bot size={13} /> },
   ];
 
   return (
@@ -994,6 +996,11 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
           {/* ── Webhooks ──────────────────────────────────────────────────── */}
           {activeTab === "webhooks" && (
             <WebhooksTab boardId={boardId} serverId={serverId} isReal={isReal} />
+          )}
+
+          {/* ── Bots ──────────────────────────────────────────────────────── */}
+          {activeTab === "bots" && (
+            <BotsPanel serverId={serverId} isReal={isReal} />
           )}
 
           {/* ── Backups ───────────────────────────────────────────────────── */}
