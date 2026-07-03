@@ -36,6 +36,8 @@ import { DEFAULT_WIDGET_CODE } from "@/lib/defaultWidgetCode";
 import { EmbedCardItem } from "@/components/items/EmbedCardItem";
 import { ExternalItem } from "@/components/items/ExternalItem";
 import { SuggestionItem, GuestbookItem, PollItem } from "@/components/items/CommunityItems";
+import { FlashcardItem, QuizItem } from "@/components/items/StudyItems";
+import { VisualizerItem } from "@/components/items/VisualizerItem";
 import { TwitchItem } from "@/components/items/TwitchItem";
 import { nanoid } from "nanoid";
 import DOMPurify from "isomorphic-dompurify";
@@ -200,6 +202,9 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     case "suggestion":  return <WithItemMenu items={extraContextItems}><SuggestionItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} /></WithItemMenu>;
     case "guestbook":   return <WithItemMenu items={extraContextItems}><GuestbookItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} /></WithItemMenu>;
     case "poll":        return <WithItemMenu items={extraContextItems}><PollItem item={item} upd={upd} boardId={boardId} collapsed={collapsed} isFinished={isFinished} canContribute={canContribute} /></WithItemMenu>;
+    case "flashcard":   return <WithItemMenu items={extraContextItems}><FlashcardItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} /></WithItemMenu>;
+    case "quiz":        return <WithItemMenu items={extraContextItems}><QuizItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} /></WithItemMenu>;
+    case "visualizer":  return <WithItemMenu items={extraContextItems}><VisualizerItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} /></WithItemMenu>;
     case "twitch":      return <WithItemMenu items={extraContextItems}><TwitchItem item={item} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} onUpdate={onUpdate} /></WithItemMenu>;
     default:            return null;
   }})();

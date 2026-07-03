@@ -5,13 +5,15 @@ import { useBoardStore, useActiveBoard, BoardLevelItem } from "@/store/boardStor
 import { useServerBoard, useServerBoardData } from "@/contexts/ServerBoardContext";
 import {
   ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel,
-  ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, ChatStylePanel, ImageStylePanel, chatChannelsInUse,
+  ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, KanbanStylePanel, ChatStylePanel, ImageStylePanel, chatChannelsInUse,
 } from "@/components/items/ItemRenderer";
 import { TextStylePanel } from "@/components/board/ExpandedBlock";
 import { ItemEntranceSection } from "@/components/items/ItemRenderer";
 import { EmbedCardStylePanel } from "@/components/items/EmbedCardItem";
 import { ExternalStylePanel } from "@/components/items/ExternalItem";
 import { SuggestionStylePanel, GuestbookStylePanel, PollStylePanel } from "@/components/items/CommunityItems";
+import { FlashcardStylePanel, QuizStylePanel } from "@/components/items/StudyItems";
+import { VisualizerStylePanel } from "@/components/items/VisualizerItem";
 import { TwitchStylePanel } from "@/components/items/TwitchItem";
 import { ITEM_DEFINITIONS } from "./ItemPalette";
 
@@ -112,7 +114,19 @@ export function BoardItemPanel() {
         {item.type === "image" && (
           <ImageStylePanel item={item} upd={upd} />
         )}
-        {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","external","chat","suggestion","guestbook","poll","twitch","image"].includes(item.type) && (
+        {item.type === "kanban" && (
+          <KanbanStylePanel item={item} upd={upd} />
+        )}
+        {item.type === "flashcard" && (
+          <FlashcardStylePanel item={item} upd={upd} />
+        )}
+        {item.type === "quiz" && (
+          <QuizStylePanel item={item} upd={upd} />
+        )}
+        {item.type === "visualizer" && (
+          <VisualizerStylePanel item={item} upd={upd} />
+        )}
+        {!["text","list","graph","embed","timer","api","calendar","table","playlist","embed-card","external","chat","suggestion","guestbook","poll","twitch","image","kanban","flashcard","quiz","visualizer"].includes(item.type) && (
           <div className="p-4 text-xs text-[var(--text-muted)]">No style options for this item type.</div>
         )}
         <ItemEntranceSection item={item} upd={upd} />

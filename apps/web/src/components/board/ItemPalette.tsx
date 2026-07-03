@@ -7,7 +7,7 @@ import {
   Code2, Music, Kanban, MessageSquare, FolderOpen,
   ChevronDown, ChevronRight,
   Layers, LayoutGrid, Image, KanbanSquare, Zap, Gamepad2,
-  Lightbulb, PenLine, Vote, Twitch, Puzzle,
+  Lightbulb, PenLine, Vote, Twitch, Puzzle, GraduationCap, HelpCircle, AudioLines,
 } from "lucide-react";
 import { getInstalledItems, uninstallItem, INSTALLED_CHANGED_EVENT } from "@/lib/installedItems";
 import { useDraggable } from "@dnd-kit/core";
@@ -207,6 +207,44 @@ export const ITEM_DEFINITIONS: {
     defaultItem: () => ({ type: "twitch", twitchShowSchedule: true }),
   },
   {
+    type: "flashcard",
+    label: "Flashcards",
+    icon: <GraduationCap size={15} />,
+    description: "Flip-card study deck",
+    defaultItem: () => ({
+      type: "flashcard",
+      flashcards: [
+        { id: nanoid(), front: "Term", back: "Definition" },
+      ],
+    }),
+  },
+  {
+    type: "quiz",
+    label: "Quiz",
+    icon: <HelpCircle size={15} />,
+    description: "Multiple-choice quiz with scoring",
+    defaultItem: () => ({
+      type: "quiz",
+      quizInstant: true,
+      quizQuestions: [
+        { id: nanoid(), prompt: "Your question?", options: ["Option A", "Option B"], correctIndex: 0 },
+      ],
+    }),
+  },
+  {
+    type: "visualizer",
+    label: "Visualizer",
+    icon: <AudioLines size={15} />,
+    description: "Audio bars, rain, particles & more",
+    defaultItem: () => ({
+      type: "visualizer",
+      visualizerEffect: "bars",
+      visualizerColor: "#d59ee8",
+      visualizerColor2: "#48cfa6",
+      visualizerBgColor: "#0d0e11",
+    }),
+  },
+  {
     type: "embed-card",
     label: "Integration Card",
     icon: <Zap size={15} />,
@@ -304,9 +342,11 @@ const GROUP_OF: Record<string, string> = {
   text: "Content", list: "Content", image: "Content", table: "Content", calendar: "Content", kanban: "Content",
   embed: "Media", playlist: "Media", timer: "Media", widget: "Media",
   graph: "Data", api: "Data", "embed-card": "Data", external: "Data",
+  flashcard: "Study", quiz: "Study",
+  visualizer: "Media",
   chat: "Community", filebank: "Community", suggestion: "Community", guestbook: "Community", poll: "Community", twitch: "Community",
 };
-const GROUP_ORDER = ["Content", "Media", "Data", "Community", "Other"];
+const GROUP_ORDER = ["Content", "Media", "Data", "Study", "Community", "Other"];
 
 // ─── Collapsible section header ───────────────────────────────────────────────
 
@@ -350,6 +390,9 @@ function ItemTypeIcon({ type, size = 11 }: { type: ItemType; size?: number }) {
     case "guestbook": return <PenLine {...p} />;
     case "poll": return <Vote {...p} />;
     case "twitch": return <Twitch {...p} />;
+    case "flashcard": return <GraduationCap {...p} />;
+    case "quiz": return <HelpCircle {...p} />;
+    case "visualizer": return <AudioLines {...p} />;
     default: return <FileText {...p} />;
   }
 }
@@ -360,6 +403,7 @@ const TYPE_LABEL: Partial<Record<ItemType, string>> = {
   graph: "Graph", playlist: "Playlist", kanban: "Kanban",
   chat: "Chat", filebank: "Files", widget: "Widget",
   suggestion: "Suggestions", guestbook: "Guestbook", poll: "Poll", twitch: "Twitch",
+  flashcard: "Flashcards", quiz: "Quiz", visualizer: "Visualizer",
 };
 
 // ─── Collection section ───────────────────────────────────────────────────────

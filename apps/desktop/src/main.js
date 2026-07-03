@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, screen } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain, screen, session, desktopCapturer } = require("electron");
 const path = require("path");
 const isDev = !app.isPackaged;
 
@@ -216,6 +216,20 @@ ipcMain.handle("popout-toggle-top", () => {
 app.on("before-quit", destroyPopoutWindow);
 
 app.whenReady().then(() => {
+  // Allow the app's own pages to use the mic / audio capture (the Visualizer item).
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(permission === "media" || permission === "audioCapture" || permission === "display-capture");
+  });
+
+  // System-audio Visualizer: auto-answer getDisplayMedia with the primary screen
+  // (video, immediately discarded by the renderer) + Windows loopback audio —
+  // so it visualizes whatever is playing on the PC, with no screen-share picker.
+  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+    desktopCapturer.getSources({ types: ["screen"] })
+      .then((sources) => callback({ video: sources[0], audio: process.platform === "win32" ? "loopback" : undefined }))
+      .catch(() => callback({}));
+  }, { useSystemPicker: false });
+
   createWindow();
   Menu.setApplicationMenu(null);
   // Reopen the last pop-out board, if one was open last session.

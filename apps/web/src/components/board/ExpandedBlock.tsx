@@ -24,6 +24,8 @@ import { ItemPermissionModal } from "./PermissionModal";
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { ItemRenderer, ListStylePanel, GraphStylePanel, EmbedStylePanel, TimerStylePanel, ApiStylePanel, CalendarStylePanel, TableStylePanel, PlaylistStylePanel, KanbanStylePanel, ChatStylePanel, ImageStylePanel, chatChannelsInUse } from "@/components/items/ItemRenderer";
 import { SuggestionStylePanel, GuestbookStylePanel, PollStylePanel } from "@/components/items/CommunityItems";
+import { FlashcardStylePanel, QuizStylePanel } from "@/components/items/StudyItems";
+import { VisualizerStylePanel } from "@/components/items/VisualizerItem";
 import { TwitchStylePanel } from "@/components/items/TwitchItem";
 import { FontPicker } from "@/components/ui/FontPicker";
 import { loadGoogleFont } from "@/lib/fonts";
@@ -59,6 +61,9 @@ const DEFAULT_SIZES: Record<ItemType, { w: number; h: number }> = {
   "embed-card": { w: 320, h: 220 },
   "external":   { w: 300, h: 300 },
   twitch:       { w: 320, h: 300 },
+  flashcard:    { w: 360, h: 300 },
+  quiz:         { w: 380, h: 340 },
+  visualizer:   { w: 420, h: 300 },
 };
 
 function getDefaultLayout(item: BlockItem, idx: number) {
@@ -904,6 +909,24 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
               )}
               {selectedItem.type === "poll" && (
                 <PollStylePanel
+                  item={selectedItem}
+                  upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
+                />
+              )}
+              {selectedItem.type === "flashcard" && (
+                <FlashcardStylePanel
+                  item={selectedItem}
+                  upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
+                />
+              )}
+              {selectedItem.type === "quiz" && (
+                <QuizStylePanel
+                  item={selectedItem}
+                  upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
+                />
+              )}
+              {selectedItem.type === "visualizer" && (
+                <VisualizerStylePanel
                   item={selectedItem}
                   upd={(patch) => useBoardStore.getState().updateItem(boardId, boxId, selectedItem.id, patch)}
                 />

@@ -55,6 +55,8 @@ export type ItemType =
   | "playlist" | "kanban"
   | "chat" | "filebank"
   | "suggestion" | "guestbook" | "poll"
+  | "flashcard" | "quiz"
+  | "visualizer"
   | "embed-card"
   | "external" | "twitch";
 
@@ -318,6 +320,8 @@ export interface ListEntry {
 }
 export interface GraphPoint { label: string; [key: string]: string | number }
 export interface PollOption { id: string; label: string }
+export interface Flashcard { id: string; front: string; back: string }
+export interface QuizQuestion { id: string; prompt: string; options: string[]; correctIndex: number }
 
 export interface BlockItem {
   id: string;
@@ -735,6 +739,36 @@ export interface BlockItem {
   kanbanBgImage?: string;
   kanbanBgImageSize?: string;
   kanbanBgImageOpacity?: number;
+
+  // flashcard
+  flashcards?: Flashcard[];
+  flashcardShuffle?: boolean;
+  flashcardFontFamily?: string;
+  flashcardAccent?: string;
+
+  // quiz
+  quizQuestions?: QuizQuestion[];
+  quizShuffle?: boolean;
+  quizInstant?: boolean; // show correct/wrong immediately after answering
+  quizFontFamily?: string;
+  quizAccent?: string;
+
+  // visualizer / effects
+  visualizerEffect?: string; // "bars" | "wave" | "rain" | "particles" | "aurora"
+  visualizerColor?: string;
+  visualizerColor2?: string;
+  visualizerSpeed?: number;     // 0.25..3
+  visualizerIntensity?: number; // 0.25..2
+  visualizerMic?: boolean;      // legacy: superseded by visualizerAudioSource
+  visualizerAudioSource?: string; // "off" | "mic" | "system" — reactive source for bars/wave
+  visualizerBgColor?: string;
+  visualizerBgType?: string;    // "color" | "transparent" | "image"
+  visualizerBgImage?: string;
+  visualizerBgOpacity?: number; // background image opacity (0..1)
+  visualizerGlow?: boolean;     // bloom/glow (default on)
+  visualizerTrails?: boolean;   // motion trails / fade
+  visualizerBarRounded?: boolean; // rounded (default) vs rectangular bars
+  visualizerFreqFocus?: string;   // "full" | "vocal" | "bass" — spectrum window for bars/radial
 }
 
 // ─── Block (box on the board) ─────────────────────────────────────────────────
