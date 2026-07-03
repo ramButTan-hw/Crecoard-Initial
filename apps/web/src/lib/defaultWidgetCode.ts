@@ -44,10 +44,17 @@ export const DEFAULT_WIDGET_CODE = `<!DOCTYPE html>
 </html>`;
 
 /**
- * Desk Pet — example custom item exercising the widget state bridge.
- * State persists via plancraft-save-state → item.widgetState → board sync,
- * so the pet survives reloads and follows the board across devices.
- * Hunger/affection decay from timestamps, so time passes even while closed.
+ * Board Pet — flagship demo of the widget plugin API (docs/widget-api.md).
+ *
+ * A Tamagotchi that lives on your board: 8-bit pixel sprites, three life
+ * stages (baby → teen → adult via XP), care stats that decay from timestamps
+ * while the board is closed, and — with "Move itself" + "Read board layout"
+ * permissions granted — it roams the canvas and perches on your blocks.
+ *
+ * The SPRITES section is deliberately plain data: artists can redraw the
+ * 16×16 matrices (palette indices, see PAL) and publish reskins to the
+ * community marketplace without touching any logic. Works best as a
+ * canvas-level item so it has no block chrome around it.
  */
 export const PET_WIDGET_CODE = `<!DOCTYPE html>
 <html>
@@ -60,114 +67,243 @@ export const PET_WIDGET_CODE = `<!DOCTYPE html>
     background: transparent; color: #f2f2f2;
     height: 100vh; overflow: hidden;
     display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 8px; padding: 10px;
+    justify-content: flex-end; gap: 6px; padding: 8px;
     user-select: none;
   }
-  .name { font-size: 13px; font-weight: 700; outline: none; border-bottom: 1px dashed transparent; }
+  .name { font-size: 12px; font-weight: 700; outline: none; border-bottom: 1px dashed transparent; }
   .name:focus { border-bottom-color: #d59ee8; }
-  .pet { font-size: 56px; cursor: pointer; animation: bob 2.4s ease-in-out infinite; position: relative; }
-  @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
-  .pet.eating { animation: chomp 0.5s ease; }
-  @keyframes chomp { 0%,100% { transform: scale(1) } 50% { transform: scale(1.25) rotate(-8deg) } }
-  .bars { display: flex; flex-direction: column; gap: 4px; width: 82%; max-width: 220px; }
-  .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; }
+  canvas { image-rendering: pixelated; cursor: pointer; }
+  .bars { display: flex; flex-direction: column; gap: 3px; width: 84%; max-width: 180px; }
+  .bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; }
   .bar > div { height: 100%; border-radius: 3px; transition: width 0.4s; }
   .fill-food { background: #48cfa6; }
   .fill-love { background: #eb5757; }
-  .row { display: flex; gap: 8px; }
+  .row { display: flex; gap: 6px; }
   button {
     border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06);
-    color: #f2f2f2; border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer;
+    color: #f2f2f2; border-radius: 8px; padding: 4px 10px; font-size: 11px; cursor: pointer;
   }
   button:hover { border-color: #d59ee8; color: #d59ee8; }
-  .meta { font-size: 10px; opacity: 0.55; }
-  .heart { position: absolute; font-size: 16px; pointer-events: none; animation: rise 0.9s ease-out forwards; }
-  @keyframes rise { from { opacity: 1; transform: translateY(0) } to { opacity: 0; transform: translateY(-34px) } }
+  .meta { font-size: 9px; opacity: 0.55; text-align: center; min-height: 12px; }
 </style>
 </head>
 <body>
   <div class="name" id="name" contenteditable spellcheck="false">Mochi</div>
-  <div class="pet" id="pet">🐣</div>
+  <canvas id="cv" width="96" height="96"></canvas>
   <div class="bars">
     <div class="bar"><div class="fill-food" id="food"></div></div>
     <div class="bar"><div class="fill-love" id="love"></div></div>
   </div>
   <div class="row">
-    <button id="feed">🍙 Feed</button>
-    <button id="cuddle">❤ Pet</button>
+    <button id="feed">Feed</button>
+    <button id="cuddle">Pet</button>
   </div>
   <div class="meta" id="meta"></div>
 
-  <script>
-    // Hunger empties over 8h, affection over 12h — derived from timestamps,
-    // so the pet gets hungry even while the board is closed.
-    var FOOD_MS = 8 * 3600000, LOVE_MS = 12 * 3600000;
-    var s = { name: "Mochi", xp: 0, fedAt: Date.now(), pettedAt: Date.now() };
-    var restored = false;
+<script>
+// ══ SPRITES — artist-editable ═════════════════════════════════════════════
+// 16×16 matrices of palette indices. Redraw these, keep the shape, publish
+// your reskin to the community. 0 = transparent.
+var PAL = { "1": "#2a2136", "2": "#d59ee8", "3": "#f3d5ff", "4": "#eb5757", "5": "#ffffff", "6": "#f2994a" };
 
-    function save() { parent.postMessage({ type: "plancraft-save-state", state: s }, "*"); }
-    function pct(since, span) { return Math.max(0, 1 - (Date.now() - since) / span); }
-    function level() { return Math.floor(s.xp / 50) + 1; }
+var SPRITES = {
+  baby: { scale: 4, rows: [
+    "0000000000000000",
+    "0000000100000000",
+    "0000000100000000",
+    "0000011111100000",
+    "0000122222210000",
+    "0001222222221000",
+    "0001212222121000",
+    "0001222662221000",
+    "0001422222241000",
+    "0001233333321000",
+    "0001233333321000",
+    "0000123333210000",
+    "0000011111100000",
+    "0000006006000000",
+    "0000066006600000",
+    "0000000000000000"
+  ]},
+  teen: { scale: 5, rows: [
+    "0000000000000000",
+    "0000100000010000",
+    "0000110000110000",
+    "0000111111110000",
+    "0001222222221000",
+    "0001212222121000",
+    "0001222222221000",
+    "0001422112241000",
+    "0000122222210000",
+    "0001233333321000",
+    "0001233333321000",
+    "0001233333321220",
+    "0000122222210000",
+    "0000011111100000",
+    "0000060000600000",
+    "0000000000000000"
+  ]},
+  adult: { scale: 6, rows: [
+    "0006000000006000",
+    "0000600000060000",
+    "0000111111110000",
+    "0001222222221000",
+    "0001211221121000",
+    "0001222222221000",
+    "0001222112221000",
+    "0001233333321000",
+    "0001233333321000",
+    "0001233333321000",
+    "0001233333321220",
+    "0001222222221000",
+    "0000122222210000",
+    "0000011111100000",
+    "0000660006600000",
+    "0000000000000000"
+  ]}
+};
+// ══ end sprites ═══════════════════════════════════════════════════════════
 
-    function face() {
-      var food = pct(s.fedAt, FOOD_MS), love = pct(s.pettedAt, LOVE_MS);
-      var l = level();
-      var base = l >= 8 ? "🐉" : l >= 5 ? "🐥" : l >= 3 ? "🐤" : "🐣";
-      if (food < 0.15) return "😵";
-      if (food < 0.4) return "🥺";
-      if (love < 0.25) return "😢";
-      return base;
+// ── Plugin API helper (postMessage RPC to the Crecoard host) ──────────────
+var apiSeq = 0, apiPending = {};
+function pc(method, args) {
+  return new Promise(function(resolve, reject) {
+    var id = ++apiSeq;
+    apiPending[id] = { resolve: resolve, reject: reject };
+    parent.postMessage({ type: "plancraft-api", id: id, method: method, args: args || {} }, "*");
+    setTimeout(function() {
+      if (apiPending[id]) { delete apiPending[id]; reject(new Error("timeout")); }
+    }, 3000);
+  });
+}
+
+// ── Care state (persisted via the state bridge) ───────────────────────────
+var FOOD_MS = 8 * 3600000, LOVE_MS = 12 * 3600000;
+var s = { name: "Mochi", xp: 0, fedAt: Date.now(), pettedAt: Date.now() };
+var restored = false, roam = "unknown", facing = 1, bob = 0, exploringTitle = "";
+
+function save() { parent.postMessage({ type: "plancraft-save-state", state: s }, "*"); }
+function pctv(since, span) { return Math.max(0, 1 - (Date.now() - since) / span); }
+function stage() { return s.xp >= 300 ? "adult" : s.xp >= 100 ? "teen" : "baby"; }
+function level() { return Math.floor(s.xp / 50) + 1; }
+function happy() { return pctv(s.fedAt, FOOD_MS) > 0.25 && pctv(s.pettedAt, LOVE_MS) > 0.15; }
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+function draw() {
+  var sp = SPRITES[stage()];
+  ctx.clearRect(0, 0, 96, 96);
+  ctx.save();
+  if (facing < 0) { ctx.translate(96, 0); ctx.scale(-1, 1); }
+  var px = sp.scale;
+  var ox = Math.floor((96 - 16 * px) / 2);
+  var oy = 96 - 16 * px + bob;
+  ctx.globalAlpha = happy() ? 1 : 0.75;
+  for (var r = 0; r < 16; r++) {
+    var row = sp.rows[r];
+    for (var c = 0; c < 16; c++) {
+      var v = row[c];
+      if (v !== "0" && PAL[v]) { ctx.fillStyle = PAL[v]; ctx.fillRect(ox + c * px, oy + r * px, px, px); }
     }
+  }
+  ctx.restore();
+}
 
-    function render() {
-      document.getElementById("pet").textContent = face();
-      document.getElementById("food").style.width = (pct(s.fedAt, FOOD_MS) * 100) + "%";
-      document.getElementById("love").style.width = (pct(s.pettedAt, LOVE_MS) * 100) + "%";
-      document.getElementById("meta").textContent = "Lv " + level() + " · " + s.xp + " xp";
-      if (document.activeElement !== document.getElementById("name"))
-        document.getElementById("name").textContent = s.name;
+function render() {
+  document.getElementById("food").style.width = (pctv(s.fedAt, FOOD_MS) * 100) + "%";
+  document.getElementById("love").style.width = (pctv(s.pettedAt, LOVE_MS) * 100) + "%";
+  var m = "Lv " + level() + " " + stage();
+  if (!happy()) m += " · needs care!";
+  else if (exploringTitle) m += " · exploring " + exploringTitle;
+  else if (roam === "off") m += " · grant permissions to let me roam";
+  document.getElementById("meta").textContent = m;
+  if (document.activeElement !== document.getElementById("name"))
+    document.getElementById("name").textContent = s.name;
+  draw();
+}
+
+// idle bob
+setInterval(function() { bob = bob === 0 ? -2 : 0; draw(); }, 450);
+
+// ── Care actions ───────────────────────────────────────────────────────────
+document.getElementById("feed").onclick = function() { s.fedAt = Date.now(); s.xp += 5; render(); save(); };
+document.getElementById("cuddle").onclick = function() { s.pettedAt = Date.now(); s.xp += 3; render(); save(); };
+document.getElementById("cv").onclick = function() { facing = -facing; draw(); };
+document.getElementById("name").addEventListener("blur", function() {
+  s.name = (this.textContent || "Mochi").trim().slice(0, 20) || "Mochi";
+  render(); save();
+});
+
+// ── Roaming: the board is home ─────────────────────────────────────────────
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+async function wanderOnce() {
+  if (!happy()) return; // too hungry/sad to roam
+  var me = await pc("self.getRect");
+  var world = await pc("board.getRects");
+  roam = "on";
+  var spots = world.rects.filter(function(r) { return !r.self && r.kind === "box"; });
+  var tx, ty;
+  if (spots.length > 0) {
+    var b = spots[Math.floor(Math.random() * spots.length)];
+    tx = Math.round(b.x + Math.random() * Math.max(1, b.width - me.width));
+    ty = Math.round(b.y - me.height + 8); // perch on the block's top edge
+    exploringTitle = b.title || "a block";
+  } else {
+    tx = Math.round(me.x + (Math.random() - 0.5) * 500);
+    ty = Math.round(me.y + (Math.random() - 0.5) * 300);
+    exploringTitle = "";
+  }
+  facing = tx >= me.x ? 1 : -1;
+  var steps = 8;
+  for (var i = 1; i <= steps; i++) {
+    var x = Math.round(me.x + (tx - me.x) * (i / steps));
+    var y = Math.round(me.y + (ty - me.y) * (i / steps));
+    await pc("self.move", { x: x, y: y });
+    bob = i % 2 === 0 ? 0 : -3; draw();
+    await sleep(260);
+  }
+  render();
+}
+
+async function roamLoop() {
+  for (;;) {
+    await sleep(4000 + Math.random() * 6000);
+    try {
+      await wanderOnce();
+    } catch (err) {
+      // Permission not granted (or no board context) — sit tight, hint, retry later
+      roam = "off"; exploringTitle = ""; render();
+      await sleep(60000);
     }
+  }
+}
 
-    function burst(emoji) {
-      var el = document.createElement("span");
-      el.className = "heart"; el.textContent = emoji;
-      el.style.left = (30 + Math.random() * 40) + "%"; el.style.top = "0";
-      document.getElementById("pet").appendChild(el);
-      setTimeout(function() { el.remove(); }, 900);
+// ── Host bridge: state restore + API responses ────────────────────────────
+window.addEventListener("message", function(e) {
+  var d = e.data;
+  if (!d) return;
+  if (d.type === "plancraft-api-result") {
+    var p = apiPending[d.id];
+    if (p) { delete apiPending[d.id]; d.ok ? p.resolve(d.data) : p.reject(new Error(d.error || "error")); }
+    return;
+  }
+  if (d.type === "plancraft-state" && !restored) {
+    restored = true;
+    if (d.state && typeof d.state === "object") {
+      var st = d.state;
+      if (typeof st.name === "string") s.name = st.name;
+      if (typeof st.xp === "number") s.xp = st.xp;
+      if (typeof st.fedAt === "number") s.fedAt = st.fedAt;
+      if (typeof st.pettedAt === "number") s.pettedAt = st.pettedAt;
     }
-
-    document.getElementById("feed").onclick = function() {
-      s.fedAt = Date.now(); s.xp += 5;
-      var p = document.getElementById("pet");
-      p.classList.remove("eating"); void p.offsetWidth; p.classList.add("eating");
-      burst("🍙"); render(); save();
-    };
-    document.getElementById("cuddle").onclick = function() {
-      s.pettedAt = Date.now(); s.xp += 3;
-      burst("❤"); render(); save();
-    };
-    document.getElementById("pet").onclick = function() { burst("✨"); };
-    document.getElementById("name").addEventListener("blur", function() {
-      s.name = (this.textContent || "Mochi").trim().slice(0, 20) || "Mochi";
-      render(); save();
-    });
-
-    // Restore persisted state from the host (sent on iframe load)
-    window.addEventListener("message", function(e) {
-      if (!e.data || e.data.type !== "plancraft-state" || restored) return;
-      restored = true;
-      if (e.data.state && typeof e.data.state === "object") {
-        var st = e.data.state;
-        if (typeof st.name === "string") s.name = st.name;
-        if (typeof st.xp === "number") s.xp = st.xp;
-        if (typeof st.fedAt === "number") s.fedAt = st.fedAt;
-        if (typeof st.pettedAt === "number") s.pettedAt = st.pettedAt;
-      }
-      render();
-    });
-
     render();
-    setInterval(render, 30000); // bars drift down while the board is open
-  </script>
+  }
+});
+
+render();
+setInterval(render, 30000); // stats drift while the board is open
+roamLoop();
+</script>
 </body>
 </html>`;

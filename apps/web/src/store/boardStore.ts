@@ -686,6 +686,8 @@ export interface BlockItem {
   widgetCode?: string;
   /** Persistent widget state — saved via the plancraft-save-state postMessage bridge, replayed on load. ≤8KB JSON. */
   widgetState?: unknown;
+  /** Plugin API permissions granted to this widget (see lib/widgetApi.ts). Travels with shared items; stripped on install unless consented. */
+  widgetPermissions?: string[];
 
   // kanban
   kanbanColumns?: KanbanColumn[];

@@ -56,6 +56,8 @@ import { REMINDER_LEADS, eventStartDate, createReminder } from "@/lib/reminders"
 import { ContextMenu, ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { DueChip, MemberAvatar, AssigneeRows, TaskFieldsPopover, MemberPickerPopover, RemindMeControl } from "@/components/items/TaskFields";
 import { htmlToPlainText } from "@/lib/taskFacts";
+import { WIDGET_PERMISSIONS, METHOD_PERMISSIONS, RateLimiter, clampCoord, clampSize, type WidgetApiResponse } from "@/lib/widgetApi";
+import { useCollab } from "@/lib/useCollabSession";
 import type { ServerMember } from "@/types/server";
 
 const CHART_COLORS = ["#d59ee8", "#48cfa6", "#f2994a", "#eb5757", "#9b51e0", "#2d9cdb"];
@@ -185,7 +187,7 @@ export function ItemRenderer({ item, boardId, boxId, vars, collapsed, isFinished
     case "api":      return <ApiItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "calendar": return <CalendarItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
     case "table":    return <TableItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} boardId={boardId} boxId={boxId} extraContextItems={extraContextItems} />;
-    case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} />;
+    case "widget":   return <WidgetItem item={item} upd={upd} vars={vars} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} boardId={boardId} boxId={boxId} />;
     case "playlist": return <PlaylistItem item={item} upd={upd} boardId={boardId} boxId={boxId} collapsed={collapsed} isFinished={isFinished} canInteract={canInteract} extraContextItems={extraContextItems} />;
     case "kanban":   return <KanbanItem item={item} upd={upd} collapsed={collapsed} isFinished={isFinished} extraContextItems={extraContextItems} boardId={boardId} />;
     // Items whose renderer builds no context menu of its own — wrap so right-click
@@ -8508,23 +8510,28 @@ export function TableStylePanel({ item, upd, boardId, boxId }: { item: BlockItem
 
 // ─── Custom Widget ────────────────────────────────────────────────────────────
 
-function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems }: {
+function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems, boardId, boxId }: {
   item: BlockItem;
   upd: (p: Partial<BlockItem>) => void;
   vars: Record<string, number>;
   collapsed?: boolean;
   isFinished?: boolean;
   extraContextItems?: ContextMenuEntry[];
+  boardId?: string;
+  boxId?: string; // "" for canvas-level widgets (BoardItemWidget convention)
 }) {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
-  const [tab, setTab] = useState<"preview" | "code">("preview");
+  const [tab, setTab] = useState<"preview" | "code" | "perms">("preview");
   const [draft, setDraft] = useState(item.widgetCode ?? DEFAULT_WIDGET_CODE);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { members } = useServerBoard();
+  const { broadcastOp } = useCollab();
+  const apiLimiterRef = useRef(new RateLimiter(20, 10));
   // Live refs so the mount-once message listener never acts on stale props
-  const liveRef = useRef({ upd, isFinished });
-  liveRef.current = { upd, isFinished };
+  const liveRef = useRef({ upd, isFinished, item, members, broadcastOp, boardId, boxId });
+  liveRef.current = { upd, isFinished, item, members, broadcastOp, boardId, boxId };
 
   useEffect(() => {
     return () => {
@@ -8533,14 +8540,107 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems 
     };
   }, []);
 
-  // Widget → parent state saves: { type: "plancraft-save-state", state }.
-  // Sandboxed widgets (opaque origin) have no localStorage — this bridge is
-  // their only persistence; state lands in item.widgetState via board sync.
+  // Plugin API dispatcher — every call is validated here before touching the app.
+  // See lib/widgetApi.ts for the protocol and docs/widget-api.md for the reference.
+  const handleApiCall = (data: { id?: unknown; method?: unknown; args?: unknown }) => {
+    const id = (typeof data.id === "string" || typeof data.id === "number") ? data.id : "";
+    const respond = (ok: boolean, payload?: unknown, error?: string) => {
+      const msg: WidgetApiResponse = { type: "plancraft-api-result", id, ok, data: payload, error };
+      iframeRef.current?.contentWindow?.postMessage(msg, "*");
+    };
+    const method = typeof data.method === "string" ? data.method : "";
+    if (!(method in METHOD_PERMISSIONS)) { respond(false, undefined, `Unknown method: ${method}`); return; }
+    if (!apiLimiterRef.current.allow()) { respond(false, undefined, "Rate limit exceeded"); return; }
+
+    const live = liveRef.current;
+    const required = METHOD_PERMISSIONS[method];
+    const granted = new Set(live.item.widgetPermissions ?? []);
+    if (required && !granted.has(required)) {
+      respond(false, undefined, `Permission "${required}" not granted — a board editor can enable it in this widget's Permissions tab`);
+      return;
+    }
+
+    const store = useBoardStore.getState();
+    const board = store.boards.find((b) => b.id === live.boardId) ?? (live.boardId ? store.serverBoards[live.boardId] : undefined);
+    if (!board || !live.boardId) { respond(false, undefined, "No board context"); return; }
+    const inBox = !!live.boxId;
+    const args = (data.args && typeof data.args === "object" ? data.args : {}) as Record<string, unknown>;
+
+    switch (method) {
+      case "self.getRect": {
+        if (inBox) {
+          const box = board.boxes.find((b) => b.id === live.boxId);
+          if (!box) { respond(false, undefined, "Own block not found"); return; }
+          respond(true, { x: box.x, y: box.y, width: box.width, height: box.height, container: "box" });
+        } else {
+          const bi = board.boardItems?.find((i) => i.id === live.item.id);
+          if (!bi) { respond(false, undefined, "Own item not found"); return; }
+          respond(true, { x: bi.boardX, y: bi.boardY, width: bi.boardW, height: bi.boardH, container: "canvas" });
+        }
+        return;
+      }
+      case "self.move": {
+        if (live.isFinished) { respond(false, undefined, "Board is locked"); return; }
+        const x = clampCoord(args.x); const y = clampCoord(args.y);
+        if (x === null || y === null) { respond(false, undefined, "x and y must be finite numbers"); return; }
+        if (inBox) {
+          store.moveBox(live.boardId, live.boxId!, x, y);
+          live.broadcastOp({ op: "moveBox", boardId: live.boardId, boxId: live.boxId!, x, y });
+        } else {
+          store.moveBoardItem(live.boardId, live.item.id, x, y);
+        }
+        respond(true, { x, y });
+        return;
+      }
+      case "self.resize": {
+        if (live.isFinished) { respond(false, undefined, "Board is locked"); return; }
+        const w = clampSize(args.width); const h = clampSize(args.height);
+        if (w === null || h === null) { respond(false, undefined, "width and height must be finite numbers"); return; }
+        if (inBox) {
+          store.resizeBox(live.boardId, live.boxId!, w, h);
+          live.broadcastOp({ op: "resizeBox", boardId: live.boardId, boxId: live.boxId!, width: w, height: h });
+        } else {
+          store.updateBoardItem(live.boardId, live.item.id, { boardW: w, boardH: h });
+        }
+        respond(true, { width: w, height: h });
+        return;
+      }
+      case "board.getRects": {
+        const boxes = board.boxes
+          .filter((b) => !b.deckOwnerId)
+          .slice(0, 200)
+          .map((b) => ({ id: b.id, kind: "box", x: b.x, y: b.y, width: b.width, height: b.height, title: b.title, self: inBox && b.id === live.boxId }));
+        const canvasItems = (board.boardItems ?? [])
+          .slice(0, 200)
+          .map((i) => ({ id: i.id, kind: "item", x: i.boardX, y: i.boardY, width: i.boardW, height: i.boardH, title: "", self: !inBox && i.id === live.item.id }));
+        respond(true, { rects: [...boxes, ...canvasItems] });
+        return;
+      }
+      case "members.list": {
+        respond(true, {
+          members: live.members.slice(0, 500).map((m) => ({
+            userId: m.userId, username: m.username, avatar: m.avatar, role: m.role, online: m.online,
+          })),
+        });
+        return;
+      }
+    }
+  };
+
+  // Widget → parent messages. State saves ({ type: "plancraft-save-state", state })
+  // land in item.widgetState — sandboxed widgets (opaque origin) have no
+  // localStorage, so this bridge is their only persistence. API calls
+  // ({ type: "plancraft-api", ... }) go through the dispatcher above.
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
       const data = e.data as { type?: string; state?: unknown } | null;
-      if (!data || data.type !== "plancraft-save-state") return;
+      if (!data) return;
+      if (data.type === "plancraft-api") {
+        handleApiCall(data as { id?: unknown; method?: unknown; args?: unknown });
+        return;
+      }
+      if (data.type !== "plancraft-save-state") return;
       if (liveRef.current.isFinished) return; // locked board = read-only
       let json: string | undefined;
       try { json = JSON.stringify(data.state); } catch { return; }
@@ -8551,6 +8651,7 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems 
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync draft → store with debounce
@@ -8601,7 +8702,7 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems 
           className="flex flex-shrink-0 items-center gap-1 border-b border-[var(--border)] px-2 py-1"
           style={{ background: "var(--surface-overlay)" }}
         >
-          {(["preview", "code"] as const).map((t) => (
+          {(["preview", "code", "perms"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -8612,15 +8713,43 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems 
                   : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               )}
             >
-              {t === "code" ? "< Code >" : "Preview"}
+              {t === "code" ? "< Code >" : t === "perms" ? "Permissions" : "Preview"}
             </button>
           ))}
-          <span className="ml-auto text-[11px] text-[var(--text-muted)]">HTML · CSS · JS</span>
+          <span className="ml-auto text-[11px] text-[var(--text-muted)]">
+            {(item.widgetPermissions?.length ?? 0) > 0 ? `${item.widgetPermissions!.length} permission(s)` : "HTML · CSS · JS"}
+          </span>
         </div>
       )}
 
       {/* Content */}
-      {tab === "preview" || isFinished ? (
+      {!isFinished && tab === "perms" ? (
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3" style={{ background: "var(--surface)" }}>
+          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+            Grant this widget access to the plugin API. Permissions travel with the item when shared —
+            installers are asked to approve them before they take effect.
+          </p>
+          {WIDGET_PERMISSIONS.map((p) => (
+            <label key={p.id} className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-[var(--accent)]"
+                checked={(item.widgetPermissions ?? []).includes(p.id)}
+                onChange={(e) => {
+                  const cur = new Set(item.widgetPermissions ?? []);
+                  if (e.target.checked) cur.add(p.id); else cur.delete(p.id);
+                  upd({ widgetPermissions: [...cur] });
+                }}
+              />
+              <span className="flex flex-col">
+                <span className="text-xs font-medium text-[var(--text-primary)]">{p.label}</span>
+                <span className="text-[11px] text-[var(--text-muted)]">{p.description}</span>
+              </span>
+            </label>
+          ))}
+          <p className="mt-1 text-[10px] text-[var(--text-muted)]">Developer reference: docs/widget-api.md</p>
+        </div>
+      ) : tab === "preview" || isFinished ? (
         <iframe
           ref={iframeRef}
           sandbox="allow-scripts"

@@ -11,6 +11,7 @@ import {
 } from "@/lib/communityTemplates";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
 import { useUser } from "@/contexts/UserContext";
+import { WIDGET_PERMISSIONS, collectTemplatePermissions, type WidgetPermission } from "@/lib/widgetApi";
 import { cn } from "@/lib/utils";
 
 // ─── Main modal ───────────────────────────────────────────────────────────────
@@ -61,15 +62,40 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
     fetchMyLikes().then(setMyLikes).catch(() => {});
   }, [isLoggedIn]);
 
-  const handleUse = (board: CommunityBoard) => {
-    trackBoardUse(board.id).catch(() => {/* fire-and-forget */});
-    if (board.kind === "board") {
-      createBoardFromTemplate(board);
+  const [pendingUse, setPendingUse] = useState<{ board: CommunityBoard; perms: WidgetPermission[] } | null>(null);
+
+  // Widget permissions never apply silently — strip them unless the installer consents.
+  const stripPerms = (b: CommunityBoard): CommunityBoard => ({
+    ...b,
+    boardData: {
+      ...b.boardData,
+      boxes: b.boardData.boxes.map((box) => ({
+        ...box,
+        items: box.items.map(({ widgetPermissions: _wp, ...rest }) => rest),
+      })),
+    },
+  });
+
+  const applyUse = (board: CommunityBoard, allowPerms: boolean) => {
+    const entry = allowPerms ? board : stripPerms(board);
+    trackBoardUse(entry.id).catch(() => {/* fire-and-forget */});
+    if (entry.kind === "board") {
+      createBoardFromTemplate(entry);
     } else {
       if (!activeBoardId) return;
-      insertTemplateBoxes(activeBoardId, board.boardData.boxes);
+      insertTemplateBoxes(activeBoardId, entry.boardData.boxes);
     }
+    setPendingUse(null);
     onClose();
+  };
+
+  const handleUse = (board: CommunityBoard) => {
+    const perms = collectTemplatePermissions(board.boardData.boxes);
+    if (perms.length > 0) {
+      setPendingUse({ board, perms });
+      return;
+    }
+    applyUse(board, false);
   };
 
   const handleLike = async (board: CommunityBoard) => {
@@ -226,6 +252,57 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
           onClose={() => setShowPublish(false)}
           onPublished={() => { setShowPublish(false); setRefreshTick((t) => t + 1); }}
         />
+      )}
+
+      {/* ── Permission consent (entries containing widgets with plugin API access) ── */}
+      {pendingUse && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setPendingUse(null)}
+        >
+          <div
+            className="flex flex-col bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-2xl overflow-hidden"
+            style={{ width: 420 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-[var(--border)]">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">This item requests permissions</h3>
+              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                “{pendingUse.board.name}” contains a widget that wants to use the plugin API.
+              </p>
+            </div>
+            <div className="p-5 flex flex-col gap-3">
+              {pendingUse.perms.map((id) => {
+                const def = WIDGET_PERMISSIONS.find((p) => p.id === id);
+                if (!def) return null;
+                return (
+                  <div key={id} className="flex flex-col">
+                    <span className="text-xs font-medium text-[var(--text-primary)]">{def.label}</span>
+                    <span className="text-[11px] text-[var(--text-muted)]">{def.description}</span>
+                  </div>
+                );
+              })}
+              <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                Widgets always run sandboxed — permissions only unlock the specific abilities listed above,
+                and you can revoke them any time in the widget’s Permissions tab.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--border)]">
+              <button
+                onClick={() => applyUse(pendingUse.board, false)}
+                className="px-4 py-2 rounded-lg text-[12px] text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] transition-colors"
+              >
+                Add without permissions
+              </button>
+              <button
+                onClick={() => applyUse(pendingUse.board, true)}
+                className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-[12px] font-medium hover:opacity-90 transition-opacity"
+              >
+                Allow & add
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
