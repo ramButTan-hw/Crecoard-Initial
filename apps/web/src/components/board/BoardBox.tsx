@@ -567,11 +567,14 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
         onClick={(e) => {
           e.stopPropagation();
           if (draggedRef.current) { draggedRef.current = false; return; } // ignore click after a drag
+          // Select/raise is an EDIT affordance (locked boards skip it), but OPENING
+          // a block is a USE action — a finished/locked board is meant to be used,
+          // so opening always works. Locking only prevents move/resize/delete/edit.
           if (!isFinished) {
             selectBox(box.id);
             bringToFront(boardId, box.id);
           }
-          if (!box.isDeck && !isFinished) setExpandedBox(box.id);
+          if (!box.isDeck) setExpandedBox(box.id);
         }}
         onContextMenu={handleContextMenu}
       >
@@ -660,8 +663,9 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           </div>
         )}
 
-        {/* Expand trigger pill — appears on hover, crossfades with rollup badge */}
-        {!isFinished && !box.isDeck && (
+        {/* Expand trigger pill — appears on hover. Opening is a use action, so it
+            shows on finished/locked boards too (only editing is locked). */}
+        {!box.isDeck && (
           <div
             aria-hidden
             className="absolute top-2 right-2 z-20 pointer-events-none opacity-0 group-hover:opacity-80 transition-opacity duration-150"

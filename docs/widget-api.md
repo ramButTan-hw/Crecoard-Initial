@@ -118,6 +118,10 @@ ever see what the person looking at the board could already see.
   (≤ 8 KB, debounced). The host replays `{ type: "plancraft-state", state }` on every load.
   State syncs with the board across devices and collaborators.
 - **Variables:** number variables in your block arrive as `{ type: "plancraft-vars", vars }`.
+- **Wallpaper cursor:** when the board runs as a desktop wallpaper (desktop app), real
+  input never reaches it — instead the host streams `{ type: "plancraft-cursor", x, y, inside }`
+  (widget-relative, ~30 Hz). React to hover (a pet that gets petted by the desktop cursor);
+  don't expect clicks in wallpaper mode.
 
 ## Pet sprites (reskinning the Board Pet)
 

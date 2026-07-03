@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Globe, Lock, Grid3X3, ZoomIn, ZoomOut,
   Pencil, CheckCircle2, Edit3, Palette, Share2,
-  Minus, Square, X, ListTodo,
+  Minus, Square, X, ListTodo, Monitor,
 } from "lucide-react";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
 import { useHasAppBg } from "@/lib/useHasAppBg";
@@ -51,6 +51,24 @@ export function TopBar() {
   const [showThemePanel, setShowThemePanel] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showToday, setShowToday] = useState(false);
+  const [wallpaperOn, setWallpaperOn] = useState(false);
+
+  useEffect(() => {
+    window.electron?.isWallpaperActive?.().then(setWallpaperOn).catch(() => {});
+  }, []);
+
+  const toggleWallpaper = async () => {
+    const api = window.electron;
+    if (!api?.setWallpaperBoard || !api.clearWallpaper) return;
+    if (wallpaperOn) {
+      await api.clearWallpaper();
+      setWallpaperOn(false);
+    } else {
+      const res = await api.setWallpaperBoard(activeBoardId);
+      if (res.ok) setWallpaperOn(true);
+      else alert(res.error ?? "Couldn't set wallpaper.");
+    }
+  };
   const [isDesktop, setIsDesktop] = useState(false);
   const [windowMaximized, setWindowMaximized] = useState(false);
   const [confirmFinish, setConfirmFinish] = useState(false);
@@ -213,6 +231,18 @@ export function TopBar() {
         >
           <ListTodo size={15} />
         </ToolbarButton>
+
+        {/* Pop-out — desktop app only: this board in a resizable floating window */}
+        {isDesktop && (
+          <ToolbarButton
+            onClick={() => void toggleWallpaper()}
+            title={wallpaperOn ? "Close pop-out board window" : "Pop out board into a floating window"}
+            active={wallpaperOn}
+            desktop={isDesktop}
+          >
+            <Monitor size={15} />
+          </ToolbarButton>
+        )}
 
         {/* Board theme */}
         <ToolbarButton

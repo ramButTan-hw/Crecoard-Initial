@@ -7,4 +7,16 @@ contextBridge.exposeInMainWorld("electron", {
   toggleMaximizeWindow: () => ipcRenderer.invoke("window-maximize-toggle"),
   isWindowMaximized: () => ipcRenderer.invoke("window-is-maximized"),
   closeWindow: () => ipcRenderer.invoke("window-close"),
+  // Pop-out board window (a plain resizable borderless window)
+  setWallpaperBoard: (boardId) => ipcRenderer.invoke("wallpaper-set", boardId),
+  clearWallpaper: () => ipcRenderer.invoke("wallpaper-clear"),
+  isWallpaperActive: () => ipcRenderer.invoke("wallpaper-active"),
+  popoutMinimize: () => ipcRenderer.invoke("popout-minimize"),
+  popoutToggleTop: () => ipcRenderer.invoke("popout-toggle-top"),
+  // Deep links (crecoard://) — used for browser-based OAuth handoff
+  onDeepLink: (cb) => {
+    const listener = (_event, url) => cb(url);
+    ipcRenderer.on("deep-link", listener);
+    return () => ipcRenderer.removeListener("deep-link", listener);
+  },
 });

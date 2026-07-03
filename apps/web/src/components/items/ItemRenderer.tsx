@@ -9,7 +9,7 @@ import {
   Music, SkipBack, SkipForward, Repeat, Shuffle, Volume1, Volume2, VolumeX,
   Radio, Users, Lock, LockOpen, CheckSquare, Square, Copy, FileDown, CopyPlus,
   ArrowUpToLine, ArrowDownToLine, Maximize2, Eye, EyeOff, CalendarDays, Code2, Pencil,
-  List, ListOrdered, Link2, Unlink, IndentIncrease, IndentDecrease, RemoveFormatting, GripVertical, Pin, Bell,
+  List, ListOrdered, Link2, Unlink, IndentIncrease, IndentDecrease, RemoveFormatting, GripVertical, Pin, Bell, Palette,
 } from "lucide-react";
 import { WallpaperEditor } from "@/components/ui/WallpaperEditor";
 import {
@@ -8646,6 +8646,26 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems,
     }
   };
 
+  // Wallpaper mode: forward globally-polled cursor positions into the iframe as
+  // { type: "plancraft-cursor", x, y, inside } (widget-relative coords). This is
+  // how hover interactivity works on the desktop — no real input ever arrives.
+  useEffect(() => {
+    const onCursor = (e: Event) => {
+      const d = (e as CustomEvent<{ x: number; y: number }>).detail;
+      const el = iframeRef.current;
+      if (!el || !d) return;
+      const r = el.getBoundingClientRect();
+      el.contentWindow?.postMessage({
+        type: "plancraft-cursor",
+        x: d.x - r.left,
+        y: d.y - r.top,
+        inside: d.x >= r.left && d.x <= r.right && d.y >= r.top && d.y <= r.bottom,
+      }, "*");
+    };
+    window.addEventListener("crecoard-wallpaper-cursor", onCursor);
+    return () => window.removeEventListener("crecoard-wallpaper-cursor", onCursor);
+  }, []);
+
   // Widget → parent messages. State saves ({ type: "plancraft-save-state", state })
   // land in item.widgetState — sandboxed widgets (opaque origin) have no
   // localStorage, so this bridge is their only persistence. API calls
@@ -10155,24 +10175,37 @@ function KanbanColumnContainer({
   const { setNodeRef, isOver } = useDroppable({ id: col.id });
   const atLimit = col.limit != null && colCards.length >= col.limit;
   const escapeRenameRef = useRef(false);
+  const colBaseBg = col.bgColor ?? columnBg;       // per-column bg color, else kanban default
+  const colCardBg = col.cardBgColor ?? cardBg;     // per-column card bg, else kanban default
 
   return (
     // setNodeRef on the outer column div so the full column (including header) is a drop target
     <div
       ref={setNodeRef}
-      className="flex flex-shrink-0 flex-col"
+      className="relative flex flex-shrink-0 flex-col"
       style={{
         width: 200,
-        background: isOver ? `color-mix(in srgb, ${col.color ?? columnBg} 10%, ${columnBg})` : columnBg,
+        background: isOver ? `color-mix(in srgb, ${col.color ?? colBaseBg} 10%, ${colBaseBg})` : colBaseBg,
         borderRadius,
         overflow: "hidden",
         border: `1px solid ${isOver ? (col.color ?? "var(--accent)") : "var(--border)"}`,
         transition: "border-color 0.15s, background 0.15s",
       }}
     >
+      {/* Per-column background image (behind header + cards) */}
+      {col.bgImage && (
+        <div aria-hidden style={{
+          position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none",
+          backgroundImage: `url(${col.bgImage})`,
+          backgroundSize: col.bgImageSize ?? "cover",
+          backgroundPosition: "center",
+          opacity: col.bgOpacity ?? 1,
+        }} />
+      )}
+
       {/* Column header */}
       <div
-        className="group/kcolh flex items-center gap-1.5 px-2.5 py-2"
+        className="group/kcolh relative z-[1] flex items-center gap-1.5 px-2.5 py-2"
         style={{ background: headerBg, borderBottom: `2px solid ${col.color ?? accent}` }}
       >
         <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: col.color ?? accent }} />
@@ -10236,7 +10269,7 @@ function KanbanColumnContainer({
       {/* Cards drop zone */}
       <SortableContext items={colCards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
         <div
-          className="flex flex-1 flex-col overflow-y-auto p-2"
+          className="relative z-[1] flex flex-1 flex-col overflow-y-auto p-2"
           style={{ minHeight: 80 }}
         >
           {colCards.map((card) => (
@@ -10246,7 +10279,7 @@ function KanbanColumnContainer({
                 isFinished={isFinished}
                 onEdit={(id) => setEditCardId(id)}
                 onDelete={deleteCard}
-                cardBg={cardBg}
+                cardBg={colCardBg}
                 fontSize={fontSize}
                 fontFamily={fontFamily}
                 borderRadius={borderRadius}
@@ -10645,6 +10678,32 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
   );
   const accent = item.kanbanAccentColor ?? "#d59ee8";
   const [openPicker, setOpenPicker] = useState<string | null>(null);
+  const [styleCol, setStyleCol] = useState<string | null>(null);
+  const cols = item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS;
+  const patchCol = (id: string, patch: Partial<KanbanColumn>) =>
+    upd({ kanbanColumns: cols.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
+
+  // Small swatch + color popover for the per-column style editor
+  const ColorField = ({ label, value, fallback, onChange, onClear, pkey }: {
+    label: string; value?: string; fallback: string;
+    onChange: (v: string) => void; onClear: () => void; pkey: string;
+  }) => (
+    <div className="flex items-center justify-between">
+      <span className="text-[var(--text-secondary)]">{label}</span>
+      <div className="relative">
+        <button className="h-5 w-5 rounded border border-[var(--border)]" style={{ background: value ?? fallback }}
+          onClick={() => setOpenPicker(openPicker === pkey ? null : pkey)} />
+        {openPicker === pkey && (
+          <div className="absolute right-0 top-7 z-50 flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
+            <input type="color" value={value ?? (fallback.startsWith("#") ? fallback : "#1e2030")}
+              onChange={(e) => onChange(e.target.value)} className="h-8 w-24 cursor-pointer border-0 p-0" />
+            <button onClick={() => { onClear(); setOpenPicker(null); }}
+              className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Reset</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-0 divide-y divide-[var(--border)] text-xs">
@@ -10652,61 +10711,101 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
       <section className="p-3">
         <SLabel>Columns</SLabel>
         <div className="flex flex-col gap-2">
-          {(item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).map((col) => (
-            <div key={col.id} className="flex items-center gap-2">
-              <input
-                value={col.title}
-                onChange={(e) => upd({
-                  kanbanColumns: (item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).map((c) =>
-                    c.id === col.id ? { ...c, title: e.target.value } : c
-                  ),
-                })}
-                className="flex-1 min-w-0 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-              />
-              <div className="relative">
-                <button
-                  className="h-5 w-5 rounded border border-[var(--border)] flex-shrink-0"
-                  style={{ background: col.color ?? "#d59ee8" }}
-                  onClick={() => setOpenPicker(openPicker === `col-${col.id}` ? null : `col-${col.id}`)}
-                />
-                {openPicker === `col-${col.id}` && (
-                  <div className="absolute right-0 top-7 z-50 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
-                    <input type="color" value={col.color ?? "#d59ee8"}
-                      onChange={(e) => upd({
-                        kanbanColumns: (item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).map((c) =>
-                          c.id === col.id ? { ...c, color: e.target.value } : c
-                        ),
-                      })}
-                      className="h-8 w-24 cursor-pointer border-0 p-0" />
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-[var(--text-muted)]">WIP</span>
+          {cols.map((col) => (
+            <div key={col.id} className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
                 <input
-                  type="number" min={0} value={col.limit ?? ""}
-                  placeholder="∞"
-                  onChange={(e) => upd({
-                    kanbanColumns: (item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).map((c) =>
-                      c.id === col.id ? { ...c, limit: e.target.value ? Number(e.target.value) : undefined } : c
-                    ),
-                  })}
-                  className="w-10 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-center text-xs text-[var(--text-primary)] outline-none"
+                  value={col.title}
+                  onChange={(e) => patchCol(col.id, { title: e.target.value })}
+                  className="flex-1 min-w-0 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                 />
+                <div className="relative">
+                  <button
+                    className="h-5 w-5 rounded border border-[var(--border)] flex-shrink-0"
+                    style={{ background: col.color ?? "#d59ee8" }}
+                    onClick={() => setOpenPicker(openPicker === `col-${col.id}` ? null : `col-${col.id}`)}
+                  />
+                  {openPicker === `col-${col.id}` && (
+                    <div className="absolute right-0 top-7 z-50 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-xl">
+                      <input type="color" value={col.color ?? "#d59ee8"}
+                        onChange={(e) => patchCol(col.id, { color: e.target.value })}
+                        className="h-8 w-24 cursor-pointer border-0 p-0" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-[var(--text-muted)]">WIP</span>
+                  <input
+                    type="number" min={0} value={col.limit ?? ""}
+                    placeholder="∞"
+                    onChange={(e) => patchCol(col.id, { limit: e.target.value ? Number(e.target.value) : undefined })}
+                    className="w-10 rounded border border-[var(--border)] bg-[var(--surface)] px-1 py-0.5 text-center text-xs text-[var(--text-primary)] outline-none"
+                  />
+                </div>
+                <button
+                  title="Column & card style"
+                  onClick={() => setStyleCol(styleCol === col.id ? null : col.id)}
+                  className={cn("flex-shrink-0 transition-colors", styleCol === col.id ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]")}
+                ><Palette size={12} /></button>
+                <button
+                  onClick={() => upd({
+                    kanbanColumns: cols.filter((c) => c.id !== col.id),
+                    kanbanCards: (item.kanbanCards ?? []).filter((c) => c.columnId !== col.id),
+                  })}
+                  className="text-[var(--text-muted)] hover:text-red-400 transition-colors flex-shrink-0"
+                ><Trash2 size={11} /></button>
               </div>
-              <button
-                onClick={() => upd({
-                  kanbanColumns: (item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS).filter((c) => c.id !== col.id),
-                  kanbanCards: (item.kanbanCards ?? []).filter((c) => c.columnId !== col.id),
-                })}
-                className="text-[var(--text-muted)] hover:text-red-400 transition-colors flex-shrink-0"
-              ><Trash2 size={11} /></button>
+
+              {/* Per-column style editor */}
+              {styleCol === col.id && (
+                <div className="ml-1 flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2">
+                  <ColorField label="Column bg" value={col.bgColor} fallback={item.kanbanColumnBgColor ?? "var(--surface)"}
+                    onChange={(v) => patchCol(col.id, { bgColor: v })} onClear={() => patchCol(col.id, { bgColor: undefined })} pkey={`colbg-${col.id}`} />
+                  <ColorField label="Card bg" value={col.cardBgColor} fallback={item.kanbanCardBgColor ?? "var(--surface-overlay)"}
+                    onChange={(v) => patchCol(col.id, { cardBgColor: v })} onClear={() => patchCol(col.id, { cardBgColor: undefined })} pkey={`colcardbg-${col.id}`} />
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--text-secondary)]">Column image</span>
+                    <div className="flex items-center gap-1.5">
+                      {col.bgImage && (
+                        <button onClick={() => patchCol(col.id, { bgImage: undefined })}
+                          className="text-[11px] text-[var(--text-muted)] hover:text-red-400">Remove</button>
+                      )}
+                      <label className="cursor-pointer rounded border border-[var(--border)] bg-[var(--surface-overlay)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] transition-colors">
+                        {col.bgImage ? "Replace" : "Upload"}
+                        <input type="file" accept="image/*" className="hidden"
+                          onChange={(e) => { const f = e.target.files?.[0]; if (f) applyImageUpload(f, (url) => patchCol(col.id, { bgImage: url })); e.currentTarget.value = ""; }} />
+                      </label>
+                    </div>
+                  </div>
+                  {col.bgImage && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[var(--text-secondary)]">Image fit</span>
+                        <select value={col.bgImageSize ?? "cover"}
+                          onChange={(e) => patchCol(col.id, { bgImageSize: e.target.value })}
+                          className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)] outline-none">
+                          <option value="cover">Cover</option>
+                          <option value="contain">Contain</option>
+                          <option value="auto">Tile</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[var(--text-secondary)]">Image opacity</span>
+                        <div className="flex items-center gap-1.5">
+                          <input type="range" min={0} max={1} step={0.05} value={col.bgOpacity ?? 1}
+                            onChange={(e) => patchCol(col.id, { bgOpacity: Number(e.target.value) })}
+                            className="w-16 h-1 cursor-pointer" style={{ accentColor: accent }} />
+                          <span className="tabular-nums w-8 text-right text-[var(--text-muted)]">{Math.round((col.bgOpacity ?? 1) * 100)}%</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           ))}
           <button
-            onClick={() => upd({
-              kanbanColumns: [...(item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS), { id: nanoid(), title: "New Column", color: "#d59ee8" }],
-            })}
+            onClick={() => upd({ kanbanColumns: [...cols, { id: nanoid(), title: "New Column", color: "#d59ee8" }] })}
             className="flex items-center gap-1 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
           >
             <Plus size={11} /> Add column

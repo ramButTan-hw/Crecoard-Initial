@@ -451,14 +451,56 @@ export default function LoginPage() {
     }
   }
 
+  // Desktop app: OAuth runs in the SYSTEM browser (Google blocks embedded
+  // webviews), and the session comes back via a crecoard:// deep link.
+  const [oauthInfo, setOauthInfo] = useState<string | null>(null);
+
+  useEffect(() => {
+    const off = window.electron?.onDeepLink?.(async (url) => {
+      if (!url.startsWith("crecoard://auth")) return;
+      setError(null);
+      setLoading(true);
+      try {
+        // PKCE flow: ?code=...  |  implicit flow: #access_token=...&refresh_token=...
+        const code = /[?&]code=([^&#]+)/.exec(url)?.[1];
+        if (code) {
+          const { error: ex } = await supabase.auth.exchangeCodeForSession(decodeURIComponent(code));
+          if (ex) throw ex;
+        } else {
+          const hash = new URLSearchParams(url.split("#")[1] ?? "");
+          const access_token = hash.get("access_token");
+          const refresh_token = hash.get("refresh_token");
+          if (!access_token || !refresh_token) throw new Error("No credentials in sign-in link.");
+          const { error: se } = await supabase.auth.setSession({ access_token, refresh_token });
+          if (se) throw se;
+        }
+        window.location.href = "/";
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Sign-in failed — try again.");
+        setLoading(false);
+        setOauthInfo(null);
+      }
+    });
+    return () => { off?.(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleOAuth(provider: OAuthProvider) {
     setError(null);
     setLoading(true);
-    const { error: ae } = await supabase.auth.signInWithOAuth({
+    const isDesktop = !!window.electron?.openExternal;
+    const { data, error: ae } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: isDesktop
+        ? { redirectTo: "crecoard://auth", skipBrowserRedirect: true }
+        : { redirectTo: `${window.location.origin}/auth/callback` },
     });
-    if (ae) { setError(ae.message); setLoading(false); }
+    if (ae) { setError(ae.message); setLoading(false); return; }
+    if (isDesktop && data?.url) {
+      void window.electron!.openExternal(data.url);
+      setOauthInfo("Finish signing in with your browser — this window will continue automatically.");
+      setLoading(false);
+    }
   }
 
   async function handleResend() {
@@ -577,6 +619,11 @@ export default function LoginPage() {
               </form>
 
               <OAuthButtons loading={loading} onProvider={handleOAuth} />
+              {oauthInfo && (
+                <div role="status" style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, background: "rgba(213,158,232,0.1)", border: "1px solid rgba(213,158,232,0.35)", color: "#d59ee8", fontSize: 13 }}>
+                  {oauthInfo}
+                </div>
+              )}
 
               <div className="auth-footer">
                 <span>Need an account? </span>
@@ -756,6 +803,11 @@ export default function LoginPage() {
               </form>
 
               <OAuthButtons loading={loading} onProvider={handleOAuth} />
+              {oauthInfo && (
+                <div role="status" style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, background: "rgba(213,158,232,0.1)", border: "1px solid rgba(213,158,232,0.35)", color: "#d59ee8", fontSize: 13 }}>
+                  {oauthInfo}
+                </div>
+              )}
 
               <div className="auth-footer">
                 <span>Already have an account? </span>

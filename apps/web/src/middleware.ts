@@ -3,7 +3,8 @@ import type { CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Paths that never require authentication
-const PUBLIC_PREFIXES = ["/login", "/auth", "/api", "/invite"];
+// (/wallpaper renders only this machine's locally-cached boards — nothing remote)
+const PUBLIC_PREFIXES = ["/login", "/auth", "/api", "/invite", "/wallpaper"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));

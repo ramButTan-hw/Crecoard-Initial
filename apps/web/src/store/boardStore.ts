@@ -224,6 +224,12 @@ export interface KanbanColumn {
   color?: string;
   limit?: number;
   isDone?: boolean; // cards in this column count as complete
+  // Per-column styling (each overrides the kanban-wide defaults)
+  bgColor?: string;      // column background color
+  bgImage?: string;      // column background image URL
+  bgImageSize?: string;  // "cover" | "contain" | "auto"
+  bgOpacity?: number;    // column background image opacity (0..1)
+  cardBgColor?: string;  // background for cards in this column
 }
 
 export type FilterOp =

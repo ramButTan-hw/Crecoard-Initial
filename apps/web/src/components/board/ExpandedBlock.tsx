@@ -410,7 +410,9 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
   if (!box) return null;
 
   const isLocked = board?.isFinished ?? false;
-  const canEdit = canEditBoard;
+  // A locked/finished board is for USE, not editing — so the editor side panel
+  // (gated on canEdit) hides, while items inside stay interactive (isFinished).
+  const canEdit = canEditBoard && !isLocked;
   const isFinished = isLocked || !canEdit;
   const summaryItems = box.items.filter((i) => i.showInCollapsed);
   const anyFocused = box.items.some((i) => i.isFocused);
