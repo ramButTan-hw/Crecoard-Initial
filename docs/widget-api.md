@@ -85,6 +85,16 @@ ever see what the person looking at the board could already see.
 - **Locked boards** reject mutating calls; reads still work.
 - Responses only ever go to your own iframe; you never see other widgets' traffic.
 
+## Host UI hooks
+
+- **Settings:** when a user picks "Widget settings" from your item's context menu, the host
+  posts `{ type: "plancraft-ui", event: "settings" }` into your iframe. Listen for it and
+  open your own settings view — your UI, your rules. (Ship a visible fallback button too;
+  the pet uses a small gear.)
+- **Installed library:** when someone adds your published item from the Community modal,
+  it also lands in their item palette under **Installed** — with your item's name and your
+  author credit — so they can re-add it anywhere like a native item. Right-click uninstalls.
+
 ## Persistence & inputs (existing bridges)
 
 - **State** (your only storage — the sandbox has no localStorage):

@@ -12,6 +12,7 @@ import {
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
 import { useUser } from "@/contexts/UserContext";
 import { WIDGET_PERMISSIONS, collectTemplatePermissions, type WidgetPermission } from "@/lib/widgetApi";
+import { installItem } from "@/lib/installedItems";
 import { cn } from "@/lib/utils";
 
 // ─── Main modal ───────────────────────────────────────────────────────────────
@@ -84,6 +85,12 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
     } else {
       if (!activeBoardId) return;
       insertTemplateBoxes(activeBoardId, entry.boardData.boxes);
+    }
+    // Item-kind entries also join the palette's "Installed" library for easy re-adding
+    // (stored with exactly the permissions consented to above).
+    if (entry.kind === "item") {
+      const tItem = entry.boardData.boxes[0]?.items[0];
+      if (tItem) installItem({ id: entry.id, name: entry.name, author: entry.author.name, item: tItem });
     }
     setPendingUse(null);
     onClose();

@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   FileText, List, Video, Timer,
   BarChart2, Plug, CalendarDays, Table2,
   Code2, Music, Kanban, MessageSquare, FolderOpen,
   ChevronDown, ChevronRight,
   Layers, LayoutGrid, Image, KanbanSquare, Zap, Gamepad2,
-  Lightbulb, PenLine, Vote, Twitch,
+  Lightbulb, PenLine, Vote, Twitch, Puzzle,
 } from "lucide-react";
+import { getInstalledItems, uninstallItem, INSTALLED_CHANGED_EVENT } from "@/lib/installedItems";
 import { useDraggable } from "@dnd-kit/core";
 import { BlockItem, ItemType, useBoardStore, useActiveBoard } from "@/store/boardStore";
 import { useHasAppBg } from "@/lib/useHasAppBg";
@@ -21,10 +22,14 @@ import { cn } from "@/lib/utils";
 
 export const ITEM_DEFINITIONS: {
   type: ItemType;
+  /** Unique palette key when several defs share a type (installed community items). Defaults to `type`. */
+  key?: string;
   label: string;
   icon: React.ReactNode;
   description: string;
   serverOnly?: boolean;
+  /** Set on installed community items — right-click removes them from the library. */
+  onRemove?: () => void;
   defaultItem: () => Omit<BlockItem, "id" | "showInCollapsed">;
 }[] = [
   {
@@ -225,7 +230,7 @@ export const ITEM_DEFINITIONS: {
 
 function DraggableItem({ def, selectedBoxId, onPick, tapMode }: { def: (typeof ITEM_DEFINITIONS)[number]; selectedBoxId: string | null; onPick?: (def: (typeof ITEM_DEFINITIONS)[number]) => void; tapMode?: boolean }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `palette-${def.type}`,
+    id: `palette-${def.key ?? def.type}`,
     data: { kind: "new-item", itemType: def.type, defaultItem: def.defaultItem },
     disabled: tapMode, // mobile: tap to add instead of drag
   });
@@ -256,8 +261,9 @@ function DraggableItem({ def, selectedBoxId, onPick, tapMode }: { def: (typeof I
         isDragging ? "opacity-40" : "text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]",
         selectedBoxId && "text-[var(--accent)] hover:bg-[var(--accent)]/10"
       )}
-      title={onPick ? "Click to add, or drag to place" : "Drag onto a block or to empty canvas to place directly"}
+      title={(onPick ? "Click to add, or drag to place" : "Drag onto a block or to empty canvas to place directly") + (def.onRemove ? " · right-click to uninstall" : "")}
       onClick={onPick ? () => onPick(def) : undefined}
+      onContextMenu={def.onRemove ? (e) => { e.preventDefault(); e.stopPropagation(); def.onRemove!(); } : undefined}
     >
       <span className={cn("flex-shrink-0", selectedBoxId ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}>{def.icon}</span>
       <div className="flex flex-col min-w-0">
@@ -272,7 +278,7 @@ function DraggableItem({ def, selectedBoxId, onPick, tapMode }: { def: (typeof I
 
 function RailItem({ def, onPick }: { def: (typeof ITEM_DEFINITIONS)[number]; onPick?: (def: (typeof ITEM_DEFINITIONS)[number]) => void }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `palette-${def.type}`,
+    id: `palette-${def.key ?? def.type}`,
     data: { kind: "new-item", itemType: def.type, defaultItem: def.defaultItem },
   });
   return (
@@ -282,6 +288,7 @@ function RailItem({ def, onPick }: { def: (typeof ITEM_DEFINITIONS)[number]; onP
       {...listeners}
       title={`${def.label} — click to add, drag to place`}
       onClick={onPick ? () => onPick(def) : undefined}
+      onContextMenu={def.onRemove ? (e) => { e.preventDefault(); e.stopPropagation(); def.onRemove!(); } : undefined}
       className={cn(
         "flex h-9 w-9 cursor-grab items-center justify-center rounded-lg transition-colors select-none",
         isDragging ? "opacity-40" : "text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
@@ -475,13 +482,39 @@ export function ItemPalette({ onPick, desktop }: { onPick?: (def: (typeof ITEM_D
     return next;
   });
 
+  // Installed community items — the "mod library" (refreshes when installs change)
+  const [installedTick, setInstalledTick] = useState(0);
+  useEffect(() => {
+    const onChange = () => setInstalledTick((t) => t + 1);
+    window.addEventListener(INSTALLED_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(INSTALLED_CHANGED_EVENT, onChange);
+  }, []);
+  const installedDefs: typeof ITEM_DEFINITIONS = useMemo(
+    () =>
+      getInstalledItems().map((inst) => ({
+        type: inst.item.type,
+        key: `installed-${inst.id}`,
+        label: inst.name,
+        icon: <Puzzle size={15} />,
+        description: `by ${inst.author} · community`,
+        onRemove: () => uninstallItem(inst.id),
+        defaultItem: () => JSON.parse(JSON.stringify(inst.item)) as Omit<BlockItem, "id" | "showInCollapsed">,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [installedTick]
+  );
+
   const q = search.trim().toLowerCase();
   const filteredDefs = q
     ? visibleDefs.filter((d) => `${d.label} ${d.description}`.toLowerCase().includes(q))
     : visibleDefs;
+  const filteredInstalled = q
+    ? installedDefs.filter((d) => `${d.label} ${d.description}`.toLowerCase().includes(q))
+    : installedDefs;
   const groups = GROUP_ORDER
     .map((g) => ({ g, defs: filteredDefs.filter((d) => (GROUP_OF[d.type] ?? "Other") === g) }))
     .filter((x) => x.defs.length > 0);
+  if (filteredInstalled.length > 0) groups.push({ g: "Installed", defs: filteredInstalled });
 
   const collectionCount = board
     ? board.boxes.reduce((a, bx) => a + bx.items.length, 0) + (board.boardItems?.length ?? 0)
@@ -503,7 +536,7 @@ export function ItemPalette({ onPick, desktop }: { onPick?: (def: (typeof ITEM_D
         {groups.map(({ g, defs }, gi) => (
           <div key={g} className="flex flex-col items-center gap-0.5">
             {gi > 0 && <div className="my-1.5 h-px w-6 bg-[var(--border)]" />}
-            {defs.map((def) => <RailItem key={def.type} def={def} onPick={onPick} />)}
+            {defs.map((def) => <RailItem key={def.key ?? def.type} def={def} onPick={onPick} />)}
           </div>
         ))}
       </div>
@@ -544,7 +577,7 @@ export function ItemPalette({ onPick, desktop }: { onPick?: (def: (typeof ITEM_D
             <div key={g}>
               {!mobile && <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] opacity-70">{g}</p>}
               {defs.map((def) => (
-                <DraggableItem key={def.type} def={def} selectedBoxId={selectedBoxId} onPick={onPick} tapMode={mobile} />
+                <DraggableItem key={def.key ?? def.type} def={def} selectedBoxId={selectedBoxId} onPick={onPick} tapMode={mobile} />
               ))}
             </div>
           ))}

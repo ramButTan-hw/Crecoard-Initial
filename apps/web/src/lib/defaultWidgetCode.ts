@@ -65,7 +65,7 @@ export const PET_WIDGET_CODE = `<!DOCTYPE html>
   body {
     font-family: system-ui, -apple-system, sans-serif;
     background: transparent; color: #f2f2f2;
-    height: 100vh; overflow: hidden;
+    height: 100vh; overflow: hidden; position: relative;
     display: flex; flex-direction: column; align-items: center;
     justify-content: flex-end; gap: 6px; padding: 8px;
     user-select: none;
@@ -73,6 +73,19 @@ export const PET_WIDGET_CODE = `<!DOCTYPE html>
   .name { font-size: 12px; font-weight: 700; outline: none; border-bottom: 1px dashed transparent; }
   .name:focus { border-bottom-color: #d59ee8; }
   canvas { image-rendering: pixelated; cursor: pointer; }
+  .stage { position: relative; }
+  .heart { position: absolute; font-size: 13px; pointer-events: none; animation: rise 0.9s ease-out forwards; }
+  @keyframes rise { from { opacity: 1; transform: translateY(0) } to { opacity: 0; transform: translateY(-30px) } }
+  .gear { position: absolute; top: 2px; right: 2px; z-index: 6; border: none; background: none; padding: 2px 4px; font-size: 12px; opacity: 0.35; }
+  .gear:hover { opacity: 1; border: none; color: #d59ee8; }
+  .panel {
+    position: absolute; inset: 6px; z-index: 5; border-radius: 10px;
+    background: rgba(15, 13, 20, 0.94); border: 1px solid rgba(255,255,255,0.12);
+    display: none; flex-direction: column; gap: 10px; padding: 12px;
+  }
+  .panel.open { display: flex; }
+  .panel b { font-size: 11px; }
+  .panel label { font-size: 10px; opacity: 0.75; display: flex; align-items: center; gap: 6px; }
   .bars { display: flex; flex-direction: column; gap: 3px; width: 84%; max-width: 180px; }
   .bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; }
   .bar > div { height: 100%; border-radius: 3px; transition: width 0.4s; }
@@ -88,8 +101,15 @@ export const PET_WIDGET_CODE = `<!DOCTYPE html>
 </style>
 </head>
 <body>
+  <button class="gear" id="gear" title="Pet settings">&#9881;</button>
+  <div class="panel" id="panel">
+    <b>Pet settings</b>
+    <label>Body color <input type="color" id="bodycolor" value="#d59ee8"></label>
+    <label><input type="checkbox" id="noroam"> Stay put (no roaming)</label>
+    <button id="closepanel">Done</button>
+  </div>
   <div class="name" id="name" contenteditable spellcheck="false">Mochi</div>
-  <canvas id="cv" width="96" height="96"></canvas>
+  <div class="stage" id="stage"><canvas id="cv" width="96" height="96"></canvas></div>
   <div class="bars">
     <div class="bar"><div class="fill-food" id="food"></div></div>
     <div class="bar"><div class="fill-love" id="love"></div></div>
@@ -179,7 +199,7 @@ function pc(method, args) {
 
 // ── Care state (persisted via the state bridge) ───────────────────────────
 var FOOD_MS = 8 * 3600000, LOVE_MS = 12 * 3600000;
-var s = { name: "Mochi", xp: 0, fedAt: Date.now(), pettedAt: Date.now() };
+var s = { name: "Mochi", xp: 0, fedAt: Date.now(), pettedAt: Date.now(), color: "#d59ee8", noRoam: false };
 var restored = false, roam = "unknown", facing = 1, bob = 0, exploringTitle = "";
 
 function save() { parent.postMessage({ type: "plancraft-save-state", state: s }, "*"); }
@@ -203,10 +223,20 @@ function draw() {
     var row = sp.rows[r];
     for (var c = 0; c < 16; c++) {
       var v = row[c];
-      if (v !== "0" && PAL[v]) { ctx.fillStyle = PAL[v]; ctx.fillRect(ox + c * px, oy + r * px, px, px); }
+      if (v === "0") continue;
+      ctx.fillStyle = v === "2" ? s.color : (PAL[v] || "#fff"); // "2" = body, user-customizable
+      ctx.fillRect(ox + c * px, oy + r * px, px, px);
     }
   }
   ctx.restore();
+}
+
+function burst(emoji) {
+  var el = document.createElement("span");
+  el.className = "heart"; el.textContent = emoji;
+  el.style.left = (25 + Math.random() * 50) + "%"; el.style.top = "10%";
+  document.getElementById("stage").appendChild(el);
+  setTimeout(function() { el.remove(); }, 900);
 }
 
 function render() {
@@ -226,19 +256,44 @@ function render() {
 setInterval(function() { bob = bob === 0 ? -2 : 0; draw(); }, 450);
 
 // ── Care actions ───────────────────────────────────────────────────────────
-document.getElementById("feed").onclick = function() { s.fedAt = Date.now(); s.xp += 5; render(); save(); };
-document.getElementById("cuddle").onclick = function() { s.pettedAt = Date.now(); s.xp += 3; render(); save(); };
+document.getElementById("feed").onclick = function() { s.fedAt = Date.now(); s.xp += 5; burst("\\u{1F359}"); render(); save(); };
+document.getElementById("cuddle").onclick = function() { doPet(true); };
 document.getElementById("cv").onclick = function() { facing = -facing; draw(); };
 document.getElementById("name").addEventListener("blur", function() {
   s.name = (this.textContent || "Mochi").trim().slice(0, 20) || "Mochi";
   render(); save();
 });
 
+// Petting mode: stroking the pet with the cursor pets it — no click needed.
+var lastStroke = 0, lastPetXp = 0;
+function doPet(fromButton) {
+  s.pettedAt = Date.now();
+  if (fromButton || Date.now() - lastPetXp > 20000) { s.xp += 3; lastPetXp = Date.now(); } // hover XP capped vs idle farming
+  burst("\\u2764"); render(); save();
+}
+document.getElementById("cv").addEventListener("mousemove", function() {
+  if (Date.now() - lastStroke < 1100) return;
+  lastStroke = Date.now();
+  doPet(false);
+});
+
+// ── Settings panel (also opened by the host's "Widget settings" menu) ──────
+var panel = document.getElementById("panel");
+function openSettings() {
+  document.getElementById("bodycolor").value = s.color;
+  document.getElementById("noroam").checked = !!s.noRoam;
+  panel.classList.add("open");
+}
+document.getElementById("gear").onclick = openSettings;
+document.getElementById("closepanel").onclick = function() { panel.classList.remove("open"); };
+document.getElementById("bodycolor").oninput = function() { s.color = this.value; draw(); save(); };
+document.getElementById("noroam").onchange = function() { s.noRoam = this.checked; render(); save(); };
+
 // ── Roaming: the board is home ─────────────────────────────────────────────
 function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
 async function wanderOnce() {
-  if (!happy()) return; // too hungry/sad to roam
+  if (s.noRoam || !happy()) return; // settings say stay put / too hungry to roam
   var me = await pc("self.getRect");
   var world = await pc("board.getRects");
   roam = "on";
@@ -288,6 +343,7 @@ window.addEventListener("message", function(e) {
     if (p) { delete apiPending[d.id]; d.ok ? p.resolve(d.data) : p.reject(new Error(d.error || "error")); }
     return;
   }
+  if (d.type === "plancraft-ui" && d.event === "settings") { openSettings(); return; }
   if (d.type === "plancraft-state" && !restored) {
     restored = true;
     if (d.state && typeof d.state === "object") {
@@ -296,6 +352,8 @@ window.addEventListener("message", function(e) {
       if (typeof st.xp === "number") s.xp = st.xp;
       if (typeof st.fedAt === "number") s.fedAt = st.fedAt;
       if (typeof st.pettedAt === "number") s.pettedAt = st.pettedAt;
+      if (typeof st.color === "string" && /^#[0-9a-fA-F]{6}$/.test(st.color)) s.color = st.color;
+      if (typeof st.noRoam === "boolean") s.noRoam = st.noRoam;
     }
     render();
   }

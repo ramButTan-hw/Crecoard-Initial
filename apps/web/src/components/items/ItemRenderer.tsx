@@ -8802,6 +8802,8 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems,
           items={[
             ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
             { label: tab === "code" ? "Switch to preview" : "Switch to code", icon: <Code2 size={14} />, onClick: () => setTab(t => t === "code" ? "preview" : "code") },
+            // UI hook: widgets listening for { type: "plancraft-ui", event: "settings" } open their own settings view
+            { label: "Widget settings", icon: <Pencil size={14} />, onClick: () => { setTab("preview"); iframeRef.current?.contentWindow?.postMessage({ type: "plancraft-ui", event: "settings" }, "*"); } },
             { label: "Copy code", icon: <Copy size={14} />, onClick: () => navigator.clipboard.writeText(draft) },
             ...(!isFinished ? ["separator" as const, { label: "Reset to default", icon: <RotateCcw size={14} />, danger: true, onClick: () => handleCodeChange(DEFAULT_WIDGET_CODE) }] : []),
           ]}
