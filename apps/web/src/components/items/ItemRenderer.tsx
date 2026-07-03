@@ -8521,8 +8521,37 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems 
   const [draft, setDraft] = useState(item.widgetCode ?? DEFAULT_WIDGET_CODE);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Live refs so the mount-once message listener never acts on stale props
+  const liveRef = useRef({ upd, isFinished });
+  liveRef.current = { upd, isFinished };
 
-  useEffect(() => { return () => { if (debounceRef.current) clearTimeout(debounceRef.current); }; }, []);
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (stateDebounceRef.current) clearTimeout(stateDebounceRef.current);
+    };
+  }, []);
+
+  // Widget → parent state saves: { type: "plancraft-save-state", state }.
+  // Sandboxed widgets (opaque origin) have no localStorage — this bridge is
+  // their only persistence; state lands in item.widgetState via board sync.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      const data = e.data as { type?: string; state?: unknown } | null;
+      if (!data || data.type !== "plancraft-save-state") return;
+      if (liveRef.current.isFinished) return; // locked board = read-only
+      let json: string | undefined;
+      try { json = JSON.stringify(data.state); } catch { return; }
+      if (json === undefined || json.length > 8192) return; // cap — state lives in the board JSONB
+      const state = data.state;
+      if (stateDebounceRef.current) clearTimeout(stateDebounceRef.current);
+      stateDebounceRef.current = setTimeout(() => liveRef.current.upd({ widgetState: state }), 400);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   // Sync draft → store with debounce
   const handleCodeChange = (code: string) => {
@@ -8539,6 +8568,14 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems 
     );
   };
 
+  // Replay persisted state into the iframe on load
+  const sendState = () => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: "plancraft-state", state: item.widgetState ?? null },
+      "*"
+    );
+  };
+
   useEffect(() => { sendVars(); }, [vars]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const srcDoc = item.widgetCode ?? DEFAULT_WIDGET_CODE;
@@ -8551,7 +8588,7 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems 
         srcDoc={srcDoc}
         className="w-full border-none rounded"
         style={{ height: "100%", pointerEvents: "none" }}
-        onLoad={sendVars}
+        onLoad={() => { sendVars(); sendState(); }}
       />
     );
   }
@@ -8592,6 +8629,7 @@ function WidgetItem({ item, upd, vars, collapsed, isFinished, extraContextItems 
           style={{ display: "block" }}
           onLoad={() => {
             sendVars();
+            sendState();
             const doc = iframeRef.current?.contentDocument;
             if (!doc) return;
             doc.addEventListener("contextmenu", (e: MouseEvent) => {

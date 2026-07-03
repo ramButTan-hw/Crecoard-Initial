@@ -5,11 +5,12 @@ import {
   X, Search, Upload, Heart, Download, Sparkles, ChevronDown,
 } from "lucide-react";
 import {
-  CommunityBoard, FetchOptions, SortOrder, TemplateCategory,
-  TEMPLATE_CATEGORIES, fetchCommunityBoards, publishCommunityBoard,
-  trackBoardUse, PublishBoardInput,
+  CommunityBoard, FetchOptions, SortOrder, TemplateCategory, TemplateKind,
+  TEMPLATE_CATEGORIES, TEMPLATE_KINDS, fetchCommunityBoards, publishCommunityBoard,
+  trackBoardUse, likeCommunityBoard, fetchMyLikes, PublishBoardInput, TemplateBox,
 } from "@/lib/communityTemplates";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
+import { useUser } from "@/contexts/UserContext";
 import { cn } from "@/lib/utils";
 
 // ─── Main modal ───────────────────────────────────────────────────────────────
@@ -20,14 +21,20 @@ interface TemplatesModalProps {
 
 export function TemplatesModal({ onClose }: TemplatesModalProps) {
   const [activeCategory, setActiveCategory] = useState<TemplateCategory | "all">("all");
+  const [kindFilter, setKindFilter] = useState<TemplateKind | "all">("all");
   const [sort, setSort] = useState<SortOrder>("newest");
   const [search, setSearch] = useState("");
   const [boards, setBoards] = useState<CommunityBoard[]>([]);
+  const [myLikes, setMyLikes] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [showPublish, setShowPublish] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const { isLoggedIn } = useUser();
   const createBoardFromTemplate = useBoardStore((s) => s.createBoardFromTemplate);
+  const insertTemplateBoxes = useBoardStore((s) => s.insertTemplateBoxes);
+  const activeBoardId = useBoardStore((s) => s.activeBoardId);
   const atBoardLimit = useBoardStore((s) => s.boards.filter((b) => !b.serverId && !b.deletedAt).length >= 3);
 
   // Fetch whenever filters change
@@ -36,6 +43,7 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
     setLoading(true);
     const opts: FetchOptions = {
       category: activeCategory,
+      kind: kindFilter,
       sort,
       search: search.trim() || undefined,
     };
@@ -45,12 +53,35 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
       if (!cancelled) { setBoards([]); setLoading(false); }
     });
     return () => { cancelled = true; };
-  }, [activeCategory, sort, search]);
+  }, [activeCategory, kindFilter, sort, search, refreshTick]);
+
+  // My liked entries (drives the filled hearts) — once per open
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    fetchMyLikes().then(setMyLikes).catch(() => {});
+  }, [isLoggedIn]);
 
   const handleUse = (board: CommunityBoard) => {
     trackBoardUse(board.id).catch(() => {/* fire-and-forget */});
-    createBoardFromTemplate(board);
+    if (board.kind === "board") {
+      createBoardFromTemplate(board);
+    } else {
+      if (!activeBoardId) return;
+      insertTemplateBoxes(activeBoardId, board.boardData.boxes);
+    }
     onClose();
+  };
+
+  const handleLike = async (board: CommunityBoard) => {
+    if (!isLoggedIn) return;
+    const res = await likeCommunityBoard(board.id);
+    if (!res) return;
+    setMyLikes((prev) => {
+      const next = new Set(prev);
+      if (res.liked) next.add(board.id); else next.delete(board.id);
+      return next;
+    });
+    setBoards((prev) => prev.map((b) => b.id === board.id ? { ...b, likes: res.likes } : b));
   };
 
   return (
@@ -68,12 +99,9 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
             <Sparkles size={18} className="text-[var(--accent)] shrink-0" />
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-semibold text-[var(--text-primary)] leading-tight">Community Boards</h2>
-                <span className="rounded-full bg-[var(--accent)]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--accent)]">Coming soon</span>
-              </div>
+              <h2 className="text-base font-semibold text-[var(--text-primary)] leading-tight">Community</h2>
               <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-tight">
-                Browsing and sharing community boards is coming soon.
+                Browse and share boards, blocks, and custom items.
               </p>
             </div>
           </div>
@@ -93,6 +121,21 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
                 <X size={10} />
               </button>
             )}
+          </div>
+
+          {/* Kind filter */}
+          <div className="relative">
+            <select
+              value={kindFilter}
+              onChange={(e) => setKindFilter(e.target.value as TemplateKind | "all")}
+              className="appearance-none bg-[var(--surface-overlay)] border border-[var(--border)] rounded-lg px-3 py-1.5 pr-7 text-[12px] text-[var(--text-secondary)] outline-none cursor-pointer hover:border-[var(--accent)]/40 transition-colors"
+            >
+              <option value="all">All types</option>
+              {TEMPLATE_KINDS.map((k) => (
+                <option key={k.id} value={k.id}>{k.plural}</option>
+              ))}
+            </select>
+            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
           </div>
 
           {/* Sort */}
@@ -115,7 +158,7 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white text-[12px] font-medium hover:opacity-90 transition-opacity shrink-0"
           >
             <Upload size={13} />
-            Share board
+            Share
           </button>
 
           <button
@@ -156,12 +199,20 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
             <>
               {atBoardLimit && (
                 <p className="mb-3 text-xs text-[var(--text-muted)] text-center">
-                  Board limit reached (3 max). Delete a board to use a template.
+                  Board limit reached (3 max) — board templates disabled; blocks and items still work.
                 </p>
               )}
               <div className="grid grid-cols-3 gap-4">
                 {boards.map((board) => (
-                  <BoardCard key={board.id} board={board} onUse={handleUse} disabled={atBoardLimit} />
+                  <BoardCard
+                    key={board.id}
+                    board={board}
+                    onUse={handleUse}
+                    disabled={atBoardLimit && board.kind === "board"}
+                    liked={myLikes.has(board.id)}
+                    canLike={isLoggedIn}
+                    onLike={handleLike}
+                  />
                 ))}
               </div>
             </>
@@ -171,7 +222,10 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
 
       {/* ── Publish sub-modal ── */}
       {showPublish && (
-        <PublishModal onClose={() => setShowPublish(false)} />
+        <PublishModal
+          onClose={() => setShowPublish(false)}
+          onPublished={() => { setShowPublish(false); setRefreshTick((t) => t + 1); }}
+        />
       )}
     </div>
   );
@@ -179,8 +233,17 @@ export function TemplatesModal({ onClose }: TemplatesModalProps) {
 
 // ─── Board card ───────────────────────────────────────────────────────────────
 
-function BoardCard({ board, onUse, disabled }: { board: CommunityBoard; onUse: (b: CommunityBoard) => void; disabled?: boolean }) {
+function BoardCard({ board, onUse, disabled, liked, canLike, onLike }: {
+  board: CommunityBoard;
+  onUse: (b: CommunityBoard) => void;
+  disabled?: boolean;
+  liked?: boolean;
+  canLike?: boolean;
+  onLike?: (b: CommunityBoard) => void;
+}) {
   const cat = TEMPLATE_CATEGORIES.find((c) => c.id === board.category);
+  const kindLabel = TEMPLATE_KINDS.find((k) => k.id === board.kind)?.label ?? "Board";
+  const useLabel = board.kind === "board" ? "Use board" : board.kind === "box" ? "Add block" : "Add item";
   return (
     <div
       onClick={() => !disabled && onUse(board)}
@@ -200,13 +263,16 @@ function BoardCard({ board, onUse, disabled }: { board: CommunityBoard; onUse: (
         )}
         <div className="absolute inset-0 bg-[var(--accent)]/0 group-hover:bg-[var(--accent)]/5 transition-colors" />
         <span className="absolute bottom-2 right-2 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[var(--accent)] text-white opacity-0 group-hover:opacity-100 transition-opacity shadow">
-          Use board
+          {useLabel}
         </span>
         {cat && (
           <span className="absolute top-2 left-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-black/50 text-white backdrop-blur-sm">
             {cat.emoji} {cat.label}
           </span>
         )}
+        <span className="absolute top-2 right-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-black/50 text-white backdrop-blur-sm">
+          {kindLabel}
+        </span>
       </div>
 
       {/* Info */}
@@ -219,7 +285,17 @@ function BoardCard({ board, onUse, disabled }: { board: CommunityBoard; onUse: (
           <AuthorAvatar name={board.author.name} avatarUrl={board.author.avatarUrl} />
           <span className="text-[11px] text-[var(--text-muted)] truncate flex-1">{board.author.name}</span>
           <div className="flex items-center gap-2.5 shrink-0">
-            <StatPill icon={<Heart size={9} />} value={board.likes} />
+            <button
+              onClick={(e) => { e.stopPropagation(); if (canLike) onLike?.(board); }}
+              title={canLike ? (liked ? "Unlike" : "Like") : "Sign in to like"}
+              className={cn(
+                "flex items-center gap-0.5 text-[11px] transition-colors",
+                liked ? "text-red-400" : "text-[var(--text-muted)]",
+                canLike ? "hover:text-red-400 cursor-pointer" : "cursor-default"
+              )}
+            >
+              <Heart size={9} fill={liked ? "currentColor" : "none"} /> {board.likes.toLocaleString()}
+            </button>
             <StatPill icon={<Download size={9} />} value={board.uses} />
           </div>
         </div>
@@ -252,12 +328,12 @@ function EmptyState({
     <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
       <div>
         <p className="text-sm font-semibold text-[var(--text-primary)]">
-          {hasSearch ? "No boards match your filters" : "Community boards are coming soon"}
+          {hasSearch ? "Nothing matches your filters" : "Nothing here yet"}
         </p>
         <p className="text-[12px] text-[var(--text-muted)] mt-1">
           {hasSearch
-            ? "Try a different search or category."
-            : "Soon you'll be able to browse and share boards with the community."}
+            ? "Try a different search, type, or category."
+            : "Be the first — share a board, a block, or a custom item you built."}
         </p>
       </div>
       {hasSearch ? (
@@ -282,8 +358,10 @@ function EmptyState({
 
 // ─── Publish modal ────────────────────────────────────────────────────────────
 
-function PublishModal({ onClose }: { onClose: () => void }) {
+function PublishModal({ onClose, onPublished }: { onClose: () => void; onPublished: () => void }) {
   const board = useActiveBoard();
+  const { identity, isLoggedIn } = useUser();
+  const [kind, setKind] = useState<TemplateKind>("board");
   const [name, setName] = useState(board?.name ?? "");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<TemplateCategory>("productivity");
@@ -291,6 +369,13 @@ function PublishModal({ onClose }: { onClose: () => void }) {
   const [tags, setTags] = useState<string[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Sharable blocks (decks and deck slides excluded — they don't round-trip cleanly)
+  const shareableBoxes = (board?.boxes ?? []).filter((b) => !b.deckOwnerId && !b.isDeck);
+  const [boxId, setBoxId] = useState<string>("");
+  const selectedBox = shareableBoxes.find((b) => b.id === boxId);
+  const [itemId, setItemId] = useState<string>("");
+  const selectedItem = selectedBox?.items.find((i) => i.id === itemId);
 
   const addTag = () => {
     const t = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
@@ -302,46 +387,70 @@ function PublishModal({ onClose }: { onClose: () => void }) {
 
   const removeTag = (t: string) => setTags((prev) => prev.filter((x) => x !== t));
 
+  const stripItem = ({ id: _id, showInCollapsed: _sc, ...rest }: (typeof shareableBoxes)[number]["items"][number]) => rest;
+
+  const toTemplateBox = (b: (typeof shareableBoxes)[number], atOrigin: boolean): TemplateBox => ({
+    title: b.title,
+    x: atOrigin ? 0 : b.x,
+    y: atOrigin ? 0 : b.y,
+    width: b.width,
+    height: b.height,
+    style: {
+      backgroundColor: b.style.backgroundColor,
+      borderColor: b.style.borderColor,
+      borderWidth: b.style.borderWidth,
+      borderRadius: b.style.borderRadius,
+      borderStyle: b.style.borderStyle,
+      shadow: b.style.shadow,
+    },
+    items: b.items.map(stripItem),
+  });
+
   const handleSubmit = async () => {
     if (!name.trim() || !description.trim()) {
       setErrorMsg("Name and description are required.");
       return;
     }
     if (!board) return;
+    if (kind === "box" && !selectedBox) { setErrorMsg("Pick a block to share."); return; }
+    if (kind === "item" && (!selectedBox || !selectedItem)) { setErrorMsg("Pick a block and an item to share."); return; }
     setStatus("loading");
     setErrorMsg("");
 
+    const boardData =
+      kind === "board"
+        ? {
+            backgroundColor: board.backgroundColor,
+            boxes: shareableBoxes.map((b) => toTemplateBox(b, false)),
+          }
+        : kind === "box"
+          ? { boxes: [toTemplateBox(selectedBox!, true)] }
+          : {
+              boxes: [{
+                title: name.trim(),
+                x: 0,
+                y: 0,
+                width: 340,
+                height: 400,
+                items: [stripItem(selectedItem!)],
+              }],
+            };
+
     const input: PublishBoardInput = {
+      kind,
       name: name.trim(),
       description: description.trim(),
       category,
       tags,
-      boardData: {
-        backgroundColor: board.backgroundColor,
-        boxes: board.boxes
-          .filter((b) => !b.deckOwnerId)
-          .map((b) => ({
-            title: b.title,
-            x: b.x,
-            y: b.y,
-            width: b.width,
-            height: b.height,
-            style: {
-              backgroundColor: b.style.backgroundColor,
-              borderColor: b.style.borderColor,
-              borderWidth: b.style.borderWidth,
-              borderRadius: b.style.borderRadius,
-              borderStyle: b.style.borderStyle,
-              shadow: b.style.shadow,
-            },
-            items: b.items.map(({ id: _id, showInCollapsed: _sc, ...rest }) => rest),
-          })),
-      },
+      boardData,
+      authorId: isLoggedIn ? identity.userId : undefined,
+      authorName: identity.displayName,
+      authorAvatarUrl: identity.avatarUrl,
     };
 
     try {
       await publishCommunityBoard(input);
-      onClose();
+      onPublished();
     } catch (err) {
       setStatus("error");
       setErrorMsg(err instanceof Error ? err.message : "Something went wrong.");
@@ -363,7 +472,7 @@ function PublishModal({ onClose }: { onClose: () => void }) {
           <div>
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">Share to Community</h3>
             <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-              Share your current board with everyone.
+              Share your whole board, one block, or a single item.
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--text-muted)] hover:bg-[var(--surface-overlay)] transition-colors">
@@ -373,7 +482,64 @@ function PublishModal({ onClose }: { onClose: () => void }) {
 
         {/* Form */}
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
-          <Field label="Board name">
+          <Field label="What to share">
+            <div className="flex gap-1.5">
+              {TEMPLATE_KINDS.map((k) => (
+                <button
+                  key={k.id}
+                  onClick={() => { setKind(k.id); setErrorMsg(""); }}
+                  className={cn(
+                    "flex-1 rounded-lg border px-3 py-2 text-[12px] font-medium transition-colors",
+                    kind === k.id
+                      ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]"
+                      : "border-[var(--border)] bg-[var(--surface-overlay)] text-[var(--text-secondary)] hover:border-[var(--accent)]/40"
+                  )}
+                >
+                  {k.id === "board" ? "Whole board" : k.id === "box" ? "One block" : "One item"}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          {kind !== "board" && (
+            <Field label="Block">
+              <div className="relative">
+                <select
+                  value={boxId}
+                  onChange={(e) => { setBoxId(e.target.value); setItemId(""); }}
+                  className="w-full appearance-none rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-2 pr-8 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/60 cursor-pointer"
+                >
+                  <option value="">— Pick a block —</option>
+                  {shareableBoxes.map((b) => (
+                    <option key={b.id} value={b.id}>{b.title || "Untitled block"} ({b.items.length} items)</option>
+                  ))}
+                </select>
+                <ChevronDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
+              </div>
+            </Field>
+          )}
+
+          {kind === "item" && selectedBox && (
+            <Field label="Item">
+              <div className="relative">
+                <select
+                  value={itemId}
+                  onChange={(e) => setItemId(e.target.value)}
+                  className="w-full appearance-none rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-2 pr-8 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/60 cursor-pointer"
+                >
+                  <option value="">— Pick an item —</option>
+                  {selectedBox.items.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.type.charAt(0).toUpperCase() + it.type.slice(1)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
+              </div>
+            </Field>
+          )}
+
+          <Field label="Name">
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -447,7 +613,13 @@ function PublishModal({ onClose }: { onClose: () => void }) {
           )}
 
           <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-2.5 text-[11px] text-[var(--text-muted)]">
-            📦 Your current board's blocks will be included. Connect Supabase to enable publishing.
+            {!isLoggedIn
+              ? "🔒 Sign in to publish — guests can browse and use community shares, but not post them."
+              : kind === "board"
+                ? `📦 ${shareableBoxes.length} block(s) from "${board?.name ?? "this board"}" will be shared publicly.`
+                : kind === "box"
+                  ? "📦 The selected block and its items will be shared publicly."
+                  : "📦 The selected item will be shared publicly as an addable community item."}
           </div>
         </div>
 
@@ -461,10 +633,10 @@ function PublishModal({ onClose }: { onClose: () => void }) {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={status === "loading"}
+            disabled={status === "loading" || !isLoggedIn}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-[12px] font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
-            {status === "loading" ? "Publishing…" : <><Upload size={13} /> Publish board</>}
+            {status === "loading" ? "Publishing…" : <><Upload size={13} /> Publish</>}
           </button>
         </div>
       </div>

@@ -684,6 +684,8 @@ export interface BlockItem {
 
   // widget (custom HTML/CSS/JS)
   widgetCode?: string;
+  /** Persistent widget state — saved via the plancraft-save-state postMessage bridge, replayed on load. ≤8KB JSON. */
+  widgetState?: unknown;
 
   // kanban
   kanbanColumns?: KanbanColumn[];
@@ -998,6 +1000,8 @@ interface BoardState {
   // Board
   addBoard: (name?: string) => void;
   createBoardFromTemplate: (template: import("@/lib/communityTemplates").CommunityBoard) => void;
+  /** Materialize template boxes into an existing board (community "block"/"item" entries). */
+  insertTemplateBoxes: (boardId: string, boxes: import("@/lib/communityTemplates").TemplateBox[]) => void;
   removeBoard: (id: string) => void;
   restoreBoard: (id: string) => void;
   hardDeleteBoard: (id: string) => void;
@@ -1218,6 +1222,35 @@ export const useBoardStore = create<BoardState>()(
         };
         s.boards.push(board);
         s.activeBoardId = boardId;
+      }),
+
+    insertTemplateBoxes: (boardId, tBoxes) =>
+      set((s) => {
+        const board = findBoardAny(s, boardId);
+        if (!board) return;
+        let maxZ = board.boxes.reduce((m, b) => Math.max(m, b.zIndex), 0);
+        // Stagger inserts so repeated adds don't stack perfectly on top of each other
+        const shift = 40 + (board.boxes.length % 8) * 28;
+        for (const tBox of tBoxes) {
+          board.boxes.push({
+            id: crypto.randomUUID(),
+            boardId,
+            x: tBox.x + shift,
+            y: tBox.y + shift,
+            width: tBox.width,
+            height: tBox.height,
+            zIndex: ++maxZ,
+            locked: false,
+            title: tBox.title,
+            isExpanded: false,
+            style: { ...DEFAULT_BOX_STYLE, ...(tBox.style ?? {}) },
+            items: tBox.items.map((item) => ({
+              ...item,
+              id: nanoid(),
+              showInCollapsed: false,
+            })),
+          });
+        }
       }),
 
     removeBoard: (id) =>
