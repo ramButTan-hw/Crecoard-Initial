@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { nanoid } from "nanoid";
 import {
-  DndContext, DragEndEvent, DragMoveEvent, DragStartEvent,
+  DndContext, DragEndEvent,
   MouseSensor, TouchSensor, useSensor, useSensors,
 } from "@dnd-kit/core";
 import { BottomBar } from "./BottomBar";
@@ -29,8 +29,7 @@ import { ProfileModal } from "./ProfileModal";
 import { SettingsModal } from "./SettingsModal";
 import { UserProfileModal, type ViewableUser } from "./UserProfileModal";
 import { useBoardStore, useActiveBoard } from "@/store/boardStore";
-import { createSnapToGrid, snapPosition, type Rect } from "@/lib/snapToGrid";
-import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/boardConstants";
+import { createSnapToGrid } from "@/lib/snapToGrid";
 import { applyThemeVars, applyAppFont, CSS_VAR_NAMES, ThemeVarMap } from "@/lib/appThemes";
 import { CollabContext, useCollabSessionSetup } from "@/lib/useCollabSession";
 import { PlayerHost } from "@/components/player/PlayerHost";
@@ -59,19 +58,7 @@ function getEventCoords(e: PointerEvent | MouseEvent | TouchEvent) {
   return { x: e.clientX, y: e.clientY };
 }
 
-// Module-level RAF id — AppShell is a singleton so this is safe and avoids a ref.
-let _dragMoveRafId: number | null = null;
-
 // ─── Inner component: uses all contexts, contains all logic ──────────────────
-
-
-// Everything a moving box/item can align to on this board (edges + centers).
-function alignTargets(board: { boxes: { id: string; x: number; y: number; width: number; height: number; deckOwnerId?: string }[]; boardItems?: { id: string; boardX: number; boardY: number; boardW: number; boardH: number }[] }, excludeId: string): { x: number; y: number; w: number; h: number }[] {
-  return [
-    ...board.boxes.filter((b) => b.id !== excludeId && !b.deckOwnerId).map((b) => ({ x: b.x, y: b.y, w: b.width, h: b.height })),
-    ...(board.boardItems ?? []).filter((i) => i.id !== excludeId).map((i) => ({ x: i.boardX, y: i.boardY, w: i.boardW, h: i.boardH })),
-  ];
-}
 
 function AppShellInner() {
   const [activeView, setActiveView] = useState<"board" | "server">("board");
@@ -114,7 +101,7 @@ function AppShellInner() {
   const { loadServerBoard, loadLiveBoard, publishServerBoard } = useBoardSync();
   const { openConversation } = useMessaging();
 
-  const { addItem, moveBox, bringToFront, selectBox, setDraggingBlock, activeBoardId, zoom, themeVars, appFont, appBg, persistBoards, hydrateBoards, hydrateUserTheme, setCurrentUserId, addBoardItem, injectServerBoards, setDragPos, setActiveBoard } = useBoardStore();
+  const { addItem, setDraggingBlock, activeBoardId, zoom, themeVars, appFont, appBg, persistBoards, hydrateBoards, hydrateUserTheme, setCurrentUserId, addBoardItem, injectServerBoards, setActiveBoard } = useBoardStore();
 
   // Cross-board chat links: if a box link targets a different personal board,
   // switch to it first, then re-fire so the canvas focuses the box.
@@ -454,60 +441,10 @@ function AppShellInner() {
   const mouseSensor = useSensor(MouseSensor, { activationConstraint: { distance: 6 } });
   const touchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } });
   const sensors = useSensors(mouseSensor, touchSensor);
-  // Alignment targets for a dragging box: sibling boxes + board-level items,
-  // scoped to the board actually being edited (a server draft and its :live
-  // snapshot share box ids, so a global search could grab a stale copy).
-  const getAlignInfo = useCallback((id: string): { rect: Rect; targets: Rect[] } | null => {
-    const s = useBoardStore.getState();
-    const effectiveBoardId = (activeView === "server" && activeServerId)
-      ? (activeServerBoardId ?? s.activeBoardId)
-      : s.activeBoardId;
-    const board = s.boards.find((b) => b.id === effectiveBoardId) ?? s.serverBoards[effectiveBoardId];
-    const box = board?.boxes.find((x) => x.id === id);
-    if (!board || !box) return null;
-    return { rect: { x: box.x, y: box.y, w: box.width, h: box.height }, targets: alignTargets(board, id) };
-  }, [activeView, activeServerId, activeServerBoardId]);
-  const snapToGrid = useMemo(() => createSnapToGrid(zoom, showGrid, getAlignInfo), [zoom, showGrid, getAlignInfo]);
-
-  const handleDragStart = useCallback((e: DragStartEvent) => {
-    // Block all drag interactions in live preview and for members
-    if (activeView === "server" && (!isDraftMode || (viewerRole !== "owner" && viewerRole !== "admin"))) return;
-    const data = e.active.data.current;
-    if (data?.kind === "block") {
-      const id = e.active.id as string;
-      setDraggingBlock(id);
-      const effectiveBoardId = (activeView === "server" && activeServerId)
-        ? activeServerBoardId ?? activeBoardId
-        : activeBoardId;
-      bringToFront(effectiveBoardId, id);
-      selectBox(id);
-    }
-  }, [activeView, activeServerId, activeServerBoardId, activeBoardId, isDraftMode, viewerRole, bringToFront, selectBox, setDraggingBlock]);
-
-  const handleDragMove = useCallback((e: DragMoveEvent) => {
-    if (activeView === "server" && (!isDraftMode || (viewerRole !== "owner" && viewerRole !== "admin"))) return;
-    if (e.active.data.current?.kind !== "block") return;
-    if (_dragMoveRafId !== null) return;
-    // Capture snapshot of event data before the RAF fires (dnd-kit may recycle the event)
-    const boxId = e.active.id as string;
-    const deltaX = e.delta.x;
-    const deltaY = e.delta.y;
-    _dragMoveRafId = requestAnimationFrame(() => {
-      _dragMoveRafId = null;
-      const state = useBoardStore.getState();
-      const effectiveBoardId = (activeView === "server" && activeServerId)
-        ? activeServerBoardId ?? state.activeBoardId
-        : state.activeBoardId;
-      const board = state.boards.find((b) => b.id === effectiveBoardId) ?? state.serverBoards[effectiveBoardId];
-      const box = board?.boxes.find((b) => b.id === boxId);
-      if (!box || !board) return;
-      const p = snapPosition(
-        { x: box.x + deltaX / state.zoom, y: box.y + deltaY / state.zoom, w: box.width, h: box.height },
-        alignTargets(board, boxId), state.showGrid
-      );
-      setDragPos({ x: p.x, y: p.y });
-    });
-  }, [activeView, activeServerId, activeServerBoardId, isDraftMode, viewerRole, setDragPos]);
+  // Block dragging is pointer-based inside BoardBox now (same as board-level
+  // items) — dnd-kit only handles palette "new-item" drags, so the modifier
+  // only needs plain magnetic-grid snapping.
+  const snapToGrid = useMemo(() => createSnapToGrid(zoom, showGrid), [zoom, showGrid]);
 
   const handleDragEnd = useCallback((e: DragEndEvent) => {
     // Block all edits in live preview and for members
@@ -515,53 +452,12 @@ function AppShellInner() {
       setDraggingBlock(null);
       return;
     }
-    // Cancel any pending RAF from handleDragMove so stale updates don't fire after drop
-    if (_dragMoveRafId !== null) {
-      cancelAnimationFrame(_dragMoveRafId);
-      _dragMoveRafId = null;
-    }
-    setDragPos(null);
     const data = e.active.data.current;
     const state = useBoardStore.getState();
     // Resolve the correct board for the current view — server boards have their own ID
     const boardId = (activeView === "server" && activeServerId)
       ? activeServerBoardId ?? state.activeBoardId
       : state.activeBoardId;
-
-    if (data?.kind === "block") {
-      const boxId = e.active.id as string;
-      const board = state.boards.find((b) => b.id === boardId) ?? state.serverBoards[boardId];
-      const box = board?.boxes.find((b) => b.id === boxId);
-      if (box && e.delta) {
-        const p = snapPosition(
-          { x: box.x + e.delta.x / state.zoom, y: box.y + e.delta.y / state.zoom, w: box.width, h: box.height },
-          alignTargets(board!, boxId), state.showGrid
-        );
-        const newX = Math.round(Math.max(0, Math.min(CANVAS_WIDTH - box.width, p.x)));
-        const newY = Math.round(Math.max(0, Math.min(CANVAS_HEIGHT - box.height, p.y)));
-        const cx = newX + box.width / 2;
-        const cy = newY + box.height / 2;
-        const target = !box.deckOwnerId ? board!.boxes.find(b =>
-          b.id !== boxId &&
-          !b.deckOwnerId &&
-          cx >= b.x && cx <= b.x + b.width &&
-          cy >= b.y && cy <= b.y + b.height
-        ) : undefined;
-        if (target) {
-          if (target.isDeck) {
-            state.addToDeck(boardId, target.id, boxId);
-          } else {
-            state.createDeck(boardId, boxId, target.id);
-          }
-          setDraggingBlock(null);
-          return;
-        }
-        moveBox(boardId, boxId, newX, newY);
-        collabRef.current.broadcastOp({ op: "moveBox", boardId, boxId, x: newX, y: newY });
-      }
-      setDraggingBlock(null);
-      return;
-    }
 
     if (data?.kind === "new-item") {
       const overId = e.over?.id as string | undefined;
@@ -616,7 +512,7 @@ function AppShellInner() {
     // Catch-all: always clear draggingBlockId regardless of data.kind so the
     // store never gets stuck with a stale dragging block reference (Bug M9).
     setDraggingBlock(null);
-  }, [activeView, activeServerId, activeServerBoardId, isDraftMode, viewerRole, moveBox, setDraggingBlock]);
+  }, [activeView, activeServerId, activeServerBoardId, isDraftMode, viewerRole, setDraggingBlock]);
 
   const handleServerSelect = (serverId: string) => {
     const realServer = realServers.find((s) => s.id === serverId);
@@ -817,7 +713,7 @@ function AppShellInner() {
             {/* Outer DndContext wraps BoardTabs so its inner DndContext (tab reorder)
                 is nested here — dnd-kit inner contexts take priority for their own
                 draggables, preventing pointer-event bleed between tab and canvas drags. */}
-            <DndContext id="dnd-board-canvas" sensors={sensors} modifiers={[snapToGrid]} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragEnd={handleDragEnd}>
+            <DndContext id="dnd-board-canvas" sensors={sensors} modifiers={[snapToGrid]} onDragEnd={handleDragEnd}>
               <div className="flex flex-1 flex-col overflow-hidden" style={boardAreaCssVars}>
                 <BoardTabs />
                 <TopBar />
@@ -888,7 +784,7 @@ function AppShellInner() {
                   onViewProfile={(u) => setViewingUser(u)}
                 />
                 <CollabContext.Provider value={collabSession}>
-                  <DndContext id="dnd-server-canvas" sensors={sensors} modifiers={[snapToGrid]} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragEnd={handleDragEnd}>
+                  <DndContext id="dnd-server-canvas" sensors={sensors} modifiers={[snapToGrid]} onDragEnd={handleDragEnd}>
                     <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}>
                       {!isMobile && isDraftMode && canEdit && <ItemPalette onPick={addItemAtCenter} desktop />}
                       <BoardCanvas />

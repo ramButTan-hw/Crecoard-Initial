@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
+import { useDroppable } from "@dnd-kit/core";
 import {
   Edit3, Copy, Trash2, Lock, Unlock,
   CopyPlus, Clipboard, ArrowUpToLine, ArrowDownToLine,
@@ -16,7 +15,8 @@ import { useCollab } from "@/lib/useCollabSession";
 import { ItemRenderer } from "@/components/items/ItemRenderer";
 import { DeckBox } from "./DeckBox";
 import { ContextMenu } from "@/components/ui/ContextMenu";
-import { magnetize } from "@/lib/snapToGrid";
+import { magnetize, snapPosition } from "@/lib/snapToGrid";
+import { CANVAS_WIDTH, CANVAS_HEIGHT } from "@/lib/boardConstants";
 import { cn } from "@/lib/utils";
 
 const MIN_W = 160;
@@ -163,7 +163,7 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
     (s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId])?.isFinished ?? false
   );
   const canEdit = useCanEditBoard();
-  const { serverId, viewerRole } = useServerBoard();
+  const { serverId, viewerRole, isDraftMode } = useServerBoard();
   const { broadcastOp } = useCollab();
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
@@ -173,19 +173,116 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
   const [isHovered, setIsHovered] = useState(false);
 
   // ─── Drag ───────────────────────────────────────────────────────────────────
-  const { attributes, listeners, setNodeRef: setDragRef, transform } = useDraggable({
-    id: box.id,
-    disabled: box.locked || isFinished || !canEdit,
-    data: { kind: "block" },
-  });
-
+  // Same pointer-based movement as board-level items (BoardItemWidget): live
+  // magnetic snapping to neighbors, alignment guides via dragPos, commit on up.
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `drop-${box.id}`,
     data: { kind: "block-drop-zone" },
     disabled: isFinished,
   });
 
-  const setRef = (el: HTMLElement | null) => { setDragRef(el); setDropRef(el); };
+  const [livePos, setLivePos] = useState<{ x: number; y: number } | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => { return () => { dragCleanupRef.current?.(); }; }, []);
+
+  const canDrag = !box.locked && !isFinished && canEdit && (!serverId || isDraftMode);
+
+  const beginMove = useCallback((startX: number, startY: number) => {
+    dragCleanupRef.current?.();
+    const origX = box.x;
+    const origY = box.y;
+    // Align to neighbors (boxes + board items) — captured once, positions are
+    // static for the duration of the drag. Grid stays as an opt-in fallback.
+    const st0 = useBoardStore.getState();
+    const board0 = st0.boards.find((b) => b.id === boardId) ?? st0.serverBoards[boardId];
+    const targets = board0 ? [
+      ...board0.boxes.filter((b) => b.id !== box.id && !b.deckOwnerId).map((b) => ({ x: b.x, y: b.y, w: b.width, h: b.height })),
+      ...(board0.boardItems ?? []).map((i) => ({ x: i.boardX, y: i.boardY, w: i.boardW, h: i.boardH })),
+    ] : [];
+    const snapped = (dx: number, dy: number) => {
+      const p = snapPosition({ x: origX + dx, y: origY + dy, w: box.width, h: box.height }, targets, useBoardStore.getState().showGrid);
+      return { x: Math.max(0, p.x), y: Math.max(0, p.y) };
+    };
+    let moved = false;
+    const onMove = (ev: PointerEvent) => {
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
+      moved = true;
+      const p = snapped(dx, dy);
+      setLivePos(p);
+      useBoardStore.getState().setDragPos(p);
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      const st = useBoardStore.getState();
+      st.setDragPos(null);
+      st.setDraggingBlock(null);
+      dragCleanupRef.current = null;
+    };
+    const onUp = (ev: PointerEvent) => {
+      if (moved) {
+        const dx = (ev.clientX - startX) / zoom;
+        const dy = (ev.clientY - startY) / zoom;
+        const p = snapped(dx, dy);
+        const newX = Math.round(Math.max(0, Math.min(CANVAS_WIDTH - box.width, p.x)));
+        const newY = Math.round(Math.max(0, Math.min(CANVAS_HEIGHT - box.height, p.y)));
+        const state = useBoardStore.getState();
+        const board = state.boards.find((b) => b.id === boardId) ?? state.serverBoards[boardId];
+        // Dropping a block onto another block merges them into a deck (slideshow).
+        const cx = newX + box.width / 2;
+        const cy = newY + box.height / 2;
+        const target = board && !box.deckOwnerId ? board.boxes.find((b) =>
+          b.id !== box.id && !b.deckOwnerId &&
+          cx >= b.x && cx <= b.x + b.width && cy >= b.y && cy <= b.y + b.height
+        ) : undefined;
+        if (target) {
+          if (target.isDeck) state.addToDeck(boardId, target.id, box.id);
+          else state.createDeck(boardId, box.id, target.id);
+        } else {
+          moveBox(boardId, box.id, newX, newY);
+          broadcastOp({ op: "moveBox", boardId, boxId: box.id, x: newX, y: newY });
+        }
+      }
+      setLivePos(null);
+      cleanup();
+    };
+    dragCleanupRef.current = cleanup;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [boardId, box.id, box.x, box.y, box.width, box.height, box.deckOwnerId, zoom, moveBox, broadcastOp]);
+
+  const handleBoxPointerDown = useCallback((e: React.PointerEvent) => {
+    // Same interaction grammar as board-level items: interactive elements and
+    // scrollable content win; anywhere else arms a 6px movement threshold so
+    // plain clicks still select/expand.
+    if (e.button !== 0 || !canDrag) return;
+    const el = e.target as HTMLElement;
+    if (el.closest('button,a,input,textarea,select,[contenteditable="true"],[data-nodrag],iframe,video,audio')) return;
+    let n: HTMLElement | null = el;
+    while (n && n !== e.currentTarget) {
+      const cs = getComputedStyle(n);
+      if (/(auto|scroll)/.test(cs.overflowY + cs.overflowX) &&
+          (n.scrollHeight > n.clientHeight + 2 || n.scrollWidth > n.clientWidth + 2)) return;
+      n = n.parentElement;
+    }
+    const sx = e.clientX, sy = e.clientY;
+    const arm = (ev: PointerEvent) => {
+      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+      disarm();
+      document.getSelection()?.removeAllRanges();
+      selectBox(box.id);
+      bringToFront(boardId, box.id);
+      useBoardStore.getState().setDraggingBlock(box.id);
+      beginMove(sx, sy);
+    };
+    const disarm = () => {
+      window.removeEventListener("pointermove", arm);
+      window.removeEventListener("pointerup", disarm);
+    };
+    window.addEventListener("pointermove", arm);
+    window.addEventListener("pointerup", disarm);
+  }, [canDrag, box.id, boardId, selectBox, bringToFront, beginMove]);
 
   // ─── Resize ─────────────────────────────────────────────────────────────────
   const resizing = useRef(false);
@@ -291,9 +388,8 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
     : box.style;
   const displayW = liveBox?.w ?? box.width;
   const displayH = liveBox?.h ?? box.height;
-  const displayX = liveBox?.x ?? box.x;
-  const displayY = liveBox?.y ?? box.y;
-  const transformStyle = transform ? CSS.Translate.toString(transform) : undefined;
+  const displayX = livePos?.x ?? liveBox?.x ?? box.x;
+  const displayY = livePos?.y ?? liveBox?.y ?? box.y;
 
   const wallpaperStyle: React.CSSProperties = s.wallpaperUrl
     ? {
@@ -319,12 +415,23 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
 
   const summaryItems = box.items.filter((i) => i.showInCollapsed);
   const draggingBlockId = useBoardStore(s => s.draggingBlockId);
+  // Live "drop to merge" hover — true while another block's drag center is over
+  // this box (same center-inside test the drop commit uses).
+  const mergeHover = useBoardStore((st) => {
+    if (!st.draggingBlockId || st.draggingBlockId === box.id || !st.dragPos) return false;
+    const board = st.boards.find((b) => b.id === boardId) ?? st.serverBoards[boardId];
+    const d = board?.boxes.find((b) => b.id === st.draggingBlockId);
+    if (!d || d.deckOwnerId) return false;
+    const cx = st.dragPos.x + d.width / 2;
+    const cy = st.dragPos.y + d.height / 2;
+    return cx >= box.x && cx <= box.x + box.width && cy >= box.y && cy <= box.y + box.height;
+  });
 
   const allListEntries = box.items.filter(i => i.type === "list").flatMap(i => i.listItems ?? []);
   const rollupTotal = allListEntries.length;
   const rollupChecked = allListEntries.filter(e => e.checked).length;
   const rollupPct = rollupTotal > 0 ? (rollupChecked / rollupTotal) * 100 : 0;
-  const isDeckMergeTarget = isOver && !!draggingBlockId && draggingBlockId !== box.id && !box.isDeck;
+  const isDeckMergeTarget = mergeHover && !box.isDeck;
 
   // ─── Read-only context menu (members) ───────────────────────────────────────
   const readOnlyMenuItems = [
@@ -424,14 +531,13 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
   return (
     <>
       <div
-        ref={setRef}
-        {...(!box.locked && !isFinished ? listeners : {})}
-        {...(!box.locked && !isFinished ? attributes : {})}
+        ref={setDropRef}
+        onPointerDown={handleBoxPointerDown}
         className={cn(
           "board-box absolute group transition-[transform,box-shadow] duration-150",
           isDragging && "scale-[0.98]",
           isDragging && "dragging",
-          isOver && !isDragging && "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-transparent",
+          (isOver || mergeHover) && !isDragging && "ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-transparent",
           !canEdit && !isFinished && "ring-1 ring-inset ring-[var(--border)]"
         )}
         onMouseEnter={() => setIsHovered(true)}
@@ -440,7 +546,6 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           left: displayX, top: displayY,
           width: displayW, height: displayH,
           zIndex: box.zIndex,
-          transform: transformStyle,
           border: liveBox ? "2px solid var(--accent)" : borderCSS,
           borderRadius: s.borderRadius,
           boxShadow: boxShadowCSS,
@@ -497,18 +602,18 @@ export function BoardBox({ box, boardId, isDragging }: BoardBoxProps) {
           <div aria-hidden className="absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/10 pointer-events-none z-10" />
         )}
 
-        {/* Drop zone highlights */}
-        {isOver && isDeckMergeTarget && (
+        {/* Drop zone highlights — isOver = dnd-kit palette drag; mergeHover = block drag */}
+        {isDeckMergeTarget && (
           <div aria-hidden className="absolute inset-0 z-10 rounded-[inherit] border-2 border-dashed border-purple-400 bg-purple-400/10 flex items-center justify-center pointer-events-none">
             <span className="rounded-full bg-purple-500 px-3 py-1 text-xs font-semibold text-white shadow">Drop to create slideshow</span>
           </div>
         )}
-        {isOver && !isDeckMergeTarget && !box.isDeck && (
+        {isOver && !box.isDeck && (
           <div aria-hidden className="absolute inset-0 z-10 rounded-[inherit] border-2 border-dashed border-[var(--accent)] bg-[var(--accent)]/10 flex items-center justify-center pointer-events-none">
             <span className="rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-semibold text-white shadow">Drop to add item</span>
           </div>
         )}
-        {isOver && box.isDeck && !!draggingBlockId && (
+        {mergeHover && box.isDeck && (
           <div aria-hidden className="absolute inset-0 z-10 rounded-[inherit] border-2 border-dashed border-purple-400 bg-purple-400/10 flex items-center justify-center pointer-events-none">
             <span className="rounded-full bg-purple-500 px-3 py-1 text-xs font-semibold text-white shadow">Drop to add slide</span>
           </div>

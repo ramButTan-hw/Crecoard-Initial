@@ -6,21 +6,24 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "cwd": "apps/web",
-      "port": 3000
+      "port": 3005,
+      "autoPort": true
     },
     {
       "name": "Turbo (all workspaces)",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "cwd": ".",
-      "port": 3000
+      "port": 3006,
+      "autoPort": true
     },
     {
       "name": "Electron Desktop (apps/desktop)",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "cwd": "apps/desktop",
-      "port": 3000
+      "port": 3007,
+      "autoPort": true
     }
   ]
 }
