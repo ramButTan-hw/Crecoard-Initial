@@ -763,9 +763,6 @@ export function BoardCanvas() {
         />
       )}
 
-      {/* Live wallpaper — animated background, fixed to the viewport behind the board */}
-      {hasLiveWallpaper(board) && <LiveWallpaper board={board} />}
-
       <div
         ref={viewportRef}
         className="absolute inset-0 overflow-hidden"
@@ -787,11 +784,15 @@ export function BoardCanvas() {
             cursor: panning ? "grabbing" : "grab",
           }}
         >
-          {/* ── Background layers: move & scale with canvas ──
-              When a live wallpaper is set, the board surface is transparent so
-              the fixed animated layer behind shows through. */}
+          {/* ── Background layers: move & scale with canvas ── */}
           <div aria-hidden className="absolute inset-0 pointer-events-none"
-            style={{ backgroundColor: hasLiveWallpaper(board) ? "transparent" : (board.backgroundColor ?? "#1a1b1e") }} />
+            style={{ backgroundColor: board.backgroundColor ?? "#1a1b1e" }} />
+          {/* Live wallpaper — fills the board area, moves & scales with the canvas */}
+          {hasLiveWallpaper(board) && (
+            <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
+              <LiveWallpaper board={board} />
+            </div>
+          )}
           {!hasLiveWallpaper(board) && board.backgroundImage && (
             <div
               aria-hidden

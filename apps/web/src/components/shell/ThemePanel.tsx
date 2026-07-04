@@ -35,6 +35,8 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
   const [tab, setTab] = useState<Tab>("colors");
   const [saveNameInput, setSaveNameInput] = useState("");
   const bgFileRef = useRef<HTMLInputElement>(null);
+  const videoFileRef = useRef<HTMLInputElement>(null);
+  const [videoUploading, setVideoUploading] = useState(false);
   const isMobile = useIsMobile();
   const themeBgFileRef = useRef<HTMLInputElement>(null);
 
@@ -75,6 +77,20 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
       });
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    // Instant preview via an object URL (no data-URL bloat in the board), then
+    // swap to a persistent storage URL once the upload finishes.
+    const objUrl = URL.createObjectURL(file);
+    upd({ backgroundVideo: objUrl, backgroundLiveEffect: undefined });
+    setVideoUploading(true);
+    void uploadFile(file, identity.userId, "wallpapers", file.name)
+      .then((url) => { if (url) upd({ backgroundVideo: url }); })
+      .finally(() => setVideoUploading(false));
   };
 
   const handleThemeBgFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -318,12 +334,21 @@ export function ThemePanel({ onClose }: ThemePanelProps) {
                     <input type="color" value={board.backgroundLiveColor2 || "#48cfa6"} onChange={(e) => upd({ backgroundLiveColor2: e.target.value })} className="h-6 w-8 cursor-pointer rounded border-0 p-0" />
                   </div>
                 )}
-                <input
-                  className="mb-1 w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
-                  placeholder="… or paste a looping video URL (.mp4/.webm)"
-                  value={board.backgroundVideo ?? ""}
-                  onChange={(e) => upd({ backgroundVideo: e.target.value || undefined, backgroundLiveEffect: e.target.value ? undefined : board.backgroundLiveEffect })}
-                />
+                <div className="mb-1 flex gap-1.5">
+                  <button
+                    onClick={() => videoFileRef.current?.click()}
+                    disabled={videoUploading}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded border border-dashed border-[var(--border)] py-1.5 text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50 transition-colors"
+                  >
+                    <Upload size={12} /> {videoUploading ? "Uploading…" : board.backgroundVideo ? "Replace video" : "Upload video (.mp4/.webm)"}
+                  </button>
+                  {board.backgroundVideo && (
+                    <button onClick={() => upd({ backgroundVideo: undefined })} className="rounded border border-[var(--border)] px-2.5 text-xs text-[var(--text-muted)] hover:border-red-400 hover:text-red-400 transition-colors">
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <input ref={videoFileRef} type="file" accept="video/mp4,video/webm,video/*" className="hidden" onChange={handleVideoUpload} />
                 <p className="text-[10px] text-[var(--text-muted)]">A live wallpaper replaces the static color/image below.</p>
               </div>
 
