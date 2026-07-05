@@ -716,8 +716,8 @@ function AppShellInner() {
                 draggables, preventing pointer-event bleed between tab and canvas drags. */}
             <DndContext id="dnd-board-canvas" sensors={sensors} modifiers={[snapToGrid]} onDragEnd={handleDragEnd}>
               <div className="flex flex-1 flex-col overflow-hidden" style={boardAreaCssVars}>
-                <BoardTabs />
                 <TopBar />
+                <BoardTabs />
                 <div className="flex flex-1 overflow-hidden">
                   {!isMobile && <ItemPalette onPick={addItemAtCenter} desktop />}
                   <BoardCanvas />

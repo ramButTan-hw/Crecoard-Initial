@@ -375,8 +375,11 @@ function FriendCard({
   });
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={handleViewProfile}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleViewProfile(); } }}
       className="group flex w-full cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] p-3 text-left transition-all hover:border-[var(--accent)]/40 hover:bg-[var(--surface-overlay)]"
     >
       <div
@@ -408,7 +411,7 @@ function FriendCard({
       >
         <MessageCircle size={14} />
       </button>
-    </button>
+    </div>
   );
 }
 

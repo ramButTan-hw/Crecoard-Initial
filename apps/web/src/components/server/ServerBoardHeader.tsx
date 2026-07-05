@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Users, Shield, Crown, Eye, Edit3, X, Settings, ZoomIn, ZoomOut, Grid3X3, UserPlus, Copy, Check, Link2, Upload, RotateCcw } from "lucide-react";
+import { Users, Shield, Crown, Eye, Edit3, X, Settings, ZoomIn, ZoomOut, Grid3X3, UserPlus, Copy, Check, Link2, Upload, RotateCcw, Minus, Square } from "lucide-react";
 import { useServers } from "@/contexts/ServersContext";
 import { usePresence } from "@/contexts/PresenceContext";
 import { useBoardSync } from "@/contexts/BoardSyncContext";
@@ -54,7 +54,11 @@ export function ServerBoardHeader({
   const [showInvite, setShowInvite] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
-  useEffect(() => { setIsDesktop(!!window.electron); }, []);
+  const [windowMaximized, setWindowMaximized] = useState(false);
+  useEffect(() => {
+    setIsDesktop(!!window.electron);
+    window.electron?.isWindowMaximized?.().then(setWindowMaximized).catch(() => {});
+  }, []);
 
   const { leaveServer } = useServers();
   const { myStatus, setMyStatus } = usePresence();
@@ -246,6 +250,27 @@ export function ServerBoardHeader({
             >
               <Settings size={15} />
             </button>
+          )}
+
+          {/* Window controls — desktop app is frameless, so it needs its own */}
+          {isDesktop && (
+            <div className="ml-1 flex items-center gap-1 border-l border-[var(--border)] pl-1.5">
+              <button onClick={() => window.electron?.minimizeWindow()} title="Minimize"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">
+                <Minus size={14} />
+              </button>
+              <button onClick={async () => {
+                const maximized = await window.electron?.toggleMaximizeWindow();
+                if (typeof maximized === "boolean") setWindowMaximized(maximized);
+              }} title={windowMaximized ? "Restore" : "Maximize"}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">
+                <Square size={12} />
+              </button>
+              <button onClick={() => window.electron?.closeWindow()} title="Close"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] hover:bg-red-500/15 hover:text-red-400 transition-colors">
+                <X size={15} />
+              </button>
+            </div>
           )}
         </div>
       </div>
