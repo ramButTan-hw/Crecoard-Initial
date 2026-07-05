@@ -67,11 +67,12 @@ interface DmPopoutProps {
   dmId: string;
   username: string;
   online: boolean;
+  avatarUrl?: string;
   index: number;
   onClose: () => void;
 }
 
-export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutProps) {
+export function DmPopout({ dmId, username, online, avatarUrl, index, onClose }: DmPopoutProps) {
   const messaging = useMessaging();
   const { identity } = useUser();
   const isMobile = useIsMobile();
@@ -256,10 +257,10 @@ export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutPro
       >
         <div className="relative flex-shrink-0">
           <div
-            className="flex h-7 w-7 select-none items-center justify-center rounded-full text-xs font-bold text-white"
+            className="flex h-7 w-7 select-none items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white"
             style={{ background: avatarColor }}
           >
-            {username[0]?.toUpperCase()}
+            {avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" /> : username[0]?.toUpperCase()}
           </div>
           <span
             className={cn(
@@ -302,10 +303,10 @@ export function DmPopout({ dmId, username, online, index, onClose }: DmPopoutPro
             {renderMessages.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
                 <div
-                  className="flex h-12 w-12 items-center justify-center rounded-full text-lg font-bold text-white"
+                  className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full text-lg font-bold text-white"
                   style={{ background: avatarColor }}
                 >
-                  {username[0]?.toUpperCase()}
+                  {avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" /> : username[0]?.toUpperCase()}
                 </div>
                 <p className="text-sm font-semibold text-[var(--text-primary)]">{username}</p>
                 <p className="text-xs text-[var(--text-muted)]">Start a conversation</p>

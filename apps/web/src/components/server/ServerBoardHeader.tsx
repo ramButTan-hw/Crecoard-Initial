@@ -509,9 +509,13 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
           <div key={m.userId} className="relative">
             <button
               className="group w-full flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--surface-overlay)] transition-colors text-left"
-              onClick={(e) => canManage
-                ? setMenuFor((cur) => (cur?.id === m.userId ? null : { id: m.userId, rect: e.currentTarget.getBoundingClientRect() }))
-                : onViewProfile?.(buildViewableUser(m))}
+              onClick={(e) => {
+                if (!canManage) { onViewProfile?.(buildViewableUser(m)); return; }
+                // Capture the rect synchronously — React nulls e.currentTarget
+                // once this handler returns, before the setState updater runs.
+                const rect = e.currentTarget.getBoundingClientRect();
+                setMenuFor((cur) => (cur?.id === m.userId ? null : { id: m.userId, rect }));
+              }}
             >
               <div className="relative flex-shrink-0">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white overflow-hidden">

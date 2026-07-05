@@ -68,7 +68,7 @@ function AppShellInner() {
   // boardId of the currently-active server (real or mock); avoids re-querying MOCK_SERVERS in hot paths
   const [activeServerBoardId, setActiveServerBoardId] = useState<string | null>(null);
   const [openDmIds, setOpenDmIds] = useState<string[]>([]);
-  const dmInfoRef = useRef<Record<string, { username: string; online: boolean }>>({});
+  const dmInfoRef = useRef<Record<string, { username: string; online: boolean; avatarUrl?: string }>>({});
   const [showChatDrawer, setShowChatDrawer] = useState(false);
   const { unread } = useNotifications();
   const [showMembers, setShowMembers] = useState(false);
@@ -664,8 +664,8 @@ function AppShellInner() {
     setActiveView(v);
   };
 
-  const handleDmSelect = (dmId: string, username?: string, online?: boolean) => {
-    if (username) dmInfoRef.current[dmId] = { username, online: online ?? false };
+  const handleDmSelect = (dmId: string, username?: string, online?: boolean, avatarUrl?: string) => {
+    if (username) dmInfoRef.current[dmId] = { username, online: online ?? false, avatarUrl };
     setOpenDmIds((prev) => prev.includes(dmId) ? prev : [...prev, dmId]);
   };
 
@@ -824,7 +824,7 @@ function AppShellInner() {
             style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
           >
             <FriendsView
-              onDmSelect={(id, username, online) => { handleDmSelect(id, username, online); setShowFriends(false); }}
+              onDmSelect={(id, username, online, avatarUrl) => { handleDmSelect(id, username, online, avatarUrl); setShowFriends(false); }}
               onClose={() => setShowFriends(false)}
               onViewProfile={(u) => setViewingUser(u)}
             />
@@ -869,6 +869,7 @@ function AppShellInner() {
           dmId={dmId}
           username={dmInfoRef.current[dmId]?.username ?? dmId}
           online={dmInfoRef.current[dmId]?.online ?? false}
+          avatarUrl={dmInfoRef.current[dmId]?.avatarUrl}
           index={idx}
           onClose={() => setOpenDmIds((prev) => prev.filter((id) => id !== dmId))}
         />
@@ -959,11 +960,11 @@ function AppShellInner() {
           onClose={() => setViewingUser(null)}
           onDm={
         viewingUser.dmId
-          ? () => { handleDmSelect(viewingUser.dmId!, viewingUser.displayName, viewingUser.online); setViewingUser(null); setShowFriends(false); }
+          ? () => { handleDmSelect(viewingUser.dmId!, viewingUser.displayName, viewingUser.online, viewingUser.avatarUrl); setViewingUser(null); setShowFriends(false); }
           : viewingUser.userId && viewingUser.userId !== identity.userId
           ? async () => {
               const convId = await openConversation(viewingUser.userId!);
-              if (convId) { handleDmSelect(convId, viewingUser.displayName, viewingUser.online); setViewingUser(null); }
+              if (convId) { handleDmSelect(convId, viewingUser.displayName, viewingUser.online, viewingUser.avatarUrl); setViewingUser(null); }
             }
           : undefined
       }

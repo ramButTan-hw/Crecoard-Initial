@@ -2,8 +2,10 @@
 --
 -- Reminder rows are created by the app, but nothing delivers them until a
 -- scheduler polls the worker at /api/cron/reminders. This schedules that poll
--- every minute via pg_cron + pg_net (available on hosted Supabase). Without it,
--- reminders sit at status='pending' forever.
+-- every 30s via pg_cron + pg_net (available on hosted Supabase). Without it,
+-- reminders sit at status='pending' forever. (30s halves the worst-case delay
+-- vs a 1-minute cron; the worker's atomic pending→sending claim makes any
+-- overlap between runs safe.)
 --
 -- Wrapped defensively: local / self-hosted DBs without pg_cron, pg_net, or Vault
 -- won't fail the migration — it just prints a notice and skips.
@@ -33,7 +35,7 @@ begin
 
   perform cron.schedule(
     'deliver-reminders',
-    '* * * * *', -- every minute
+    '30 seconds', -- pg_cron sub-minute interval (1–59s allowed); halves worst-case latency
     $cron$
       select net.http_post(
         url     := 'https://crecoard.com/api/cron/reminders',

@@ -47,7 +47,7 @@ const ADD_FRIEND_MSG: Record<string, { text: string; ok: boolean }> = {
 export function FriendsView({
   onDmSelect, onClose, onViewProfile,
 }: {
-  onDmSelect: (id: string, username?: string, online?: boolean) => void;
+  onDmSelect: (id: string, username?: string, online?: boolean, avatarUrl?: string) => void;
   onClose?: () => void;
   onViewProfile?: (u: ViewableUser) => void;
 }) {
@@ -101,11 +101,11 @@ export function FriendsView({
   const handleMessage = async (f: DisplayFriend) => {
     if (f.userId) {
       const convId = await messaging.openConversation(f.userId);
-      if (convId) onDmSelect(convId, f.username, f.online);
+      if (convId) onDmSelect(convId, f.username, f.online, f.avatarUrl);
     } else if (f.dmId) {
-      onDmSelect(f.dmId, f.username, f.online);
+      onDmSelect(f.dmId, f.username, f.online, f.avatarUrl);
     } else {
-      onDmSelect(`dm-${f.id}`, f.username, f.online);
+      onDmSelect(`dm-${f.id}`, f.username, f.online, f.avatarUrl);
     }
   };
 
