@@ -4,7 +4,7 @@ import { useRef, useState, useEffect } from "react";
 import {
   X, User, Bell, Mail, Shield, Palette, Accessibility, Keyboard,
   Info, ChevronRight, Check, Plus, Trash2, Volume2, VolumeX,
-  Eye, EyeOff, MessageSquare, AtSign, Globe, Zap, Monitor, RotateCcw, Gamepad2,
+  Eye, EyeOff, MessageSquare, AtSign, Globe, Zap, Monitor, RotateCcw, Gamepad2, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getSelfIdentity, updateSelfIdentity } from "@/lib/collaboration";
@@ -19,6 +19,8 @@ import { PRESET_THEMES, APP_FONTS, BG_FILTERS, ThemeVarMap } from "@/lib/appThem
 
 // ── Local-storage settings key ─────────────────────────────────────────────
 const PREF_KEY = "plancraft-user-prefs";
+// Installer URL (Vercel env). Empty until the desktop app is published.
+const DESKTOP_DOWNLOAD_URL = process.env.NEXT_PUBLIC_DESKTOP_DOWNLOAD_URL ?? "";
 
 interface UserPrefs {
   // Notifications
@@ -735,6 +737,24 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
                       <p className="text-xs text-[var(--text-muted)]">Built with Next.js · Supabase · dnd-kit</p>
                     </div>
                   </div>
+
+                  {/* Desktop app — only in the browser (hidden inside the app itself) and once published */}
+                  {DESKTOP_DOWNLOAD_URL && typeof window !== "undefined" && !window.electron && (
+                    <a
+                      href="/download"
+                      className="flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors"
+                      style={{ borderColor: "color-mix(in srgb, var(--accent) 40%, transparent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)" }}
+                    >
+                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-white" style={{ background: "var(--accent)" }}>
+                        <Download size={18} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-[var(--text-primary)]">Get the desktop app</p>
+                        <p className="text-xs text-[var(--text-muted)]">Native reminders, pop-out boards &amp; live wallpapers for Windows</p>
+                      </div>
+                      <ChevronRight size={16} className="flex-shrink-0 text-[var(--text-muted)]" />
+                    </a>
+                  )}
 
                   <SGroup label="System">
                     <InfoRow label="Platform" value={typeof window !== "undefined" && (window as { electron?: unknown }).electron ? "Desktop (Electron)" : "Web"} />
