@@ -20,6 +20,8 @@ declare global {
       // Native OS notifications (reminders)
       notify?: (payload: { title: string; body?: string; url?: string }) => Promise<{ ok: boolean; error?: string }>;
       onReminderClick?: (cb: (url: string) => void) => () => void;
+      // Quick-capture popup (closes its own window)
+      closeCapture?: () => Promise<void>;
     };
   }
 }

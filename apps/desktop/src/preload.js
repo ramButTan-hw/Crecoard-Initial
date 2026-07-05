@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("deep-link", listener);
     return () => ipcRenderer.removeListener("deep-link", listener);
   },
+  // Quick-capture popup closes itself after saving (or on Esc).
+  closeCapture: () => ipcRenderer.invoke("capture-close"),
   // Native OS notifications (reminders). notify() shows a system toast; the
   // onReminderClick callback fires with the reminder's link when it's clicked.
   notify: (payload) => ipcRenderer.invoke("notify", payload),

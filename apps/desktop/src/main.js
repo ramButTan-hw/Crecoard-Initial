@@ -1,5 +1,6 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, screen, session, desktopCapturer, Notification } = require("electron");
+const { app, BrowserWindow, shell, Menu, Tray, ipcMain, screen, session, desktopCapturer, Notification, globalShortcut, nativeImage } = require("electron");
 const path = require("path");
+const { autoUpdater } = require("electron-updater");
 const isDev = !app.isPackaged;
 
 // The desktop app is a thin shell around the deployed web app — it loads the
@@ -19,6 +20,9 @@ if (process.env.CRECOARD_WALLPAPER_SOFTWARE === "1") {
 }
 
 let mainWindow;
+let tray = null;
+let captureWindow = null;
+let isQuitting = false;
 
 // ─── Deep links (crecoard://) — OAuth handoff from the system browser ─────────
 // Sign-in opens the user's real browser; Supabase redirects back to
@@ -50,6 +54,8 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on("second-instance", (_event, argv) => {
+    // A relaunch (e.g. clicking the app while it's in the tray) surfaces the window.
+    showMainWindow();
     handleDeepLink(argv.find((a) => typeof a === "string" && a.startsWith(`${PROTOCOL}://`)));
   });
   app.on("open-url", (event, url) => { // macOS
@@ -72,6 +78,9 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
+      // Keep the renderer's timers at full rate when hidden to the tray, so the
+      // reminder poller keeps firing with no window open.
+      backgroundThrottling: false,
     },
     show: false,
   });
@@ -98,6 +107,10 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  // Close = hide to tray (keep running); real quit is via the tray menu.
+  mainWindow.on("close", (e) => {
+    if (!isQuitting) { e.preventDefault(); mainWindow.hide(); }
+  });
   mainWindow.on("closed", () => { mainWindow = null; });
 }
 
@@ -239,7 +252,102 @@ ipcMain.handle("popout-toggle-top", () => {
   return next;
 });
 
-app.on("before-quit", destroyPopoutWindow);
+// ─── Tray + background running ────────────────────────────────────────────────
+// Closing the main window hides it to the tray (see the window "close" handler)
+// so the app keeps running; the renderer's reminder poller stays alive
+// (backgroundThrottling:false) and fires reminders with no window open.
+function showMainWindow() {
+  if (!mainWindow) { createWindow(); return; }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function autoLaunchEnabled() {
+  return app.getLoginItemSettings().openAtLogin;
+}
+function setAutoLaunch(enabled) {
+  app.setLoginItemSettings({ openAtLogin: enabled, args: [] });
+  updateTrayMenu();
+}
+
+function updateTrayMenu() {
+  if (!tray) return;
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open Crecoard", click: showMainWindow },
+    { label: "Quick capture", accelerator: "CommandOrControl+Shift+Space", click: openCaptureWindow },
+    { type: "separator" },
+    { label: "Launch at startup", type: "checkbox", checked: autoLaunchEnabled(), click: (item) => setAutoLaunch(item.checked) },
+    { type: "separator" },
+    { label: "Quit Crecoard", click: () => { isQuitting = true; app.quit(); } },
+  ]));
+}
+
+function buildTray() {
+  try {
+    const img = nativeImage.createFromPath(path.join(__dirname, "../assets/icon.png"));
+    tray = new Tray(process.platform === "win32" ? img.resize({ width: 16, height: 16 }) : img);
+    tray.setToolTip("Crecoard");
+    tray.on("click", showMainWindow);
+    tray.on("double-click", showMainWindow);
+    updateTrayMenu();
+  } catch (e) {
+    console.error("[tray] failed to create:", e);
+  }
+}
+
+// ─── Global quick-capture ─────────────────────────────────────────────────────
+// Ctrl/Cmd+Shift+Space opens a small always-on-top popup to jot a reminder from
+// any app. It loads /capture, which creates the reminder and calls capture-close.
+function openCaptureWindow() {
+  if (captureWindow) { captureWindow.show(); captureWindow.focus(); return; }
+  const { width } = screen.getPrimaryDisplay().workAreaSize;
+  captureWindow = new BrowserWindow({
+    width: 480, height: 214,
+    x: Math.round((width - 480) / 2), y: 150,
+    frame: false, resizable: false, movable: true,
+    alwaysOnTop: true, skipTaskbar: true, show: false, backgroundColor: "#0d0e11",
+    webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, "preload.js") },
+  });
+  captureWindow.loadURL(`${BASE_URL}/capture`);
+  let ready = false;
+  captureWindow.once("ready-to-show", () => {
+    captureWindow.show();
+    captureWindow.focus();
+    setTimeout(() => { ready = true; }, 250);
+  });
+  captureWindow.on("blur", () => { if (ready && captureWindow) captureWindow.close(); });
+  captureWindow.on("closed", () => { captureWindow = null; });
+}
+
+ipcMain.handle("capture-close", () => { if (captureWindow) captureWindow.close(); });
+
+// ─── Auto-update ──────────────────────────────────────────────────────────────
+// Checks the GitHub Releases feed (see build.publish) for a newer version,
+// downloads it in the background, and installs on quit — with a notify-to-restart
+// nudge. Only runs in the packaged app (electron-updater is disabled in dev).
+function setupAutoUpdate() {
+  if (isDev) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on("update-downloaded", (info) => {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({
+      title: "Crecoard update ready",
+      body: `Version ${info?.version ?? ""} installs on restart — click to restart now.`,
+      icon: path.join(__dirname, "../assets/icon.png"),
+    });
+    n.on("click", () => { isQuitting = true; autoUpdater.quitAndInstall(); });
+    n.show();
+  });
+  autoUpdater.on("error", (err) => console.error("[updater]", err?.message || err));
+  const check = () => autoUpdater.checkForUpdates().catch((e) => console.error("[updater] check failed:", e?.message || e));
+  check();
+  setInterval(check, 6 * 60 * 60_000); // re-check every 6h (the app runs in the background)
+}
+
+app.on("before-quit", () => { isQuitting = true; destroyPopoutWindow(); });
+app.on("will-quit", () => globalShortcut.unregisterAll());
 
 app.whenReady().then(() => {
   // Windows groups notifications/taskbar by AppUserModelID — match the packaged
@@ -262,6 +370,9 @@ app.whenReady().then(() => {
 
   createWindow();
   Menu.setApplicationMenu(null);
+  buildTray();
+  globalShortcut.register("CommandOrControl+Shift+Space", openCaptureWindow);
+  setupAutoUpdate();
   // Reopen the last pop-out board, if one was open last session.
   const saved = readPopoutState();
   if (saved?.boardId) {
@@ -270,7 +381,9 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  // With the tray present the app intentionally keeps running in the background;
+  // only quit here as a fallback if the tray failed to initialize.
+  if (!tray && process.platform !== "darwin") app.quit();
 });
 
 app.on("activate", () => {
