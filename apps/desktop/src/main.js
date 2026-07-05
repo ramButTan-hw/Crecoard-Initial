@@ -2,8 +2,12 @@ const { app, BrowserWindow, shell, Menu, ipcMain, screen, session, desktopCaptur
 const path = require("path");
 const isDev = !app.isPackaged;
 
-const DEV_URL = "http://localhost:3000";
-const PROD_URL = `file://${path.join(__dirname, "../../web/out/index.html")}`;
+// The desktop app is a thin shell around the deployed web app — it loads the
+// live site (not a bundled static export, which the app's API routes can't be
+// exported into). CRECOARD_URL overrides the target (e.g. a staging deploy).
+const BASE_URL = isDev
+  ? "http://localhost:3000"
+  : (process.env.CRECOARD_URL || "https://crecoard.com");
 
 // Some GPU/driver combos refuse to composite hardware-accelerated windows that
 // are re-parented into the desktop's WorkerW layer (wallpaper mode renders
@@ -72,7 +76,7 @@ function createWindow() {
     show: false,
   });
 
-  mainWindow.loadURL(isDev ? DEV_URL : PROD_URL);
+  mainWindow.loadURL(BASE_URL);
   mainWindow.setMenuBarVisibility(false);
 
   mainWindow.once("ready-to-show", () => {
@@ -201,11 +205,7 @@ function createPopoutWindow(boardId, saved) {
   });
 
   const q = `board=${encodeURIComponent(boardId ?? "")}&popout=1`;
-  popoutWindow.loadURL(
-    isDev
-      ? `${DEV_URL}/wallpaper?${q}`
-      : `${PROD_URL.replace("index.html", "wallpaper.html")}?${q}`
-  );
+  popoutWindow.loadURL(`${BASE_URL}/wallpaper?${q}`);
 
   popoutWindow.webContents.on("did-fail-load", (_e, code, desc, url) => {
     console.error(`[popout] page failed to load (${code} ${desc}) ${url}`);

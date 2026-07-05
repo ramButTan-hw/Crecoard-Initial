@@ -2,6 +2,8 @@
   "name": "@plancraft/desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "Crecoard — modular board planner",
+  "author": "Crecoard",
   "main": "src/main.js",
   "scripts": {
     "dev": "concurrently \"npm run start:web\" \"wait-on http://localhost:3000 && electron .\"",
@@ -22,7 +24,8 @@
   },
   "build": {
     "appId": "com.plancraft.app",
-    "productName": "PlanCraft",
+    "productName": "Crecoard",
+    "electronVersion": "42.5.1",
     "protocols": [
       {
         "name": "Crecoard",
@@ -40,7 +43,13 @@
         "nsis",
         "portable"
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "artifactName": "Crecoard-Setup-${version}.${ext}"
     },
     "mac": {
       "target": [

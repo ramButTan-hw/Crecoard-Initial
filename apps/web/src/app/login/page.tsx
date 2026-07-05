@@ -640,6 +640,10 @@ export default function LoginPage() {
                 >
                   Continue without account →
                 </button>
+                <br />
+                <a className="auth-link" style={{ color: "#b5bac1", fontSize: 13 }} href="/download">
+                  ⬇ Get the desktop app
+                </a>
               </div>
             </>
           )}
