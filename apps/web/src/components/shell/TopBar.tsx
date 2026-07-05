@@ -162,7 +162,7 @@ export function TopBar() {
           </button>
         )}
 
-        {!isFinished && <div className="h-5 w-px bg-[var(--border)]" />}
+        {!isFinished && <div className="hidden h-5 w-px bg-[var(--border)] sm:block" />}
 
         {/* Grid toggle — desktop only (touch users have pinch-zoom/grid via gestures) */}
         {!isFinished && (
@@ -264,7 +264,7 @@ export function TopBar() {
           style={isDesktop ? { WebkitAppRegion: "no-drag" } as React.CSSProperties : undefined}
         >
           <Share2 size={13} />
-          Share
+          <span className="hidden sm:inline">Share</span>
         </button>
 
         <div className="h-5 w-px bg-[var(--border)]" />
@@ -302,7 +302,7 @@ export function TopBar() {
             className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors shadow-sm"
             style={isDesktop ? { WebkitAppRegion: "no-drag" } as React.CSSProperties : undefined}
           >
-            <CheckCircle2 size={14} /> Lock
+            <CheckCircle2 size={14} /> <span className="hidden sm:inline">Lock</span>
           </button>
         )}
 

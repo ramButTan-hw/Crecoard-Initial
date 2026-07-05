@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Users, Shield, Crown, Eye, Edit3, X, Settings, ZoomIn, ZoomOut, Grid3X3, UserPlus, Copy, Check, Link2, Upload, RotateCcw, Minus, Square } from "lucide-react";
+import { Users, Shield, Crown, Eye, Edit3, X, Settings, ZoomIn, ZoomOut, Grid3X3, UserPlus, Copy, Check, Link2, Upload, RotateCcw, Minus, Square, MoreVertical } from "lucide-react";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { ContextMenu, type ContextMenuEntry } from "@/components/ui/ContextMenu";
 import { useServers } from "@/contexts/ServersContext";
 import { usePresence } from "@/contexts/PresenceContext";
 import { useBoardSync } from "@/contexts/BoardSyncContext";
@@ -55,6 +57,8 @@ export function ServerBoardHeader({
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [windowMaximized, setWindowMaximized] = useState(false);
+  const isMobile = useIsMobile();
+  const [mobileMenu, setMobileMenu] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
     setIsDesktop(!!window.electron);
     window.electron?.isWindowMaximized?.().then(setWindowMaximized).catch(() => {});
@@ -99,7 +103,7 @@ export function ServerBoardHeader({
           <span className="text-sm font-semibold text-[var(--text-primary)]">{serverName}</span>
         </div>
 
-        {description && (
+        {description && !isMobile && (
           <>
             <div className="h-4 w-px flex-shrink-0 bg-[var(--border)]" />
             <span className="truncate text-xs text-[var(--text-muted)] max-w-[260px]">{description}</span>
@@ -107,6 +111,40 @@ export function ServerBoardHeader({
         )}
 
         <div className="ml-auto flex items-center gap-2" style={isDesktop ? { WebkitAppRegion: "no-drag" } as React.CSSProperties : undefined}>
+          {isMobile ? (
+            <>
+              {/* Compact mobile controls: mode chip, Publish, everything else in ⋯ */}
+              <span
+                className={cn(
+                  "select-none rounded px-1.5 py-0.5 text-[11px] font-bold tracking-wide",
+                  canEdit && isDraftMode
+                    ? "bg-[var(--surface-overlay)] text-[var(--text-muted)]"
+                    : "bg-green-500/20 text-green-400",
+                )}
+              >
+                {canEdit && isDraftMode ? "DRAFT" : "LIVE"}
+              </span>
+              {canEdit && isDraftMode && (
+                <button
+                  onClick={onPublish}
+                  className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-2.5 py-1.5 text-xs font-semibold text-white active:opacity-80 transition-all shadow-sm"
+                >
+                  <Upload size={11} /> Publish
+                </button>
+              )}
+              <button
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setMobileMenu((cur) => (cur ? null : { x: Math.max(8, r.right - 200), y: r.bottom + 6 }));
+                }}
+                title="More"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] active:bg-[var(--surface-overlay)] transition-colors"
+              >
+                <MoreVertical size={16} />
+              </button>
+            </>
+          ) : (
+          <>
           {/* Draft/Live controls */}
           {canEdit ? (
             <>
@@ -251,6 +289,8 @@ export function ServerBoardHeader({
               <Settings size={15} />
             </button>
           )}
+          </>
+          )}
 
           {/* Window controls — desktop app is frameless, so it needs its own */}
           {isDesktop && (
@@ -274,6 +314,48 @@ export function ServerBoardHeader({
           )}
         </div>
       </div>
+
+      {/* Mobile overflow menu — draft tools, members, grid, settings */}
+      {mobileMenu && (
+        <ContextMenu
+          x={mobileMenu.x}
+          y={mobileMenu.y}
+          onClose={() => setMobileMenu(null)}
+          items={[
+            ...(canEdit ? (isDraftMode ? [
+              {
+                label: hasLiveVersion ? "Preview live version" : "No live version yet",
+                icon: <Eye size={14} />,
+                disabled: !hasLiveVersion,
+                onClick: () => { if (hasLiveVersion) onToggleMode(); },
+              },
+              ...(hasLiveVersion ? [{
+                label: "Revert draft to live…",
+                icon: <RotateCcw size={14} />,
+                danger: true,
+                onClick: () => {
+                  if (window.confirm("Discard draft changes and reset to the live version?")) void handleRevert();
+                },
+              }] : []),
+              ...(isFinished ? [{
+                label: "Unlock board",
+                icon: <Edit3 size={14} />,
+                onClick: () => editBoard(serverBoardId ?? activeBoardId),
+              }] : []),
+              "separator" as const,
+            ] : [
+              { label: "Back to draft", icon: <Edit3 size={14} />, onClick: onToggleMode },
+              "separator" as const,
+            ]) : []),
+            { label: `Members — ${onlineCount} online`, icon: <Users size={14} />, onClick: onToggleMembers },
+            { label: showGrid ? "Hide grid" : "Show grid", icon: <Grid3X3 size={14} />, onClick: () => toggleGrid() },
+            ...(canEdit ? [
+              "separator" as const,
+              { label: "Server settings", icon: <Settings size={14} />, onClick: () => setShowSettings(true) },
+            ] : []),
+          ] satisfies ContextMenuEntry[]}
+        />
+      )}
 
       {/* Members flyout panel — triggered only via onToggleMembers (the "N online" button) */}
       {showMembers && (

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   LayoutGrid, Palette, Share2, Clipboard,
   ScanSearch, SquarePlus, Layers, Package, X,
+  ZoomIn, ZoomOut,
 } from "lucide-react";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { nanoid } from "nanoid";
 import { useBoardStore, useActiveBoard, DEFAULT_BOX_STYLE } from "@/store/boardStore";
 import { ITEM_DEFINITIONS } from "./ItemPalette";
@@ -191,8 +193,9 @@ export function BoardCanvas() {
     showGrid, zoom, panOffset, selectBox, activeBoardId,
     addBox, pasteBox, copiedBox, toggleGrid, setZoom,
     setPanOffset, addBoardItem, selectBoardItem,
-    removeBox, duplicateBox, setExpandedBox,
+    removeBox, duplicateBox, setExpandedBox, zoomAtCanvasCenter,
   } = useBoardStore();
+  const isMobile = useIsMobile();
   // Mutations target the correct board ID regardless of which namespace it lives in
   const boardId = serverBoardId ?? activeBoardId;
   const selectedBoardItemId = useBoardStore((s) => s.selectedBoardItemId);
@@ -443,8 +446,13 @@ export function BoardCanvas() {
 
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     const mid = (t: TouchList) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+    // Pannable surfaces: the canvas background, opt-in elements, and the viewport
+    // itself — the letterbox area around a zoomed-out canvas. Without the viewport,
+    // a mostly-covered board has almost nowhere to pan from on a phone.
     const pannable = (target: EventTarget | null) =>
-      target instanceof Element && (target === canvasRef.current || target.hasAttribute("data-pannable"));
+      target instanceof Element && (target === el || target === canvasRef.current || target.hasAttribute("data-pannable"));
+
+    let lastTap = { t: 0, x: 0, y: 0 };
 
     const onStart = (e: TouchEvent) => {
       const state = useBoardStore.getState();
@@ -457,9 +465,32 @@ export function BoardCanvas() {
         panMoved.current = true;
         e.preventDefault();
       } else if (e.touches.length === 1 && pannable(e.target)) {
+        const t = e.touches[0];
+        // Double-tap on empty space → zoom to 100% at the tap point; again → fit.
+        const now = Date.now();
+        if (now - lastTap.t < 300 && Math.hypot(t.clientX - lastTap.x, t.clientY - lastTap.y) < 30) {
+          e.preventDefault();
+          lastTap = { t: 0, x: 0, y: 0 };
+          mode = "none";
+          if (state.zoom < 0.98) {
+            const rect = el.getBoundingClientRect();
+            const ax = t.clientX - rect.left;
+            const ay = t.clientY - rect.top;
+            const ratio = 1 / state.zoom;
+            setZoom(1);
+            setPanOffset({
+              x: ax - (ax - state.panOffset.x) * ratio,
+              y: ay - (ay - state.panOffset.y) * ratio,
+            });
+          } else {
+            handleFitContent();
+          }
+          return;
+        }
+        lastTap = { t: now, x: t.clientX, y: t.clientY };
         mode = "pan";
-        sx = e.touches[0].clientX;
-        sy = e.touches[0].clientY;
+        sx = t.clientX;
+        sy = t.clientY;
         sPan = { ...state.panOffset };
         panMoved.current = false;
       } else {
@@ -502,17 +533,26 @@ export function BoardCanvas() {
       }
     };
 
+    // iOS Safari runs its own page pinch-zoom through proprietary gesture events,
+    // ignoring touch-action for the page-level gesture — suppress it inside the
+    // board viewport so our pinch handler is the only zoom.
+    const stopGesture = (e: Event) => e.preventDefault();
+
     el.addEventListener("touchstart", onStart, { passive: false });
     el.addEventListener("touchmove", onMove, { passive: false });
     el.addEventListener("touchend", onEnd);
     el.addEventListener("touchcancel", onEnd);
+    el.addEventListener("gesturestart", stopGesture);
+    el.addEventListener("gesturechange", stopGesture);
     return () => {
       el.removeEventListener("touchstart", onStart);
       el.removeEventListener("touchmove", onMove);
       el.removeEventListener("touchend", onEnd);
       el.removeEventListener("touchcancel", onEnd);
+      el.removeEventListener("gesturestart", stopGesture);
+      el.removeEventListener("gesturechange", stopGesture);
     };
-  }, [setZoom, setPanOffset]);
+  }, [setZoom, setPanOffset, handleFitContent]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
@@ -766,7 +806,7 @@ export function BoardCanvas() {
       <div
         ref={viewportRef}
         className="absolute inset-0 overflow-hidden"
-        style={{ zIndex: 2, cursor: panning ? "grabbing" : undefined, touchAction: "none" }}
+        style={{ zIndex: 2, cursor: panning ? "grabbing" : undefined, touchAction: "none", overscrollBehavior: "none" }}
         onMouseDown={handlePanMouseDown}
         onMouseMove={handleMouseMove}
       >
@@ -857,15 +897,45 @@ export function BoardCanvas() {
       )}
       {serverId && <MemberCapabilities board={board} serverId={serverId} viewerRole={viewerRole} viewerRoleIds={viewerRoleIds} />}
 
-      {/* Fit-to-content button */}
-      <button
-        onClick={handleFitContent}
-        title="Fit content to view"
-        className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-muted)] shadow-lg transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] md:left-auto md:right-3"
-      >
-        <ScanSearch size={12} />
-        Fit
-      </button>
+      {/* Fit-to-content + (mobile) zoom controls */}
+      <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 md:left-auto md:right-3">
+        {isMobile && (
+          <div className="flex items-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] shadow-lg">
+            <button
+              onClick={() => zoomAtCanvasCenter(zoom - 0.25)}
+              title="Zoom out"
+              className="flex h-8 w-8 items-center justify-center text-[var(--text-muted)] transition-colors active:bg-[var(--surface-overlay)]"
+            >
+              <ZoomOut size={14} />
+            </button>
+            <button
+              onClick={() => zoomAtCanvasCenter(1)}
+              title="Reset zoom"
+              className="min-w-[42px] px-1 text-center text-[11px] font-medium tabular-nums text-[var(--text-muted)] active:bg-[var(--surface-overlay)]"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              onClick={() => zoomAtCanvasCenter(zoom + 0.25)}
+              title="Zoom in"
+              className="flex h-8 w-8 items-center justify-center text-[var(--text-muted)] transition-colors active:bg-[var(--surface-overlay)]"
+            >
+              <ZoomIn size={14} />
+            </button>
+          </div>
+        )}
+        <button
+          onClick={handleFitContent}
+          title="Fit content to view"
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-2.5 text-[11px] font-medium text-[var(--text-muted)] shadow-lg transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]",
+            isMobile ? "h-8" : "py-1.5",
+          )}
+        >
+          <ScanSearch size={12} />
+          Fit
+        </button>
+      </div>
 
       {boardCtx && (
         <ContextMenu
