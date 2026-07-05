@@ -5418,7 +5418,7 @@ function EventPopup({ event, date, accent, onSave, onDelete, onClose, isFinished
       url: typeof window !== "undefined" ? window.location.origin : undefined,
     });
     setRemindBusy(false);
-    setReminderMsg(res.ok ? "Reminder set — you'll get an email" : "Couldn't set reminder — sign in and try again");
+    setReminderMsg(res.ok ? "Reminder set ✓" : "Couldn't set reminder — sign in and try again");
     setTimeout(() => setReminderMsg(null), 3000);
   };
 
@@ -5616,11 +5616,17 @@ function CalendarItem({ item, upd, boardId, boxId, collapsed, isFinished, extraC
 
   // Return all linked source items as a stable map (sourceId → item ref)
   const linkedSourceItems = useBoardStore(useShallow(s => {
-    if (!boardId || !boxId || links.length === 0) return {} as Record<string, BlockItem>;
-    const box = (s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId])?.boxes.find(b => b.id === boxId);
+    if (!boardId || links.length === 0) return {} as Record<string, BlockItem>;
+    const board = s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId];
+    if (!board) return {} as Record<string, BlockItem>;
+    // Sources live alongside the calendar: its block's items when inside a block,
+    // otherwise the board's canvas-level items when the calendar sits on the board.
+    const pool: BlockItem[] = boxId
+      ? (board.boxes.find(b => b.id === boxId)?.items ?? [])
+      : (board.boardItems ?? []);
     const result: Record<string, BlockItem> = {};
     for (const lk of links) {
-      const src = box?.items.find(i => i.id === lk.tableId);
+      const src = pool.find(i => i.id === lk.tableId);
       if (src) result[lk.tableId] = src;
     }
     return result;
@@ -6199,9 +6205,14 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
 
   // All linkable source items in this box (tables, kanbans, lists) — top-level hook
   const linkableItems = useBoardStore(useShallow(s => {
-    if (!boardId || !boxId) return [] as BlockItem[];
-    const box = (s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId])?.boxes.find(b => b.id === boxId);
-    return (box?.items ?? []).filter(i => i.type === "table" || i.type === "kanban" || i.type === "list");
+    if (!boardId) return [] as BlockItem[];
+    const board = s.boards.find(b => b.id === boardId) ?? s.serverBoards[boardId];
+    if (!board) return [] as BlockItem[];
+    // In a block: sibling items. On the canvas: the board's other canvas items.
+    const pool: BlockItem[] = boxId
+      ? (board.boxes.find(b => b.id === boxId)?.items ?? [])
+      : (board.boardItems ?? []);
+    return pool.filter(i => i.type === "table" || i.type === "kanban" || i.type === "list");
   }));
   const sourceLabel = (i: BlockItem) =>
     i.type === "table" ? `${i.tableTitle || "Untitled table"} (table)`
@@ -6249,18 +6260,18 @@ export function CalendarStylePanel({ item, upd, boardId, boxId }: { item: BlockI
       <section>
         <div className="mb-1 flex items-center justify-between">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Linked Items</p>
-          {boardId && boxId && linkableItems.length > 0 && (
+          {boardId && linkableItems.length > 0 && (
             <button onClick={addLink}
               className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] bg-[var(--accent)] text-white hover:opacity-80 transition-opacity">
               <Plus size={9} /> Add link
             </button>
           )}
         </div>
-        <p className="mb-2 text-[10px] text-[var(--text-muted)]">Show table rows, kanban cards, and list entries with due dates as calendar events. Sources must be in the same block.</p>
-        {!boardId || !boxId ? (
-          <p className="text-[10px] text-orange-400/80">Open the block to enable item linking.</p>
+        <p className="mb-2 text-[10px] text-[var(--text-muted)]">Show table rows, kanban cards, and list entries with due dates as calendar events. Sources must live {boxId ? "in the same block" : "on the board"} as the calendar.</p>
+        {!boardId ? (
+          <p className="text-[10px] text-orange-400/80">Item linking is unavailable here.</p>
         ) : linkableItems.length === 0 ? (
-          <p className="text-[10px] text-orange-400/80">No table, kanban, or list items in this block yet. Add one first.</p>
+          <p className="text-[10px] text-orange-400/80">No table, kanban, or list items {boxId ? "in this block" : "on the board"} yet. Add one first.</p>
         ) : links.length === 0 ? (
           <button onClick={addLink}
             className="w-full rounded border border-dashed border-[var(--border)] py-2 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors">
@@ -10131,7 +10142,13 @@ function KanbanEditModal({
             <AssigneeRows members={members} assigneeId={assigneeId || undefined} onPick={(id) => setAssigneeId(id ?? "")} />
           </div>
         )}
-        {due && <RemindMeControl title={text} due={due} boardId={boardId} itemId={itemId} />}
+        {due ? (
+          <RemindMeControl title={text} due={due} boardId={boardId} itemId={itemId} />
+        ) : (
+          <div className="flex items-center gap-1.5 border-t border-[var(--border)] pt-3 text-[11px] text-[var(--text-muted)]">
+            <Bell size={13} className="opacity-70" /> Set a due date above to add a reminder
+          </div>
+        )}
         <button
           onClick={() => { onSave({ text: text.trim(), description: desc.trim() || undefined, color: color || undefined, due: due || undefined, assigneeId: assigneeId || undefined }); onClose(); }}
           disabled={!text.trim()}

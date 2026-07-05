@@ -49,6 +49,7 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ProfilesProvider } from "@/contexts/ProfilesContext";
 import { Toaster } from "@/components/notifications/Toaster";
 import { FriendsProvider } from "@/contexts/FriendsContext";
+import { DesktopReminders } from "@/components/pwa/DesktopReminders";
 import { MOCK_SERVERS, MOCK_SERVER_MEMBERS, MOCK_SERVER_BOARDS } from "@/lib/mockServerData";
 import type { MemberRole } from "@/types/server";
 import { useWebhookItems } from "@/hooks/useWebhookItems";
@@ -1035,6 +1036,7 @@ export function AppShell() {
                   <BoardContributionsProvider>
                     <FriendsProvider>
                       <AppShellInner />
+                      <DesktopReminders />
                       <Toaster />
                     </FriendsProvider>
                   </BoardContributionsProvider>

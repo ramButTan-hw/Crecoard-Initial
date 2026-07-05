@@ -19,4 +19,12 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("deep-link", listener);
     return () => ipcRenderer.removeListener("deep-link", listener);
   },
+  // Native OS notifications (reminders). notify() shows a system toast; the
+  // onReminderClick callback fires with the reminder's link when it's clicked.
+  notify: (payload) => ipcRenderer.invoke("notify", payload),
+  onReminderClick: (cb) => {
+    const listener = (_event, url) => cb(url);
+    ipcRenderer.on("reminder-click", listener);
+    return () => ipcRenderer.removeListener("reminder-click", listener);
+  },
 });

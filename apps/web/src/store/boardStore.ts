@@ -320,7 +320,7 @@ export interface ListEntry {
 }
 export interface GraphPoint { label: string; [key: string]: string | number }
 export interface PollOption { id: string; label: string }
-export interface Flashcard { id: string; front: string; back: string }
+export interface Flashcard { id: string; front: string; back: string; frontImage?: string; backImage?: string }
 export interface QuizQuestion { id: string; prompt: string; options: string[]; correctIndex: number }
 
 export interface BlockItem {
@@ -745,6 +745,20 @@ export interface BlockItem {
   flashcardShuffle?: boolean;
   flashcardFontFamily?: string;
   flashcardAccent?: string;
+  flashcardFontSize?: number;
+  flashcardTextColor?: string;
+  flashcardBgColor?: string;      // item background
+  flashcardCardColor?: string;    // front face background
+  flashcardBackColor?: string;    // back face background (distinct)
+  flashcardBorderColor?: string;
+  flashcardBorderWidth?: number;
+  flashcardBorderRadius?: number;
+  flashcardShadow?: boolean;
+  flashcardFlip?: string;         // "flip" | "fade" | "none"
+  flashcardAlign?: string;        // "left" | "center" | "right"
+  flashcardShowProgress?: boolean; // default true
+  flashcardBgImage?: string;      // item background image
+  flashcardBgImageSize?: string;  // "cover" | "contain"
 
   // quiz
   quizQuestions?: QuizQuestion[];
@@ -752,6 +766,17 @@ export interface BlockItem {
   quizInstant?: boolean; // show correct/wrong immediately after answering
   quizFontFamily?: string;
   quizAccent?: string;
+  quizFontSize?: number;
+  quizTextColor?: string;
+  quizBgColor?: string;           // item background
+  quizOptionColor?: string;       // option button background
+  quizCorrectColor?: string;
+  quizIncorrectColor?: string;
+  quizBorderRadius?: number;
+  quizShowProgress?: boolean;     // default true
+  quizNumbers?: boolean;          // show "Q1/N" numbering
+  quizBgImage?: string;           // item background image
+  quizBgImageSize?: string;       // "cover" | "contain"
 
   // visualizer / effects
   visualizerEffect?: string; // "bars" | "wave" | "rain" | "particles" | "aurora"

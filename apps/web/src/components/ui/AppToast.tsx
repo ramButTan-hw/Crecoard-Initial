@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, Check, Info } from "lucide-react";
 
 /**
@@ -36,10 +37,13 @@ export function AppToaster() {
     return () => window.removeEventListener("crecoard:toast", onToast);
   }, []);
 
-  if (toasts.length === 0) return null;
+  if (toasts.length === 0 || typeof document === "undefined") return null;
 
-  return (
-    <div className="pointer-events-none fixed bottom-16 left-1/2 z-[9500] flex -translate-x-1/2 flex-col items-center gap-1.5">
+  // Portal to <body> so the toast lives in the top-level stacking context —
+  // otherwise a transformed/overflow ancestor traps it below modals (settings,
+  // etc.), which is why reminder toasts weren't showing over open panels.
+  return createPortal(
+    <div className="pointer-events-none fixed bottom-16 left-1/2 z-[10050] flex -translate-x-1/2 flex-col items-center gap-1.5">
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -52,6 +56,7 @@ export function AppToaster() {
           {t.message}
         </div>
       ))}
-    </div>
+    </div>,
+    document.body
   );
 }

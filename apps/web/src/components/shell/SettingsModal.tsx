@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import {
-  X, User, Bell, Shield, Palette, Accessibility, Keyboard,
+  X, User, Bell, Mail, Shield, Palette, Accessibility, Keyboard,
   Info, ChevronRight, Check, Plus, Trash2, Volume2, VolumeX,
   Eye, EyeOff, MessageSquare, AtSign, Globe, Zap, Monitor, RotateCcw, Gamepad2,
 } from "lucide-react";
@@ -13,6 +13,8 @@ import { UsernameSetupModal } from "./UsernameSetupModal";
 import { useBoardStore } from "@/store/boardStore";
 import { setSoundEnabled } from "@/lib/sound";
 import { enablePush, disablePush, isPushEnabled, pushSupported, pushConfigured } from "@/lib/push";
+import { testReminderNotification } from "@/components/pwa/DesktopReminders";
+import { appToast } from "@/components/ui/AppToast";
 import { PRESET_THEMES, APP_FONTS, BG_FILTERS, ThemeVarMap } from "@/lib/appThemes";
 
 // ── Local-storage settings key ─────────────────────────────────────────────
@@ -411,6 +413,22 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
 
                   <SGroup label="Reminders">
                     <PushToggle userId={userIdentity.userId} />
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-[var(--text-secondary)]">
+                        <Bell size={14} />
+                        <div className="flex flex-col">
+                          <span className="text-sm">Test notification</span>
+                          <span className="text-[11px] text-[var(--text-muted)]">Fire a sample reminder now to check it works on this device</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={testReminderNotification}
+                        className="flex-shrink-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
+                      >
+                        Send test
+                      </button>
+                    </div>
+                    <EmailRemindersButton />
                   </SGroup>
                 </div>
               )}
@@ -870,6 +888,62 @@ function PushToggle({ userId }: { userId: string }) {
       />
       {note && <p className="mt-1 px-1 text-[11px] text-red-400">{note}</p>}
     </>
+  );
+}
+
+function EmailRemindersButton() {
+  const [busy, setBusy] = useState<"" | "sample" | "due">("");
+  const [result, setResult] = useState<{ msg: string; kind: "success" | "error" | "info" } | null>(null);
+  const run = async (test: boolean) => {
+    if (busy) return;
+    setBusy(test ? "sample" : "due");
+    setResult(null);
+    let msg = "Done";
+    let kind: "success" | "error" | "info" = "info";
+    try {
+      const res = await fetch(`/api/reminders/run${test ? "?test=1" : ""}`, { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as {
+        emailConfigured?: boolean; error?: string; sent?: number; failed?: number; processed?: number; errors?: string[]; test?: boolean;
+      };
+      if (res.status === 401) { msg = "Sign in first (no valid session)"; kind = "error"; }
+      else if (!res.ok) { msg = `Server error ${res.status}${data.error ? `: ${data.error}` : ""} — check the dev terminal`; kind = "error"; }
+      else if (data.emailConfigured === false) { msg = "Email isn't set up — add RESEND_API_KEY, then restart the server"; kind = "error"; }
+      else if (data.error === "no-email") { msg = "Your account has no email address"; kind = "error"; }
+      else if ((data.sent ?? 0) > 0) { msg = data.test ? "Sample sent ✓ — check your inbox (and spam)" : `Emailed ${data.sent} due reminder${data.sent === 1 ? "" : "s"} — check your inbox`; kind = "success"; }
+      else if ((data.failed ?? 0) > 0) { msg = `Send failed: ${data.errors?.[0] ?? "check EMAIL_FROM / Resend domain"}`; kind = "error"; }
+      else if ((data.processed ?? 0) === 0) { msg = "No reminders are due — use Sample to test email, or set one due in the past"; kind = "info"; }
+    } catch {
+      msg = "Request failed — is the dev server running?"; kind = "error";
+    }
+    setResult({ msg, kind });
+    appToast(msg, kind); // also toast, best-effort
+    setBusy("");
+  };
+  const btnCls = "flex-shrink-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:opacity-40";
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-[var(--text-secondary)]">
+          <Mail size={14} />
+          <div className="flex flex-col">
+            <span className="text-sm">Email reminders</span>
+            <span className="text-[11px] text-[var(--text-muted)]">Send a sample to test delivery, or email any reminders due now</span>
+          </div>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <button onClick={() => run(true)} disabled={!!busy} className={btnCls}>{busy === "sample" ? "Sending…" : "Sample"}</button>
+          <button onClick={() => run(false)} disabled={!!busy} className={btnCls}>{busy === "due" ? "Sending…" : "Send due"}</button>
+        </div>
+      </div>
+      {result && (
+        <p className={cn(
+          "px-1 text-[11px]",
+          result.kind === "success" ? "text-green-400" : result.kind === "error" ? "text-red-400" : "text-[var(--text-muted)]",
+        )}>
+          {result.msg}
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -19,6 +19,36 @@ export function eventStartDate(date: string, startTime?: string): Date {
   return new Date(y, (m ?? 1) - 1, d ?? 1, hh ?? 9, mm ?? 0);
 }
 
+/** A due reminder as surfaced to the desktop pinger (minimal fields). */
+export interface DueReminder {
+  id: string;
+  title: string;
+  body: string;
+  url: string | null;
+  remind_at: string;
+}
+
+/**
+ * Fetch the current user's reminders that are due now, within a recent lookback
+ * window (so a reminder that came due while the app was closed still surfaces on
+ * next open, but ancient ones don't flood in). Read via RLS on the user's own
+ * session — independent of server-side delivery status, so a reminder can both
+ * email and ping. The caller dedupes which ids it has already shown.
+ */
+export async function fetchDueReminders(userId: string, lookbackMs = 24 * 60 * 60_000): Promise<DueReminder[]> {
+  const now = Date.now();
+  const { data, error } = await supabase
+    .from("reminders")
+    .select("id, title, body, url, remind_at")
+    .eq("user_id", userId)
+    .lte("remind_at", new Date(now).toISOString())
+    .gte("remind_at", new Date(now - lookbackMs).toISOString())
+    .order("remind_at", { ascending: true })
+    .limit(50);
+  if (error || !data) return [];
+  return data as DueReminder[];
+}
+
 export async function createReminder(input: {
   userId: string;
   title: string;

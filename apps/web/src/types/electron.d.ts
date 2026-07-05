@@ -17,6 +17,9 @@ declare global {
       popoutToggleTop?: () => Promise<boolean>;
       // Deep links (crecoard://) — browser-based OAuth handoff
       onDeepLink?: (cb: (url: string) => void) => () => void;
+      // Native OS notifications (reminders)
+      notify?: (payload: { title: string; body?: string; url?: string }) => Promise<{ ok: boolean; error?: string }>;
+      onReminderClick?: (cb: (url: string) => void) => () => void;
     };
   }
 }

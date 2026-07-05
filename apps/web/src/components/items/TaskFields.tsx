@@ -99,48 +99,81 @@ export function RemindMeControl({ title, due, boardId, itemId }: {
 }) {
   const { identity } = useUser();
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  // A task carries only a due date, so the user picks the due time (the anchor)
+  // and how far ahead to be reminded. The reminder fires at (due time − lead).
+  const [time, setTime] = useState("09:00");
+  const [lead, setLead] = useState(0);
   if (!due) return null;
 
-  const setReminder = async (leadMs: number) => {
-    const start = eventStartDate(due);
-    const remindAt = new Date(start.getTime() - leadMs);
-    if (remindAt.getTime() <= Date.now()) {
-      setMsg("That time has already passed");
-      setTimeout(() => setMsg(null), 3000);
-      return;
-    }
+  const anchor = eventStartDate(due, time || undefined);
+  const fireAt = new Date(anchor.getTime() - lead);
+  const passed = fireAt.getTime() <= Date.now();
+  const firePreview = fireAt.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+  // Editing any field after a successful set re-arms the button for another.
+  const touch = () => { if (done) setDone(false); if (err) setErr(null); };
+
+  const setReminder = async () => {
+    if (passed) { setErr("That time is already past — pick a later time."); return; }
     setBusy(true);
     const res = await createReminder({
       userId: identity.userId,
       title: title.trim() || "Task",
-      body: `Due ${start.toLocaleDateString()}`,
-      remindAt,
+      body: `Due ${anchor.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`,
+      remindAt: fireAt,
       boardId,
       itemId,
       url: typeof window !== "undefined" ? window.location.origin : undefined,
     });
     setBusy(false);
-    setMsg(res.ok ? "Reminder set — you'll get an email" : "Couldn't set reminder — sign in and try again");
-    setTimeout(() => setMsg(null), 3000);
+    if (res.ok) setDone(true);
+    else setErr("Couldn't set reminder — sign in and try again.");
   };
 
+  const fieldCls = "min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]";
+
   return (
-    <div className="flex flex-col gap-1.5 border-t border-[var(--border)] pt-2">
-      <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]"><Bell size={12} /> Remind me</div>
-      <div className="flex flex-wrap gap-1.5">
-        {REMINDER_LEADS.map((l) => (
-          <button
-            key={l.label}
-            disabled={busy}
-            onClick={() => setReminder(l.ms)}
-            className="rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors disabled:opacity-40"
-          >
-            {l.label}
-          </button>
-        ))}
+    <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
+      <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)]"><Bell size={13} /> Reminder</span>
+
+      <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+        <span className="w-11 shrink-0">Due at</span>
+        <input type="time" aria-label="Due time" value={time} onChange={(e) => { setTime(e.target.value); touch(); }} className={fieldCls} />
       </div>
-      {msg && <p className="text-[11px] text-[var(--text-muted)]">{msg}</p>}
+
+      <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+        <span className="w-11 shrink-0">Remind</span>
+        <select aria-label="How early to remind" value={lead} onChange={(e) => { setLead(Number(e.target.value)); touch(); }} className={fieldCls}>
+          {REMINDER_LEADS.map((l) => <option key={l.label} value={l.ms}>{l.label}</option>)}
+        </select>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 pt-0.5">
+        <span className={cn("text-[11px]", passed ? "text-red-400" : "text-[var(--text-muted)]")}>
+          {passed ? "Time already past" : <>Fires <span className="font-medium text-[var(--text-secondary)]">{firePreview}</span></>}
+        </span>
+        {done ? (
+          <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-400"><Bell size={11} /> Reminder set</span>
+        ) : (
+          <button
+            onClick={setReminder}
+            disabled={busy || passed}
+            className="rounded-md px-3 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            style={{ background: "var(--accent)" }}
+          >
+            {busy ? "Setting…" : "Set reminder"}
+          </button>
+        )}
+      </div>
+
+      {err && <p className="text-[11px] text-red-400">{err}</p>}
+      {done && (
+        <p className="text-[10px] leading-tight text-[var(--text-muted)]">
+          You&apos;ll be notified by email{typeof window !== "undefined" && window.electron ? " and a desktop ping" : ""}. Change a field above to add another.
+        </p>
+      )}
     </div>
   );
 }
@@ -236,9 +269,13 @@ export function TaskFieldsPopover({
             />
           </>
         )}
-        {remind && due && (
+        {remind && (due ? (
           <RemindMeControl title={remind.title} due={due} boardId={remind.boardId} itemId={remind.itemId} />
-        )}
+        ) : (
+          <div className="flex items-center gap-1.5 border-t border-[var(--border)] pt-2 text-[11px] text-[var(--text-muted)]">
+            <Bell size={12} className="opacity-70" /> Add a due date to set a reminder
+          </div>
+        ))}
       </div>
     </div>,
     document.body

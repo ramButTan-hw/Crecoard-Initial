@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, screen, session, desktopCapturer } = require("electron");
+const { app, BrowserWindow, shell, Menu, ipcMain, screen, session, desktopCapturer, Notification } = require("electron");
 const path = require("path");
 const isDev = !app.isPackaged;
 
@@ -101,6 +101,31 @@ ipcMain.handle("open-external", (_event, url) => {
   // http(s) only — never shell-execute arbitrary strings from the renderer
   if (typeof url === "string" && /^https?:\/\//i.test(url)) {
     return shell.openExternal(url);
+  }
+});
+
+// ─── Native reminder notifications ────────────────────────────────────────────
+// The renderer polls the user's due reminders (see DesktopReminders.tsx) and
+// calls this to surface each as an OS toast. Clicking it focuses the app and
+// tells the renderer where to navigate.
+ipcMain.handle("notify", (_event, payload) => {
+  try {
+    if (!Notification.isSupported()) return { ok: false, error: "notifications unsupported" };
+    const title = typeof payload?.title === "string" && payload.title ? payload.title : "Reminder";
+    const body = typeof payload?.body === "string" ? payload.body : "";
+    const url = typeof payload?.url === "string" ? payload.url : null;
+    const n = new Notification({ title, body, icon: path.join(__dirname, "../assets/icon.png") });
+    n.on("click", () => {
+      if (!mainWindow) return;
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      if (url) mainWindow.webContents.send("reminder-click", url);
+    });
+    n.show();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e) };
   }
 });
 
@@ -217,6 +242,10 @@ ipcMain.handle("popout-toggle-top", () => {
 app.on("before-quit", destroyPopoutWindow);
 
 app.whenReady().then(() => {
+  // Windows groups notifications/taskbar by AppUserModelID — match the packaged
+  // appId so reminder toasts show as "Crecoard", not the Electron default.
+  if (process.platform === "win32") app.setAppUserModelId("com.plancraft.app");
+
   // Allow the app's own pages to use the mic / audio capture (the Visualizer item).
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(permission === "media" || permission === "audioCapture" || permission === "display-capture");
