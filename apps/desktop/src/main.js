@@ -23,6 +23,7 @@ let mainWindow;
 let tray = null;
 let captureWindow = null;
 let isQuitting = false;
+let startMainHidden = false; // when opening a pop-out first on startup, keep main in the tray
 
 // ─── Deep links (crecoard://) — OAuth handoff from the system browser ─────────
 // Sign-in opens the user's real browser; Supabase redirects back to
@@ -89,7 +90,9 @@ function createWindow() {
   mainWindow.setMenuBarVisibility(false);
 
   mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
+    // "Open pop-out at startup" keeps the main window in the tray so the pop-out
+    // is what the user sees first.
+    if (!startMainHidden) mainWindow.show();
     if (isDev) mainWindow.webContents.openDevTools({ mode: "detach" });
   });
 
@@ -189,6 +192,13 @@ function readPopoutState() {
   try { return JSON.parse(fs.readFileSync(castStateFile(), "utf8")); } catch { return null; }
 }
 
+// Small persisted app settings (startup preferences).
+function settingsFile() { return path.join(app.getPath("userData"), "settings.json"); }
+function readSettings() { try { return JSON.parse(fs.readFileSync(settingsFile(), "utf8")); } catch { return {}; } }
+function writeSettings(patch) {
+  try { fs.writeFileSync(settingsFile(), JSON.stringify({ ...readSettings(), ...patch })); } catch {}
+}
+
 function destroyPopoutWindow() {
   if (popoutWindow) {
     try { popoutWindow.destroy(); } catch {}
@@ -219,6 +229,7 @@ function createPopoutWindow(boardId, saved) {
 
   const q = `board=${encodeURIComponent(boardId ?? "")}&popout=1`;
   popoutWindow.loadURL(`${BASE_URL}/wallpaper?${q}`);
+  popoutWindow.maximize(); // open full-screen for an immersive board (user can unmaximize)
 
   popoutWindow.webContents.on("did-fail-load", (_e, code, desc, url) => {
     console.error(`[popout] page failed to load (${code} ${desc}) ${url}`);
@@ -235,13 +246,21 @@ function createPopoutWindow(boardId, saved) {
   popoutWindow.on("closed", () => { popoutWindow = null; });
 
   savePopoutState(boardId ?? null, saved);
+  if (boardId) writeSettings({ lastPopoutBoardId: boardId }); // remember for "open pop-out at startup"
   console.log("[popout] board window opened");
   return { ok: true };
 }
 
 // IPC names unchanged so preload / TopBar need no edits.
 ipcMain.handle("wallpaper-set", (_event, boardId) => createPopoutWindow(boardId, readPopoutState()));
-ipcMain.handle("wallpaper-clear", () => { destroyPopoutWindow(); savePopoutState(null); return { ok: true }; });
+ipcMain.handle("wallpaper-clear", () => {
+  destroyPopoutWindow();
+  savePopoutState(null);
+  // If the main window was hidden for a pop-out-first startup, surface it now so
+  // closing the pop-out doesn't leave the user with only the tray.
+  if (mainWindow && !mainWindow.isVisible()) showMainWindow();
+  return { ok: true };
+});
 ipcMain.handle("wallpaper-active", () => !!popoutWindow);
 // Frameless windows have no OS controls — the page's close button calls this.
 ipcMain.handle("popout-minimize", () => { popoutWindow?.minimize(); });
@@ -271,6 +290,9 @@ function setAutoLaunch(enabled) {
   updateTrayMenu();
 }
 
+function popoutOnStartupEnabled() { return readSettings().popoutOnStartup === true; }
+function setPopoutOnStartup(enabled) { writeSettings({ popoutOnStartup: enabled }); updateTrayMenu(); }
+
 function updateTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
@@ -278,6 +300,7 @@ function updateTrayMenu() {
     { label: "Quick capture", accelerator: "CommandOrControl+Shift+Space", click: openCaptureWindow },
     { type: "separator" },
     { label: "Launch at startup", type: "checkbox", checked: autoLaunchEnabled(), click: (item) => setAutoLaunch(item.checked) },
+    { label: "Open pop-out at startup", type: "checkbox", checked: popoutOnStartupEnabled(), click: (item) => setPopoutOnStartup(item.checked) },
     { type: "separator" },
     { label: "Quit Crecoard", click: () => { isQuitting = true; app.quit(); } },
   ]));
@@ -368,15 +391,23 @@ app.whenReady().then(() => {
       .catch(() => callback({}));
   }, { useSystemPicker: false });
 
+  // Decide the startup pop-out BEFORE creating the main window (ready-to-show reads
+  // startMainHidden): the board open at quit, or — when "open pop-out at startup"
+  // is on — the last board you popped out. When popping out on startup, keep the
+  // main window in the tray so the pop-out is what you see first.
+  const savedPopout = readPopoutState();
+  const settings = readSettings();
+  const startupBoardId = savedPopout?.boardId || (settings.popoutOnStartup ? settings.lastPopoutBoardId : null);
+  startMainHidden = !!(settings.popoutOnStartup && startupBoardId);
+
   createWindow();
   Menu.setApplicationMenu(null);
   buildTray();
   globalShortcut.register("CommandOrControl+Shift+Space", openCaptureWindow);
   setupAutoUpdate();
-  // Reopen the last pop-out board, if one was open last session.
-  const saved = readPopoutState();
-  if (saved?.boardId) {
-    setTimeout(() => createPopoutWindow(saved.boardId, saved), 1500);
+
+  if (startupBoardId) {
+    setTimeout(() => createPopoutWindow(startupBoardId, savedPopout), 1500);
   }
 });
 
