@@ -50,6 +50,7 @@ import { ProfilesProvider } from "@/contexts/ProfilesContext";
 import { Toaster } from "@/components/notifications/Toaster";
 import { FriendsProvider } from "@/contexts/FriendsContext";
 import { DesktopReminders } from "@/components/pwa/DesktopReminders";
+import { FirstRunTour } from "./FirstRunTour";
 import { MOCK_SERVERS, MOCK_SERVER_MEMBERS, MOCK_SERVER_BOARDS } from "@/lib/mockServerData";
 import type { MemberRole } from "@/types/server";
 import { useWebhookItems } from "@/hooks/useWebhookItems";
@@ -726,6 +727,7 @@ function AppShellInner() {
                 </div>
               </div>
             </DndContext>
+            <FirstRunTour />
           </CollabContext.Provider>
         )}
 

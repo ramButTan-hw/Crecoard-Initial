@@ -9054,7 +9054,10 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
   const mountedRef = useRef(true);
   const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
 
-  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  // Reset on mount too: React StrictMode (dev) double-invokes effects (mount →
+  // cleanup → mount), and without this the cleanup would leave the ref stuck at
+  // false, freezing async UI like the playlist "Importing…" spinner.
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   const currentTrack = tracks[currentIdx] ?? null;
   const embed = currentTrack ? resolveEmbed(currentTrack.url, !!item.playlistAutoplay) : null;
@@ -9263,8 +9266,10 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
     if (!importInfo) return;
     setImporting(true);
     setImportError(null);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30_000);
     try {
-      const res = await fetch(`/api/import-playlist?platform=${importInfo.platform.toLowerCase()}&id=${importInfo.id}`);
+      const res = await fetch(`/api/import-playlist?platform=${importInfo.platform.toLowerCase()}&id=${importInfo.id}`, { signal: ctrl.signal });
       const data: { tracks?: { title: string; url: string }[]; error?: string } = await res.json();
       if (!mountedRef.current) return;
       if (data.error) { setImportError(data.error); return; }
@@ -9278,10 +9283,13 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
       }
       setUrlInput("");
       setTitleInput("");
-    } catch {
+    } catch (e) {
       if (!mountedRef.current) return;
-      setImportError("Failed to reach import API");
+      setImportError(e instanceof DOMException && e.name === "AbortError"
+        ? "Import timed out — check your YouTube API key and try again"
+        : "Failed to reach import API");
     } finally {
+      clearTimeout(timer);
       if (mountedRef.current) setImporting(false);
     }
   };

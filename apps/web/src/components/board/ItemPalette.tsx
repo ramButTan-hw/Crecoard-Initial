@@ -89,7 +89,7 @@ export const ITEM_DEFINITIONS: {
     type: "table",
     label: "Table",
     icon: <Table2 size={15} />,
-    description: "Notion-style editable table",
+    description: "Editable table with typed columns",
     defaultItem: () => ({
       type: "table",
       tableColumns: [
@@ -348,6 +348,10 @@ const GROUP_OF: Record<string, string> = {
 };
 const GROUP_ORDER = ["Content", "Media", "Data", "Study", "Community", "Other"];
 
+// New-user starter set — the rest hide behind "Show all items" until they've
+// built something, so a first-timer isn't faced with 24 choices at once.
+const STARTER_TYPES = new Set<ItemType>(["text", "list", "table", "calendar", "kanban", "image"]);
+
 // ─── Collapsible section header ───────────────────────────────────────────────
 
 function SectionHeader({
@@ -519,6 +523,7 @@ export function ItemPalette({ onPick, desktop }: { onPick?: (def: (typeof ITEM_D
 
   const [collectionOpen, setCollectionOpen] = useState(true);
   const [search, setSearch] = useState("");
+  const [showAllItems, setShowAllItems] = useState(() => typeof window !== "undefined" && localStorage.getItem("crecoard-palette-expanded") === "1");
   const [rail, setRail] = useState(() => typeof window !== "undefined" && localStorage.getItem("crecoard-palette-rail") === "1");
   const toggleRail = () => setRail((v) => {
     const next = !v;
@@ -560,6 +565,16 @@ export function ItemPalette({ onPick, desktop }: { onPick?: (def: (typeof ITEM_D
     .filter((x) => x.defs.length > 0);
   if (filteredInstalled.length > 0) groups.push({ g: "Installed", defs: filteredInstalled });
 
+  // First-run curation: until the board has content (or the user expands), show
+  // just a starter set. Searching always reveals the full matching list.
+  const hasContent = !!board && (board.boxes.length > 0 || (board.boardItems?.length ?? 0) > 0);
+  const beginnerMode = !hasContent && !showAllItems && !q;
+  const starterDefs = visibleDefs.filter((d) => STARTER_TYPES.has(d.type));
+  const revealAll = () => {
+    setShowAllItems(true);
+    try { localStorage.setItem("crecoard-palette-expanded", "1"); } catch { /* ignore */ }
+  };
+
   const collectionCount = board
     ? board.boxes.reduce((a, bx) => a + bx.items.length, 0) + (board.boardItems?.length ?? 0)
     : 0;
@@ -570,6 +585,7 @@ export function ItemPalette({ onPick, desktop }: { onPick?: (def: (typeof ITEM_D
   if (!mobile && rail) {
     return (
       <div
+        data-tour="palette"
         className="flex w-12 flex-shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r border-[var(--border)] py-2"
         style={{ background: hasAppBg ? "transparent" : "var(--surface-raised)" }}
       >
@@ -589,6 +605,7 @@ export function ItemPalette({ onPick, desktop }: { onPick?: (def: (typeof ITEM_D
 
   return (
     <div
+      data-tour="palette"
       className={cn(
         "flex flex-col overflow-y-auto",
         mobile ? "w-full" : "w-[196px] flex-shrink-0 border-r border-[var(--border)]"
@@ -617,15 +634,32 @@ export function ItemPalette({ onPick, desktop }: { onPick?: (def: (typeof ITEM_D
           </div>
         )}
         <div className="pb-2">
-          {groups.map(({ g, defs }) => (
-            <div key={g}>
-              {!mobile && <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] opacity-70">{g}</p>}
-              {defs.map((def) => (
+          {beginnerMode ? (
+            <>
+              {!mobile && <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] opacity-70">Start with</p>}
+              {starterDefs.map((def) => (
                 <DraggableItem key={def.key ?? def.type} def={def} selectedBoxId={selectedBoxId} onPick={onPick} tapMode={mobile} />
               ))}
-            </div>
-          ))}
-          {groups.length === 0 && <p className="px-3 py-3 text-[11px] text-[var(--text-muted)]">No items match.</p>}
+              <button
+                onClick={revealAll}
+                className="mt-1 flex w-full items-center gap-1.5 px-3 py-2 text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                <ChevronDown size={12} /> Show all items ({visibleDefs.length - starterDefs.length} more)
+              </button>
+            </>
+          ) : (
+            <>
+              {groups.map(({ g, defs }) => (
+                <div key={g}>
+                  {!mobile && <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] opacity-70">{g}</p>}
+                  {defs.map((def) => (
+                    <DraggableItem key={def.key ?? def.type} def={def} selectedBoxId={selectedBoxId} onPick={onPick} tapMode={mobile} />
+                  ))}
+                </div>
+              ))}
+              {groups.length === 0 && <p className="px-3 py-3 text-[11px] text-[var(--text-muted)]">No items match.</p>}
+            </>
+          )}
         </div>
       </div>
 

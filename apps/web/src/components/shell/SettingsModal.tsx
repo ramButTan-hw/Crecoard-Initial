@@ -4,8 +4,9 @@ import { useRef, useState, useEffect } from "react";
 import {
   X, User, Bell, Mail, Shield, Palette, Accessibility, Keyboard,
   Info, ChevronRight, Check, Plus, Trash2, Volume2, VolumeX,
-  Eye, EyeOff, MessageSquare, AtSign, Globe, Zap, Monitor, RotateCcw, Gamepad2, Download,
+  Eye, EyeOff, MessageSquare, AtSign, Globe, Zap, Monitor, RotateCcw, Gamepad2, Download, Compass,
 } from "lucide-react";
+import { replayFirstRunTour } from "./FirstRunTour";
 import { cn } from "@/lib/utils";
 import { getSelfIdentity, updateSelfIdentity } from "@/lib/collaboration";
 import { useUser } from "@/contexts/UserContext";
@@ -733,10 +734,27 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
                     </div>
                     <div>
                       <p className="text-lg font-bold text-[var(--text-primary)]">Crecoard</p>
-                      <p className="text-sm text-[var(--text-muted)]">Version 0.1.0-alpha</p>
+                      <p className="text-sm text-[var(--text-muted)]">Version {process.env.NEXT_PUBLIC_APP_VERSION ?? "0.3.0"}-alpha</p>
                       <p className="text-xs text-[var(--text-muted)]">Built with Next.js · Supabase · dnd-kit</p>
                     </div>
                   </div>
+
+                  <SGroup label="Getting Started">
+                    <button
+                      onClick={() => { replayFirstRunTour(); onClose(); }}
+                      className="flex items-center gap-3 rounded-xl border border-[var(--border)] px-4 py-3 text-left transition-colors hover:border-[var(--accent)]"
+                      style={{ background: "var(--surface)" }}
+                    >
+                      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white" style={{ background: "var(--accent)" }}>
+                        <Compass size={16} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-[var(--text-primary)]">Replay guided tour</p>
+                        <p className="text-[11px] text-[var(--text-muted)]">Walk through the basics again — right-click, blocks &amp; board styling. Opens on your personal board.</p>
+                      </div>
+                      <ChevronRight size={15} className="flex-shrink-0 text-[var(--text-muted)]" />
+                    </button>
+                  </SGroup>
 
                   {/* Desktop app — only in the browser (hidden inside the app itself) and once published */}
                   {DESKTOP_DOWNLOAD_URL && typeof window !== "undefined" && !window.electron && (

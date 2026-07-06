@@ -62,6 +62,9 @@ export function BottomBar({
   const [dragSrcId, setDragSrcId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const boards = useBoardStore((s) => s.boards);
+  // Progressive disclosure: keep Servers hidden for brand-new users until they've
+  // put something on a board (or they're already viewing a server).
+  const showServers = boards.some((b) => b.boxes.length > 0 || (b.boardItems?.length ?? 0) > 0) || activeView === "server";
   const trashToast = useBoardStore((s) => s.trashToast);
   const clearTrashToast = useBoardStore((s) => s.clearTrashToast);
   const restoreBoard = useBoardStore((s) => s.restoreBoard);
@@ -295,7 +298,7 @@ export function BottomBar({
           style={{ background: "var(--surface-raised)", position: "relative", zIndex: 1 }}
         >
           <MobileTab label="Boards" active={activeView === "board" && !showProfile} onClick={() => { setShowProfile(false); onViewChange("board"); }} icon={<LogoMark size={20} badge />} />
-          <MobileTab label="Servers" active={activeView === "server" && !showProfile} onClick={() => setShowServerGrid(true)} icon={<Layout size={19} />} />
+          {showServers && <MobileTab label="Servers" active={activeView === "server" && !showProfile} onClick={() => setShowServerGrid(true)} icon={<Layout size={19} />} />}
           <MobileTab label="Friends" active={showFriends && !showProfile} onClick={onFriendsToggle} icon={<Users size={19} />} />
           <MobileTab label="You" active={showProfile} onClick={() => setShowProfile((v) => !v)} icon={
             <span className="flex h-[22px] w-[22px] items-center justify-center overflow-hidden rounded-full" style={{ background: mounted ? (identity.color ?? "var(--surface-overlay)") : "var(--surface-overlay)" }}>
@@ -348,6 +351,7 @@ export function BottomBar({
           <BarBtn label="Friends" active={showFriends} onClick={onFriendsToggle} icon={<Users size={18} />} />
         </div>
 
+        {showServers && (<>
         <Divider />
 
         {/* Servers — real servers first (no drag), then mock servers (draggable) */}
@@ -404,6 +408,7 @@ export function BottomBar({
             </div>
           </div>
         </div>
+        </>)}
 
         <div className="flex-1" />
       </div>

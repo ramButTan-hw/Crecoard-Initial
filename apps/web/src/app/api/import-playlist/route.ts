@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
     const tracks: { title: string; url: string }[] = [];
     let pageToken: string | undefined;
 
+    let pages = 0;
     try {
       do {
         const apiUrl =
@@ -29,13 +30,13 @@ export async function GET(req: NextRequest) {
           (pageToken ? `&pageToken=${pageToken}` : "") +
           `&key=${key}`;
 
-        const res = await fetch(apiUrl, { next: { revalidate: 300 } });
+        // Bound each request so a hung/slow upstream can't spin forever.
+        const res = await fetch(apiUrl, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          return NextResponse.json(
-            { error: (err as any)?.error?.message ?? "YouTube API error" },
-            { status: res.status }
-          );
+          const message = (err as any)?.error?.message ?? "YouTube API error";
+          console.error(`[import-playlist] YouTube ${res.status}: ${message}`);
+          return NextResponse.json({ error: message }, { status: res.status });
         }
 
         const data: {
@@ -52,9 +53,14 @@ export async function GET(req: NextRequest) {
         }
 
         pageToken = data.nextPageToken;
-      } while (pageToken && tracks.length < 200);
-    } catch {
-      return NextResponse.json({ error: "Failed to fetch playlist" }, { status: 500 });
+      } while (pageToken && tracks.length < 200 && ++pages < 8);
+    } catch (e) {
+      const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+      console.error(`[import-playlist] fetch failed (${(e as Error)?.name ?? "error"})`);
+      return NextResponse.json(
+        { error: timedOut ? "YouTube took too long to respond — try again" : "Failed to fetch playlist" },
+        { status: timedOut ? 504 : 500 }
+      );
     }
 
     return NextResponse.json({ tracks });

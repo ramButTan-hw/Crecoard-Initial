@@ -210,7 +210,8 @@ export default function WallpaperPage() {
   const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
   const barBtn: React.CSSProperties = {
     ...noDrag, width: 26, height: 22, display: "flex", alignItems: "center", justifyContent: "center",
-    borderRadius: 6, color: "#8b8d99", fontSize: 13, cursor: "pointer", background: "transparent", border: "none",
+    borderRadius: 6, color: "#c9cad3", fontSize: 13, cursor: "pointer", background: "transparent", border: "none",
+    filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.55))",
   };
 
   return (
@@ -219,16 +220,28 @@ export default function WallpaperPage() {
         {/* Pop-out: a slim draggable titlebar (the window is borderless) over the
             interactive board. `flex` on the board row is load-bearing — BoardCanvas's
             root is flex-1 and collapses to zero height without a flex parent. */}
-        <div className="flex h-screen w-screen flex-col overflow-hidden">
-          {/* Titlebar — drag to move; buttons pin / minimize / close */}
+        <div className="relative h-screen w-screen overflow-hidden">
+          {/* Interactive board fills the whole window — the titlebar floats over it. */}
+          <div className="absolute inset-0 flex overflow-hidden">
+            <BoardCanvas />
+            {/* Enlarged-block overlay (rendered by AppShell in the main app) */}
+            {expandedBoxId && <ExpandedBlock boxId={expandedBoxId} />}
+          </div>
+
+          {/* Glass titlebar — frosted + fading into the board for an immersive pop-out.
+              Auto-hides to a peek strip; full bar on hover. */}
           <div
-            style={{ ...dragRegion, height: 34, flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
-              padding: "0 8px", background: "rgba(13,14,17,0.92)", borderBottom: "1px solid rgba(255,255,255,0.08)", userSelect: "none" }}
+            className="group/titlebar"
+            style={{ ...dragRegion, position: "absolute", top: 0, left: 0, right: 0, zIndex: 50, height: 34,
+              display: "flex", alignItems: "center", gap: 8, padding: "0 8px",
+              background: "linear-gradient(to bottom, rgba(13,14,17,0.5), rgba(13,14,17,0.08))",
+              backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
+              opacity: 0.35, transition: "opacity 0.2s", userSelect: "none" }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.35")}
           >
-            <span style={{ color: "#d59ee8", fontSize: 12, fontWeight: 600, marginLeft: 4 }}>{boardName || "Board"}</span>
-            <span style={{ color: "#5f606a", fontSize: 11 }}>· pop-out · drag to move</span>
             <div style={{ flex: 1 }} />
-            <button style={{ ...barBtn, color: onTop ? "#d59ee8" : "#8b8d99" }} title={onTop ? "Unpin from top" : "Keep on top"}
+            <button style={{ ...barBtn, color: onTop ? "#e0b8f0" : "#c9cad3" }} title={onTop ? "Unpin from top" : "Keep on top"}
               onClick={async () => { const v = await window.electron?.popoutToggleTop?.(); setOnTop(!!v); }}>
               <Pin size={13} fill={onTop ? "currentColor" : "none"} />
             </button>
@@ -237,17 +250,10 @@ export default function WallpaperPage() {
             </button>
             <button style={{ ...barBtn }} title="Close (Esc)"
               onMouseEnter={(e) => (e.currentTarget.style.color = "#eb5757")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "#8b8d99")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#c9cad3")}
               onClick={() => void window.electron?.clearWallpaper?.()}>
               <X size={14} />
             </button>
-          </div>
-
-          {/* Interactive board */}
-          <div className="relative flex flex-1 overflow-hidden">
-            <BoardCanvas />
-            {/* Enlarged-block overlay (rendered by AppShell in the main app) */}
-            {expandedBoxId && <ExpandedBlock boxId={expandedBoxId} />}
           </div>
 
           {splash && (
