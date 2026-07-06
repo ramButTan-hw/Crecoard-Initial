@@ -702,6 +702,8 @@ export interface BlockItem {
   // kanban
   kanbanColumns?: KanbanColumn[];
   kanbanCards?: KanbanCard[];
+  /** Server boards: let non-admin members add/edit/move cards (persisted via /api/server-board/kanban). */
+  kanbanMemberEdit?: boolean;
 
   // chat (server board chat block)
   chatChannelName?: string;

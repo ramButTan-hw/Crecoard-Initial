@@ -10004,11 +10004,11 @@ const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
 ];
 
 function KanbanSortableCard({
-  card, isFinished, onEdit, onDelete,
+  card, canEdit, onEdit, onDelete,
   cardBg, fontSize, fontFamily, borderRadius, cardGap,
   assignee, inDoneColumn,
 }: {
-  card: KanbanCard; isFinished: boolean;
+  card: KanbanCard; canEdit: boolean;
   onEdit: (id: string) => void; onDelete: (id: string) => void;
   cardBg: string; fontSize: number; fontFamily: string; borderRadius: number; cardGap: number;
   assignee?: ServerMember; inDoneColumn?: boolean;
@@ -10016,6 +10016,7 @@ function KanbanSortableCard({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
     data: { type: "card", cardId: card.id },
+    disabled: !canEdit,
   });
   const style: React.CSSProperties = {
     transform: DndCSS.Transform.toString(transform),
@@ -10027,7 +10028,7 @@ function KanbanSortableCard({
     fontSize,
     fontFamily: fontFamily || undefined,
     borderLeft: card.color ? `3px solid ${card.color}` : undefined,
-    cursor: "grab",
+    cursor: canEdit ? "grab" : "default",
     userSelect: "none",
     padding: "8px 10px",
     boxShadow: isDragging ? "0 4px 16px rgba(0,0,0,0.3)" : "0 1px 3px rgba(0,0,0,0.15)",
@@ -10035,13 +10036,13 @@ function KanbanSortableCard({
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}
-      onDoubleClick={(e) => { e.stopPropagation(); if (!isFinished) onEdit(card.id); }}
+      onDoubleClick={(e) => { e.stopPropagation(); if (canEdit) onEdit(card.id); }}
     >
       <div className="flex items-start justify-between gap-1">
         <span style={{ flex: 1, wordBreak: "break-word", color: "var(--text-primary)", lineHeight: 1.4 }}>
           {card.text || <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Empty card</span>}
         </span>
-        {!isFinished && (
+        {canEdit && (
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); onDelete(card.id); }}
@@ -10165,14 +10166,15 @@ function KanbanEditModal({
 
 // Bug fix: useDroppable per column so empty columns accept drops
 function KanbanColumnContainer({
-  col, colCards, isFinished, renamingColId, renameVal, setRenamingColId, setRenameVal,
+  col, colCards, canEditCards, canEditColumns, renamingColId, renameVal, setRenamingColId, setRenameVal,
   renameColumn, deleteColumn, toggleDoneColumn, addCard, deleteCard, setEditCardId, showCount,
   memberById,
   headerBg, accent, columnBg, borderRadius, cardBg, fontSize, fontFamily, cardGap,
 }: {
   col: KanbanColumn;
   colCards: KanbanCard[];
-  isFinished: boolean;
+  canEditCards: boolean;
+  canEditColumns: boolean;
   renamingColId: string | null;
   renameVal: string;
   setRenamingColId: (id: string | null) => void;
@@ -10251,7 +10253,7 @@ function KanbanColumnContainer({
         ) : (
           <span
             className="flex-1 min-w-0 truncate text-xs font-semibold text-[var(--text-primary)] select-none"
-            onDoubleClick={() => { if (!isFinished) { setRenamingColId(col.id); setRenameVal(col.title); } }}
+            onDoubleClick={() => { if (canEditColumns) { setRenamingColId(col.id); setRenameVal(col.title); } }}
             title="Double-click to rename"
           >
             {col.title}
@@ -10262,7 +10264,7 @@ function KanbanColumnContainer({
             {colCards.length}{col.limit != null ? `/${col.limit}` : ""}
           </span>
         )}
-        {!isFinished && (
+        {canEditColumns && (
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => toggleDoneColumn(col.id)}
@@ -10277,7 +10279,7 @@ function KanbanColumnContainer({
             <CheckSquare size={11} />
           </button>
         )}
-        {!isFinished && (
+        {canEditColumns && (
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => deleteColumn(col.id)}
@@ -10298,7 +10300,7 @@ function KanbanColumnContainer({
             <div key={card.id} className="group/kcard">
               <KanbanSortableCard
                 card={card}
-                isFinished={isFinished}
+                canEdit={canEditCards}
                 onEdit={(id) => setEditCardId(id)}
                 onDelete={deleteCard}
                 cardBg={colCardBg}
@@ -10311,7 +10313,7 @@ function KanbanColumnContainer({
               />
             </div>
           ))}
-          {!isFinished && !atLimit && (
+          {canEditCards && !atLimit && (
             <button
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => addCard(col.id)}
@@ -10336,8 +10338,66 @@ function KanbanItem({
   const isFinished = isFinishedProp ?? false;
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const columns: KanbanColumn[] = item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS;
-  const cards: KanbanCard[] = item.kanbanCards ?? [];
-  const { members } = useServerBoard();
+  const { members, serverId, viewerRole } = useServerBoard();
+  const canEditBoard = useCanEditBoard();
+  // Members can edit CARDS (not columns) only when the owner enabled it. Their
+  // edits never touch the store — they persist via the server API and live in
+  // optimistic local state, so the whole-board sync can't clobber other items.
+  const isMemberEdit = !!serverId && viewerRole === "member" && !!item.kanbanMemberEdit && !isFinished;
+  const canEditCards = !isFinished && (canEditBoard || isMemberEdit);
+  const canEditColumns = !isFinished && canEditBoard;
+  // Display override holding optimistic (member) + realtime-received cards, so all
+  // viewers see edits live. Persistence still goes to the store (owner) or the API
+  // (member); lastSentRef lets us ignore our own realtime echo.
+  const [liveCards, setLiveCards] = useState<KanbanCard[] | null>(null);
+  const lastSentRef = useRef<string>("");
+  const cards: KanbanCard[] = liveCards ?? (item.kanbanCards ?? []);
+
+  const persistCards = useCallback((next: KanbanCard[]) => {
+    setLiveCards(next);
+    lastSentRef.current = JSON.stringify(next);
+    if (isMemberEdit) {
+      void fetch("/api/server-board/kanban", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ boardId, serverId, itemId: item.id, cards: next }),
+      }).catch(() => {});
+    } else {
+      upd({ kanbanCards: next });
+    }
+  }, [isMemberEdit, boardId, serverId, item.id, upd]);
+
+  // Drop the override when the board's stored cards change from an external
+  // reload (not our own write) so we show fresh data.
+  useEffect(() => {
+    const sig = JSON.stringify(item.kanbanCards ?? []);
+    if (sig !== lastSentRef.current) { setLiveCards(null); lastSentRef.current = sig; }
+  }, [item.kanbanCards]);
+
+  // Realtime: reflect other clients' card edits live (server boards only).
+  useEffect(() => {
+    if (!serverId || !boardId) return;
+    const findCards = (data: unknown): KanbanCard[] | undefined => {
+      const b = data as { boxes?: { items?: BlockItem[] }[]; boardItems?: BlockItem[] } | null;
+      if (!b) return undefined;
+      for (const box of b.boxes ?? []) { const hit = (box.items ?? []).find((i) => i.id === item.id); if (hit) return hit.kanbanCards; }
+      return (b.boardItems ?? []).find((i) => i.id === item.id)?.kanbanCards;
+    };
+    const ch = supabase
+      .channel(`kanban:${boardId}:${item.id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "boards", filter: `id=eq.${boardId}` },
+        (payload: { new?: { data?: unknown } }) => {
+          const fresh = findCards(payload.new?.data);
+          if (!fresh) return;
+          const sig = JSON.stringify(fresh);
+          if (sig === lastSentRef.current) return; // our own echo
+          lastSentRef.current = sig;
+          setLiveCards(fresh);
+          if (canEditBoard) upd({ kanbanCards: fresh }); // keep owner's store in sync
+        })
+      .subscribe();
+    return () => { void supabase.removeChannel(ch); };
+  }, [serverId, boardId, item.id, canEditBoard, upd]);
   const memberById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members]);
   const accent = item.kanbanAccentColor ?? "#d59ee8";
   const fontSize = item.kanbanFontSize ?? 13;
@@ -10416,11 +10476,11 @@ function KanbanItem({
       const targetColCards = cards
         .filter((c) => c.columnId === (over.id as string) && c.id !== liveCard.id)
         .sort((a, b) => a.order - b.order);
-      upd({
-        kanbanCards: cards.map((c) =>
+      persistCards(
+        cards.map((c) =>
           c.id === liveCard.id ? { ...c, order: targetColCards.length } : c
-        ),
-      });
+        )
+      );
       return;
     }
 
@@ -10439,12 +10499,12 @@ function KanbanItem({
       const withoutActive = targetColCards.filter((c) => c.id !== liveCard.id);
       const insertAt = overIdx === -1 ? withoutActive.length : overIdx;
       const reordered = [...withoutActive.slice(0, insertAt), liveCard, ...withoutActive.slice(insertAt)];
-      upd({
-        kanbanCards: cards.map((c) => {
+      persistCards(
+        cards.map((c) => {
           const idx = reordered.findIndex((r) => r.id === c.id);
           return idx !== -1 ? { ...c, columnId: overCard.columnId, order: idx } : c;
-        }),
-      });
+        })
+      );
       return;
     }
 
@@ -10456,13 +10516,13 @@ function KanbanItem({
     if (activeIdx === -1 || overIdx === -1) return;
 
     const reordered = arrayMove(colCards, activeIdx, overIdx);
-    upd({
-      kanbanCards: cards.map((c) => {
+    persistCards(
+      cards.map((c) => {
         const idx = reordered.findIndex((r) => r.id === c.id);
         return idx !== -1 ? { ...c, order: idx } : c;
-      }),
-    });
-  }, [cards, columns, upd]);
+      })
+    );
+  }, [cards, columns, persistCards]);
 
   const addCard = useCallback((colId: string) => {
     const colCards = cards.filter((c) => c.columnId === colId);
@@ -10470,17 +10530,17 @@ function KanbanItem({
     const maxOrder = colCards.length > 0 ? Math.max(...colCards.map((c) => c.order)) : -1;
     const newCard: KanbanCard = { id: nanoid(), columnId: colId, text: "", order: maxOrder + 1 };
     newCardIdRef.current = newCard.id;
-    upd({ kanbanCards: [...cards, newCard] });
+    persistCards([...cards, newCard]);
     setEditCardId(newCard.id);
-  }, [cards, upd]);
+  }, [cards, persistCards]);
 
   const deleteCard = useCallback((cardId: string) => {
-    upd({ kanbanCards: cards.filter((c) => c.id !== cardId) });
-  }, [cards, upd]);
+    persistCards(cards.filter((c) => c.id !== cardId));
+  }, [cards, persistCards]);
 
   const updateCard = useCallback((cardId: string, patch: Partial<KanbanCard>) => {
-    upd({ kanbanCards: cards.map((c) => c.id === cardId ? { ...c, ...patch } : c) });
-  }, [cards, upd]);
+    persistCards(cards.map((c) => c.id === cardId ? { ...c, ...patch } : c));
+  }, [cards, persistCards]);
 
   const addColumn = useCallback(() => {
     upd({ kanbanColumns: [...columns, { id: nanoid(), title: "New Column", color: accent }] });
@@ -10588,7 +10648,8 @@ function KanbanItem({
           key={col.id}
           col={col}
           colCards={cardsInCol(col.id)}
-          isFinished={isFinished}
+          canEditCards={canEditCards}
+          canEditColumns={canEditColumns}
           renamingColId={renamingColId}
           renameVal={renameVal}
           setRenamingColId={setRenamingColId}
@@ -10611,7 +10672,7 @@ function KanbanItem({
           cardGap={cardGap}
         />
       ))}
-      {!isFinished && (
+      {canEditColumns && (
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={addColumn}
@@ -10683,8 +10744,8 @@ function KanbanItem({
           onClose={() => setCtxMenu(null)}
           items={[
             ...(extraContextItems?.length ? [...extraContextItems, "separator" as const] : []),
-            ...(!isFinished ? [{ label: "Add column", icon: <Plus size={14} />, onClick: addColumn }] : []),
-            ...(!isFinished && cards.length > 0 ? ["separator" as const, { label: "Clear all cards", icon: <Trash2 size={14} />, danger: true, onClick: () => upd({ kanbanCards: [] }) }] : []),
+            ...(canEditColumns ? [{ label: "Add column", icon: <Plus size={14} />, onClick: addColumn }] : []),
+            ...(canEditColumns && cards.length > 0 ? ["separator" as const, { label: "Clear all cards", icon: <Trash2 size={14} />, danger: true, onClick: () => upd({ kanbanCards: [] }) }] : []),
           ]}
         />
       )}
@@ -10702,6 +10763,7 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
   const [openPicker, setOpenPicker] = useState<string | null>(null);
   const [styleCol, setStyleCol] = useState<string | null>(null);
   const cols = item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS;
+  const { serverId } = useServerBoard();
   const patchCol = (id: string, patch: Partial<KanbanColumn>) =>
     upd({ kanbanColumns: cols.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
 
@@ -10729,6 +10791,24 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
 
   return (
     <div className="flex flex-col gap-0 divide-y divide-[var(--border)] text-xs">
+      {/* Member access — server boards only */}
+      {serverId && (
+        <section className="p-3">
+          <SLabel>Member access</SLabel>
+          <label className="flex cursor-pointer items-center justify-between gap-3">
+            <span className="flex flex-col">
+              <span className="text-[var(--text-secondary)]">Members can add &amp; edit cards</span>
+              <span className="text-[10px] text-[var(--text-muted)]">Non-admins may create, move &amp; edit cards (not columns)</span>
+            </span>
+            <input
+              type="checkbox"
+              className="h-4 w-4 flex-shrink-0 cursor-pointer accent-[var(--accent)]"
+              checked={!!item.kanbanMemberEdit}
+              onChange={(e) => upd({ kanbanMemberEdit: e.target.checked })}
+            />
+          </label>
+        </section>
+      )}
       {/* Columns */}
       <section className="p-3">
         <SLabel>Columns</SLabel>
