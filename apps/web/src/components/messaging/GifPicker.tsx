@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, X } from "lucide-react";
 
-const GIPHY_KEY = "dc6zaTOxFJmzC";
+// GIPHY's old public beta key ("dc6zaTOxFJmzC") is now permanently banned (403),
+// so a real key must be supplied via env. Get one free at developers.giphy.com.
+const GIPHY_KEY = process.env.NEXT_PUBLIC_GIPHY_API_KEY ?? "";
 
 interface GifResult {
   id: string;
@@ -20,17 +22,21 @@ export function GifPicker({ onSelect, onClose }: GifPickerProps) {
   const [query, setQuery] = useState("");
   const [gifs, setGifs] = useState<GifResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchGifs = async (q: string) => {
     setLoading(true);
+    setError(false);
+    if (!GIPHY_KEY) { setError(true); setGifs([]); setLoading(false); return; }
     try {
       const url = q.trim()
         ? `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${encodeURIComponent(q)}&limit=12&rating=g`
         : `https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=12&rating=g`;
       const res = await fetch(url);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const json: { data: any[] } = await res.json();
+      const json: { data?: any[]; meta?: { status?: number } } = await res.json().catch(() => ({}));
+      if (!res.ok || (json.meta?.status ?? 200) >= 400) { setError(true); setGifs([]); return; }
       setGifs(
         (json.data ?? []).map((item) => ({
           id: item.id as string,
@@ -45,6 +51,7 @@ export function GifPicker({ onSelect, onClose }: GifPickerProps) {
         }))
       );
     } catch {
+      setError(true);
       setGifs([]);
     } finally {
       setLoading(false);
@@ -104,6 +111,11 @@ export function GifPicker({ onSelect, onClose }: GifPickerProps) {
         {loading ? (
           <div className="flex h-full items-center justify-center">
             <p className="text-xs text-[var(--text-muted)]">Loading…</p>
+          </div>
+        ) : error ? (
+          <div className="flex h-full flex-col items-center justify-center gap-1 px-5 text-center">
+            <p className="text-xs text-[var(--text-muted)]">GIF search is unavailable</p>
+            <p className="text-[10px] text-[var(--text-muted)] opacity-60">A GIPHY API key needs to be configured.</p>
           </div>
         ) : gifs.length === 0 ? (
           <div className="flex h-full items-center justify-center">

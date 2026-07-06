@@ -121,7 +121,7 @@ export const ITEM_DEFINITIONS: {
     type: "playlist",
     label: "Playlist",
     icon: <Music size={15} />,
-    description: "Music queue — YouTube, Spotify, SoundCloud & more",
+    description: "Music queue — paste YouTube links",
     defaultItem: () => ({ type: "playlist", playlistTracks: [], playlistCurrentIndex: 0, playlistLoop: true }),
   },
   {
@@ -148,7 +148,7 @@ export const ITEM_DEFINITIONS: {
     type: "chat",
     label: "Chat Channel",
     icon: <MessageSquare size={15} />,
-    description: "Discord-style chat block",
+    description: "Real-time chat channel",
     serverOnly: true,
     defaultItem: () => ({ type: "chat", chatChannelName: "general" }),
   },

@@ -41,6 +41,10 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+/* Chrome-less scroll container (drag-to-pan surfaces like the expanded-block canvas) */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* Board / expanded block grid — dot grid with major (100px) + minor (20px) intervals */
 .board-grid {
   background-image:

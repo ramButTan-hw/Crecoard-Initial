@@ -385,7 +385,10 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
   const canvasScrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [panning, setPanning] = useState(false);
-  const panStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+  // Transform-based pan (like the main board) so the canvas floats freely instead
+  // of being scroll-bound to the top-left.
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const wasPanningRef = useRef(false);
   const prevFocusRef = useRef<HTMLElement | null>(null);
 
@@ -434,20 +437,14 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
     if (e.button !== 0) return;
     if (e.target !== canvasRef.current) return;
 
-    panStart.current = {
-      x: e.clientX,
-      y: e.clientY,
-      scrollLeft: canvasScrollRef.current?.scrollLeft ?? 0,
-      scrollTop: canvasScrollRef.current?.scrollTop ?? 0,
-    };
+    panStart.current = { x: e.clientX, y: e.clientY, panX: panOffset.x, panY: panOffset.y };
     setPanning(true);
 
     const onMove = (ev: MouseEvent) => {
-      if (!canvasScrollRef.current) return;
-      const dx = ev.clientX - panStart.current.x;
-      const dy = ev.clientY - panStart.current.y;
-      canvasScrollRef.current.scrollLeft = panStart.current.scrollLeft - dx;
-      canvasScrollRef.current.scrollTop = panStart.current.scrollTop - dy;
+      setPanOffset({
+        x: panStart.current.panX + (ev.clientX - panStart.current.x),
+        y: panStart.current.panY + (ev.clientY - panStart.current.y),
+      });
       wasPanningRef.current = true;
     };
     const onUp = () => {
@@ -459,6 +456,64 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
+
+  // Single-finger touch pan (overflow-hidden killed native touch-scroll).
+  const handleCanvasTouchStart = (e: React.TouchEvent) => {
+    if (e.target !== canvasRef.current || e.touches.length !== 1) return;
+    const t0 = e.touches[0];
+    panStart.current = { x: t0.clientX, y: t0.clientY, panX: panOffset.x, panY: panOffset.y };
+    setPanning(true);
+    const onMove = (ev: TouchEvent) => {
+      if (ev.touches.length !== 1) return;
+      const t = ev.touches[0];
+      setPanOffset({
+        x: panStart.current.panX + (t.clientX - panStart.current.x),
+        y: panStart.current.panY + (t.clientY - panStart.current.y),
+      });
+      wasPanningRef.current = true;
+    };
+    const onEnd = () => {
+      setPanning(false);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onEnd);
+    };
+    window.addEventListener("touchmove", onMove, { passive: true });
+    window.addEventListener("touchend", onEnd);
+  };
+
+  // Zoom toward the viewport center so the board doesn't drift to a corner.
+  const zoomTo = useCallback((next: number) => {
+    const z1 = Math.max(0.5, Math.min(2, Math.round(next * 4) / 4));
+    const z0 = canvasZoom;
+    if (z0 === z1) return;
+    const el = canvasScrollRef.current;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const cx = rect.width / 2, cy = rect.height / 2;
+      setPanOffset((p) => ({ x: cx - (cx - p.x) * (z1 / z0), y: cy - (cy - p.y) * (z1 / z0) }));
+    }
+    setCanvasZoom(z1);
+  }, [canvasZoom]);
+
+  // Ctrl/Cmd + wheel → zoom toward the cursor (parity with the main board).
+  useEffect(() => {
+    const el = canvasScrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+      const z0 = canvasZoom;
+      const z1 = Math.max(0.5, Math.min(2, parseFloat((z0 + (e.deltaY > 0 ? -0.1 : 0.1)).toFixed(2))));
+      if (z1 === z0) return;
+      const ratio = z1 / z0;
+      setPanOffset((p) => ({ x: cx - (cx - p.x) * ratio, y: cy - (cy - p.y) * ratio }));
+      setCanvasZoom(z1);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [canvasZoom]);
 
   const handleDragEnd = (e: DragEndEvent) => {
     if (e.active.data.current?.kind !== "expanded-item") return;
@@ -533,21 +588,21 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
             )}
             <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-overlay)] p-0.5">
               <button
-                onClick={() => setCanvasZoom((v) => Math.max(0.5, Math.round((v - 0.25) * 4) / 4))}
+                onClick={() => zoomTo(canvasZoom - 0.25)}
                 className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
                 title="Zoom out"
               >
                 <Minus size={14} />
               </button>
               <button
-                onClick={() => setCanvasZoom(1)}
+                onClick={() => { setCanvasZoom(1); setPanOffset({ x: 0, y: 0 }); }}
                 className="min-w-[3.5rem] rounded-md px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
-                title="Reset zoom"
+                title="Reset view"
               >
                 {Math.round(canvasZoom * 100)}%
               </button>
               <button
-                onClick={() => setCanvasZoom((v) => Math.min(2, Math.round((v + 0.25) * 4) / 4))}
+                onClick={() => zoomTo(canvasZoom + 0.25)}
                 className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
                 title="Zoom in"
               >
@@ -574,20 +629,22 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
           {/* Canvas */}
           <div
             ref={canvasScrollRef}
-            className="flex-1 overflow-auto relative"
+            className="flex-1 overflow-hidden relative"
             onMouseDown={handleCanvasPanMouseDown}
-            style={{ cursor: panning ? "grabbing" : undefined }}
+            onTouchStart={handleCanvasTouchStart}
+            style={{ cursor: panning ? "grabbing" : undefined, touchAction: "none" }}
           >
-            <div style={{ width: CANVAS_WIDTH * canvasZoom, height: CANVAS_HEIGHT * canvasZoom }}>
               <DndContext id="dnd-expanded-block" sensors={sensors} onDragEnd={handleDragEnd}>
                 <div
                   ref={canvasRef}
-                  className={cn("relative", showGrid && "board-grid")}
+                  className={cn("absolute", showGrid && "board-grid")}
                   style={{
+                    left: 0,
+                    top: 0,
                     width: CANVAS_WIDTH,
                     height: CANVAS_HEIGHT,
-                    transform: `scale(${canvasZoom})`,
-                    transformOrigin: "top left",
+                    transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${canvasZoom})`,
+                    transformOrigin: "0 0",
                     backgroundColor: box.style.backgroundColor,
                     zIndex: 1,
                     cursor: panning ? "grabbing" : "grab",
@@ -665,7 +722,6 @@ export function ExpandedBlock({ boxId }: { boxId: string }) {
                 )}
                 </div>
               </DndContext>
-            </div>
 
             {canvasCtxMenu && !isFinished && (
               <ContextMenu

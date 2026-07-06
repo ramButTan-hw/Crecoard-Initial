@@ -9501,7 +9501,7 @@ function PlaylistItem({ item, upd, boardId, boxId, collapsed, isFinished, canInt
     <div className="shrink-0 border-t border-white/10 pt-2 flex flex-col gap-1.5">
       <input value={urlInput} onChange={(e) => { setUrlInput(e.target.value); setImportError(null); }}
         onKeyDown={(e) => { if (e.key === "Enter") addTrack(); }}
-        placeholder="Paste any URL — YouTube, Spotify, SoundCloud, Apple Music, Deezer…"
+        placeholder="Paste a YouTube URL…"
         className="rounded-lg bg-black/20 border border-white/10 px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]" />
       <div className="flex gap-1.5">
         <input value={titleInput} onChange={(e) => setTitleInput(e.target.value)}
@@ -9827,7 +9827,7 @@ export function PlaylistStylePanel({ item, upd }: { item: BlockItem; upd: (p: Pa
           <Volume2 size={11} className="shrink-0 text-[var(--text-muted)]" />
           <span className="tabular-nums w-7 text-right text-[var(--text-muted)]">{item.playlistVolume ?? 80}%</span>
         </div>
-        <p className="mt-1 text-[10px] text-[var(--text-muted)] leading-tight">Works for audio files and YouTube only. Spotify, SoundCloud, and others don't expose a volume API — the button is dimmed for those.</p>
+        <p className="mt-1 text-[10px] text-[var(--text-muted)] leading-tight">Volume works for YouTube and uploaded audio files.</p>
       </section>
 
       {/* Background */}
@@ -10773,7 +10773,6 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
   const [openPicker, setOpenPicker] = useState<string | null>(null);
   const [styleCol, setStyleCol] = useState<string | null>(null);
   const cols = item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS;
-  const { serverId } = useServerBoard();
   const patchCol = (id: string, patch: Partial<KanbanColumn>) =>
     upd({ kanbanColumns: cols.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
 
@@ -10801,19 +10800,6 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
 
   return (
     <div className="flex flex-col gap-0 divide-y divide-[var(--border)] text-xs">
-      {/* Member access — server boards only. Card editing is role-based via the
-          item's Interact permission (right-click → Set permissions). */}
-      {serverId && (
-        <section className="p-3">
-          <SLabel>Member access</SLabel>
-          <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
-            Who can add, move &amp; edit cards is set by this item&apos;s{" "}
-            <span className="text-[var(--text-secondary)]">Interact</span> permission —
-            right-click the kanban → <span className="text-[var(--text-secondary)]">Set permissions</span> to
-            choose which roles. Columns stay owner/admin&#8209;only.
-          </p>
-        </section>
-      )}
       {/* Columns */}
       <section className="p-3">
         <SLabel>Columns</SLabel>

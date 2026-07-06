@@ -10,7 +10,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useUser } from "@/contexts/UserContext";
 import { useProfiles } from "@/contexts/ProfilesContext";
 import { uploadFile, uploadDataUrl } from "@/lib/storage";
-import { useCanEditBoard } from "@/contexts/ServerBoardContext";
+import { useCanEditBoard, useServerBoard } from "@/contexts/ServerBoardContext";
 import { cn } from "@/lib/utils";
 import { EmojiPicker } from "@/components/messaging/EmojiPicker";
 import { GifPicker } from "@/components/messaging/GifPicker";
@@ -152,6 +152,10 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   // single wallpaper could fill the whole localStorage quota ("Storage is full")
   // and bloat every publish. Editors upload it to storage and swap in the URL.
   const canEditBoardForHeal = useCanEditBoard();
+  // Moderation: server owners/admins can delete anyone's message
+  // (enforced server-side by the board_chat_delete_moderator RLS policy).
+  const { viewerRole } = useServerBoard();
+  const canModerate = !!serverId && (viewerRole === "owner" || viewerRole === "admin");
   useEffect(() => {
     const img = item.chatBgImage;
     if (!img?.startsWith("data:") || !canEditBoardForHeal || boardId.endsWith(":live")) return;
@@ -564,7 +568,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
         ref={scrollContainerRef}
         data-nodrag
         className="relative z-10 flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2"
-        style={{ minHeight: 0, scrollbarWidth: "thin" }}
+        style={{ minHeight: 0, scrollbarWidth: "thin", scrollbarColor: "var(--border) transparent" }}
       >
         {chatLoading && !searchTerm ? (
           <div className="flex flex-1 flex-col justify-end gap-3 py-2" aria-busy="true">
@@ -661,13 +665,13 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                       <Pencil size={12} />
                     </button>
                   )}
-                  {isYou && !msg.id.startsWith("opt-") && (
+                  {(isYou || canModerate) && !msg.id.startsWith("opt-") && (
                     <button
                       onClick={() => {
                         if (confirmDeleteId === msg.id) { void deleteOwnMessage(msg.id); setConfirmDeleteId(null); }
                         else setConfirmDeleteId(msg.id);
                       }}
-                      title={confirmDeleteId === msg.id ? "Click again to delete" : "Delete message"}
+                      title={confirmDeleteId === msg.id ? "Click again to delete" : (isYou ? "Delete message" : "Delete (moderator)")}
                       className={cn("rounded p-1 transition-colors", confirmDeleteId === msg.id ? "text-red-400" : "text-[var(--text-muted)] hover:text-red-400")}
                     >
                       <Trash2 size={12} />

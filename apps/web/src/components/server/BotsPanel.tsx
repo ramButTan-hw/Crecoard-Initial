@@ -25,7 +25,7 @@ function fmtWhen(iso: string | null): string {
   return d.toLocaleDateString();
 }
 
-/** Server Settings → Bots: register Discord-style bots that act through /api/bot/*. */
+/** Server Settings → Bots: register programmable bots that act through /api/bot/*. */
 export function BotsPanel({ serverId, isReal }: { serverId: string; isReal: boolean }) {
   const [bots, setBots] = useState<BotRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,7 +94,7 @@ export function BotsPanel({ serverId, isReal }: { serverId: string; isReal: bool
       <h2 className="mb-1 text-xl font-bold text-[var(--text-primary)]">Bots</h2>
       <p className="mb-6 text-xs text-[var(--text-muted)]">
         Bots run on your own server and act through a scoped REST API — post to chat, add cards,
-        read members. Like Discord bots, for boards. See <code>docs/bot-api.md</code>.
+        read members. Programmable automation for your board. See <code>docs/bot-api.md</code>.
       </p>
 
       {/* One-time token reveal */}

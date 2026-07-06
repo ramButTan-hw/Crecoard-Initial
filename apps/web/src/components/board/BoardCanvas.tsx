@@ -429,7 +429,9 @@ export function BoardCanvas() {
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [setZoom, setPanOffset]);
+    // board?.id: server boards render a skeleton (no viewportRef) until data loads,
+    // so re-run once the real canvas mounts — otherwise ctrl/⌘+wheel zoom never binds.
+  }, [setZoom, setPanOffset, board?.id]);
 
   // ── Touch gestures: one-finger pan (on empty canvas) + two-finger pinch-zoom ──
   // Box/item dragging stays with dnd-kit's TouchSensor (200ms press-and-hold), so a
@@ -552,7 +554,9 @@ export function BoardCanvas() {
       el.removeEventListener("gesturestart", stopGesture);
       el.removeEventListener("gesturechange", stopGesture);
     };
-  }, [setZoom, setPanOffset, handleFitContent]);
+    // board?.id: re-bind after the loading skeleton is replaced by the real canvas
+    // (server boards), so touch pan/pinch attach to the viewport.
+  }, [setZoom, setPanOffset, handleFitContent, board?.id]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
