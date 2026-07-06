@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Crown, X } from "lucide-react";
 import type { BoxPerms, ItemPerms } from "@/store/boardStore";
 import { useServerBoard } from "@/contexts/ServerBoardContext";
@@ -213,7 +214,10 @@ function PermModalShell({
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return (
+  // Portal to <body> so this escapes the board canvas's transform stacking context
+  // (otherwise embed/widget iframes on the canvas paint over the modal).
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
       className="fixed inset-0 z-[300] flex items-center justify-center"
       style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
@@ -253,6 +257,7 @@ function PermModalShell({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

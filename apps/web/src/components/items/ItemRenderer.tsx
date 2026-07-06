@@ -44,7 +44,7 @@ import DOMPurify from "isomorphic-dompurify";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
 import { useItemContributions } from "@/contexts/BoardContributionsContext";
-import { useCanEditBoard, useServerBoard, roleAllowed } from "@/contexts/ServerBoardContext";
+import { useCanEditBoard, useServerBoard, useItemPerms, roleAllowed } from "@/contexts/ServerBoardContext";
 import { resolveEmbed, PLATFORM_COLORS, getStaticThumbnail, advancePlaylistIndex, playerKeyOf } from "@/lib/playlist";
 import { usePlayerStore } from "@/store/playerStore";
 import { usePlayerSession, announceSessionState } from "@/lib/playerSession";
@@ -10346,12 +10346,14 @@ function KanbanItem({
   const isFinished = isFinishedProp ?? false;
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const columns: KanbanColumn[] = item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS;
-  const { members, serverId, viewerRole } = useServerBoard();
+  const { members, serverId } = useServerBoard();
   const canEditBoard = useCanEditBoard();
-  // Members can edit CARDS (not columns) only when the owner enabled it. Their
-  // edits never touch the store — they persist via the server API and live in
+  // Members can edit CARDS (not columns) when the item's Interact permission allows
+  // their role (owner picks roles via right-click → Set permissions → Interact).
+  // Their edits never touch the store — they persist via the server API and live in
   // optimistic local state, so the whole-board sync can't clobber other items.
-  const isMemberEdit = !!serverId && viewerRole === "member" && !!item.kanbanMemberEdit && !isFinished;
+  const { canInteract } = useItemPerms(item.perms);
+  const isMemberEdit = !!serverId && !canEditBoard && canInteract && !isFinished;
   const canEditCards = !isFinished && (canEditBoard || isMemberEdit);
   const canEditColumns = !isFinished && canEditBoard;
   // Display override holding optimistic (member) + realtime-received cards, so all
@@ -10799,22 +10801,17 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
 
   return (
     <div className="flex flex-col gap-0 divide-y divide-[var(--border)] text-xs">
-      {/* Member access — server boards only */}
+      {/* Member access — server boards only. Card editing is role-based via the
+          item's Interact permission (right-click → Set permissions). */}
       {serverId && (
         <section className="p-3">
           <SLabel>Member access</SLabel>
-          <label className="flex cursor-pointer items-center justify-between gap-3">
-            <span className="flex flex-col">
-              <span className="text-[var(--text-secondary)]">Members can add &amp; edit cards</span>
-              <span className="text-[10px] text-[var(--text-muted)]">Non-admins may create, move &amp; edit cards (not columns)</span>
-            </span>
-            <input
-              type="checkbox"
-              className="h-4 w-4 flex-shrink-0 cursor-pointer accent-[var(--accent)]"
-              checked={!!item.kanbanMemberEdit}
-              onChange={(e) => upd({ kanbanMemberEdit: e.target.checked })}
-            />
-          </label>
+          <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
+            Who can add, move &amp; edit cards is set by this item&apos;s{" "}
+            <span className="text-[var(--text-secondary)]">Interact</span> permission —
+            right-click the kanban → <span className="text-[var(--text-secondary)]">Set permissions</span> to
+            choose which roles. Columns stay owner/admin&#8209;only.
+          </p>
         </section>
       )}
       {/* Columns */}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   X, User, Bell, Mail, Shield, Palette, Accessibility, Keyboard,
   Info, ChevronRight, Check, Plus, Trash2, Volume2, VolumeX,
@@ -179,7 +180,10 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
     e.target.value = "";
   };
 
-  return (
+  // Portal to <body> so the overlay escapes the board canvas's transform stacking
+  // context — otherwise embed/widget iframes on the canvas paint over this modal.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <>
       <div className="fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div
@@ -804,7 +808,8 @@ export function SettingsModal({ onClose, initialSection = "account" }: SettingsM
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 

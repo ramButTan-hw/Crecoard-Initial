@@ -6,10 +6,10 @@ import { mutateBoardItem } from "@/lib/botBoardWrite";
 import { rateLimit } from "@/lib/apiAuth";
 
 // POST /api/server-board/kanban — let a signed-in server MEMBER edit a kanban's
-// cards, but only when the owner enabled `kanbanMemberEdit` on that item. The
-// client sends the full updated cards array; we replace just that item's cards
-// via the service role (so other board items are never clobbered). Owners/admins
-// don't use this — they edit the board directly.
+// cards, gated by the item's Interact permission (item.perms.interact) resolved
+// against the member's server role(s). The client sends the full updated cards
+// array; we replace just that item's cards via the service role (so other board
+// items are never clobbered). Owners/admins don't use this — they edit directly.
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -70,11 +70,14 @@ export async function POST(req: NextRequest) {
   // The caller must be a member of the server that owns this board.
   const { data: membership } = await db
     .from("server_members")
-    .select("user_id")
+    .select("user_id, role, role_ids")
     .eq("server_id", serverId)
     .eq("user_id", user.id)
     .maybeSingle();
   if (!membership) return NextResponse.json({ error: "You're not a member of this server." }, { status: 403 });
+
+  const viewerRole = (membership.role as string | null) ?? "member";
+  const viewerRoleIds = (membership.role_ids as string[] | null) ?? [];
 
   const outcome = await mutateBoardItem(db, {
     boardId,
@@ -82,8 +85,16 @@ export async function POST(req: NextRequest) {
     itemId,
     expectType: "kanban",
     mutate: (item) => {
-      if (!item.kanbanMemberEdit) {
-        return { ok: false, error: "Member editing isn't enabled for this kanban." };
+      // Authorize by the item's Interact permission (mirrors roleAllowed on the
+      // client): owner/admin always; undefined → everyone; [] → owner-only;
+      // otherwise the member must hold one of the listed server roles.
+      const interact = (item.perms as { interact?: string[] } | undefined)?.interact;
+      const allowed =
+        viewerRole === "owner" || viewerRole === "admin" ||
+        interact === undefined ||
+        (interact.length > 0 && interact.some((id) => viewerRoleIds.includes(id)));
+      if (!allowed) {
+        return { ok: false, error: "You don't have permission to edit these cards." };
       }
       const columnIds = new Set(((item.kanbanColumns as { id: string }[] | undefined) ?? []).map((c) => c.id));
       const cards = sanitizeCards(body.cards, columnIds);

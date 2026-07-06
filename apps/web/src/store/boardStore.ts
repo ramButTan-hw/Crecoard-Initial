@@ -702,7 +702,8 @@ export interface BlockItem {
   // kanban
   kanbanColumns?: KanbanColumn[];
   kanbanCards?: KanbanCard[];
-  /** Server boards: let non-admin members add/edit/move cards (persisted via /api/server-board/kanban). */
+  /** @deprecated Card editing is now gated by the item's Interact permission (perms.interact),
+   *  resolved against the member's server role. No longer read; kept for back-compat with old items. */
   kanbanMemberEdit?: boolean;
 
   // chat (server board chat block)
@@ -1932,8 +1933,8 @@ export const useBoardStore = create<BoardState>()(
     }),
     zoomAtCanvasCenter: (newZoom) => set((s) => {
       const clamped = Math.max(s.minZoom, Math.min(3,newZoom));
-      const cx = 1200; // CANVAS_WIDTH / 2
-      const cy = 700;  // CANVAS_HEIGHT / 2
+      const cx = 1280; // CANVAS_WIDTH / 2
+      const cy = 720;  // CANVAS_HEIGHT / 2
       s.panOffset = {
         x: s.panOffset.x + cx * (s.zoom - clamped),
         y: s.panOffset.y + cy * (s.zoom - clamped),

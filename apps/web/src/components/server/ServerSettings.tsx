@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { X, Plus, Trash2, Edit2, Camera, Upload, Check, Crown, Activity, Eye, RotateCcw, Archive, Save, Zap, Copy, RefreshCw, Bot } from "lucide-react";
 import { BotsPanel } from "@/components/server/BotsPanel";
 import { logServerAction, fetchServerPublishes, formatRelativeTime } from "@/lib/serverAudit";
@@ -286,7 +287,10 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
     { id: "bots",       label: "Bots", icon: <Bot size={13} /> },
   ];
 
-  return (
+  // Portal to <body> so the overlay escapes the board canvas's transform stacking
+  // context — otherwise embed/widget iframes on the canvas paint OVER this modal.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <>
       <div className="fixed inset-0 z-[1000] bg-black/60" onClick={onClose} />
 
@@ -1031,7 +1035,8 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
           onClose={() => setIconCropSrc(null)}
         />
       )}
-    </>
+    </>,
+    document.body
   );
 }
 
