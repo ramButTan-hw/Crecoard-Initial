@@ -40,6 +40,7 @@ function rowToServer(row: ServerRow): Server {
     memberCount: (row.member_count as number) || 1,
     onlineCount: 0,
     createdAt:   row.created_at as string,
+    roles:       Array.isArray(row.roles) ? (row.roles as ServerRole[]) : undefined,
     activityChannel: (row.activity_channel as string) || "general",
   };
 }
@@ -77,9 +78,9 @@ interface ServersContextValue {
   loadMembers: (serverId: string) => Promise<void>;
   /** Update name / description / icon / activity channel for a real server in Supabase */
   updateServer: (serverId: string, patch: { name?: string; description?: string; icon?: string; activityChannel?: string }) => Promise<void>;
-  /** Persists custom roles for a server (localStorage for mock, Supabase-ready for real) */
+  /** Persists custom roles for a server to the DB (servers.roles), with a localStorage cache. */
   serverRoles: Record<string, ServerRole[]>;
-  updateServerRoles: (serverId: string, roles: ServerRole[]) => void;
+  updateServerRoles: (serverId: string, roles: ServerRole[]) => Promise<void>;
   /** Transfer ownership: old owner becomes admin, new owner gets owner role */
   transferOwnership: (serverId: string, newOwnerId: string) => Promise<void>;
   /** Remove a member from a server */
@@ -107,12 +108,19 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
   const [serverRoles, setServerRolesState] = useState<Record<string, ServerRole[]>>(loadRolesStorage);
   const [loading, setLoading] = useState(true);
 
-  const updateServerRoles = useCallback((serverId: string, roles: ServerRole[]) => {
+  const updateServerRoles = useCallback(async (serverId: string, roles: ServerRole[]) => {
+    // Optimistic local update + localStorage cache.
     setServerRolesState((prev) => {
       const next = { ...prev, [serverId]: roles };
       saveRolesStorage(next);
       return next;
     });
+    // Persist to the DB so roles survive reloads/deploys and reach other members.
+    if (isSupabaseReady()) {
+      const { error } = await supabase.from("servers").update({ roles }).eq("id", serverId);
+      if (error) console.error("[ServersContext] updateServerRoles failed:", error.message);
+    }
+    setServers((prev) => prev.map((s) => (s.id === serverId ? { ...s, roles } : s)));
   }, []);
 
   useEffect(() => {
@@ -141,6 +149,21 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
 
       if (!cancelled && serverRows) {
         setServers(serverRows.map(rowToServer));
+        // DB is the source of truth for roles — hydrate the cache from the servers
+        // rows. Only override when the DB actually has roles so we never wipe a
+        // pre-migration localStorage config that hasn't been re-saved yet.
+        const dbRoles: Record<string, ServerRole[]> = {};
+        for (const row of serverRows) {
+          const rs = row.roles;
+          if (Array.isArray(rs) && rs.length > 0) dbRoles[row.id as string] = rs as ServerRole[];
+        }
+        if (Object.keys(dbRoles).length > 0) {
+          setServerRolesState((prev) => {
+            const next = { ...prev, ...dbRoles };
+            saveRolesStorage(next);
+            return next;
+          });
+        }
       }
       if (!cancelled) setLoading(false);
     })();

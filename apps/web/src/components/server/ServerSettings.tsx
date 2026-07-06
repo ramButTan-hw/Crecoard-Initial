@@ -158,8 +158,8 @@ export function ServerSettings({ serverId, onClose }: ServerSettingsProps) {
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [savedRoles, setSavedRoles] = useState(false);
 
-  function handleSaveRoles() {
-    updateServerRoles(serverId, roles);
+  async function handleSaveRoles() {
+    await updateServerRoles(serverId, roles);
     setSavedRoles(true);
     setTimeout(() => setSavedRoles(false), 2000);
   }
