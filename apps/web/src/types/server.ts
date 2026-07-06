@@ -23,6 +23,7 @@ export interface ServerMember {
   userId: string;
   username: string;
   avatar: string;        // single char or URL
+  banner?: string;       // profile banner image URL (for the member profile card)
   role: MemberRole;
   roleIds?: string[];    // custom ServerRole IDs assigned to this member
   online: boolean;

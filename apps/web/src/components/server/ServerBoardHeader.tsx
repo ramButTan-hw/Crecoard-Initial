@@ -598,6 +598,7 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
       displayName: m.username,
       avatarChar: avatarIsImage ? (m.username[0]?.toUpperCase() ?? "?") : m.avatar,
       avatarUrl: avatarIsImage ? m.avatar : undefined,
+      bannerUrl: m.banner,
       color: "#d59ee8",
       online: m.online,
       status: m.status,
@@ -648,7 +649,7 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
 
             {canManage && menuFor?.id === m.userId && createPortal((() => {
               const rect = menuFor.rect;
-              const MENU_W = 176;
+              const MENU_W = 224;
               const left = Math.max(8, Math.min(rect.right - MENU_W, window.innerWidth - MENU_W - 8));
               const openUp = rect.bottom > window.innerHeight - 260;
               const pos = openUp
@@ -657,7 +658,49 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
               return (
               <>
                 <div className="fixed inset-0 z-[1200]" onClick={() => setMenuFor(null)} />
-                <div className="fixed z-[1201] w-44 max-h-[70vh] overflow-y-auto rounded-lg border border-[var(--border)] p-1 shadow-2xl" style={{ background: "var(--surface-raised)", ...pos }}>
+                <div className="fixed z-[1201] w-56 max-h-[70vh] overflow-y-auto rounded-lg border border-[var(--border)] shadow-2xl" style={{ background: "var(--surface-raised)", ...pos }}>
+                  {/* Profile card header — banner + avatar, so the menu reads as a mini profile */}
+                  <div
+                    className="relative h-14 w-full rounded-t-lg"
+                    style={{
+                      background: m.banner ? undefined : "linear-gradient(135deg, color-mix(in srgb, var(--accent) 65%, transparent), color-mix(in srgb, var(--accent) 12%, transparent))",
+                      backgroundImage: m.banner ? `url(${m.banner})` : undefined,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }}
+                  >
+                    <span
+                      className="absolute -bottom-4 left-3 flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border-[3px] text-sm font-bold text-white"
+                      style={{ background: "var(--accent)", borderColor: "var(--surface-raised)" }}
+                    >
+                      {isImageAvatar(m.avatar)
+                        ? <img src={m.avatar} alt="" className="h-full w-full object-cover" />
+                        : (m.avatar || m.username[0]?.toUpperCase())}
+                      <span className={cn(
+                        "absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[var(--surface-raised)]",
+                        m.presence === "dnd" ? "bg-red-500" : m.online ? "bg-green-500" : "bg-[var(--text-muted)]"
+                      )} />
+                    </span>
+                  </div>
+                  <div className="px-2.5 pt-5 pb-2">
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate text-sm font-semibold text-[var(--text-primary)]">{m.username}</p>
+                      <span className="text-[11px]">{m.role === "owner" ? "👑" : m.role === "admin" ? "🛡" : ""}</span>
+                    </div>
+                    {m.status && <p className="mt-0.5 truncate text-[11px] text-[var(--text-muted)]">{m.status}</p>}
+                    {customRoles.some((r) => (m.roleIds ?? []).includes(r.id)) && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {customRoles.filter((r) => (m.roleIds ?? []).includes(r.id)).map((r) => (
+                          <span key={r.id} className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ background: r.color }} />
+                            {r.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mx-1 h-px bg-[var(--border)]" />
+                  <div className="p-1">
                   <button onClick={() => { onViewProfile?.(buildViewableUser(m)); setMenuFor(null); }} className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">View profile</button>
                   {m.role !== "admin" && (
                     <button onClick={() => { void updateMemberRole(serverId, m.userId, "admin"); setMenuFor(null); }} className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)] transition-colors">Make admin</button>
@@ -692,6 +735,7 @@ function MemberSection({ label, serverId, members, viewerId, canManageMembers, o
                   )}
                   <div className="my-1 h-px bg-[var(--border)]" />
                   <button onClick={() => { void kickMember(serverId, m.userId); setMenuFor(null); }} className="flex w-full items-center rounded px-2 py-1.5 text-left text-xs text-red-400 hover:bg-red-500/10 transition-colors">Kick from server</button>
+                  </div>
                 </div>
               </>
               );

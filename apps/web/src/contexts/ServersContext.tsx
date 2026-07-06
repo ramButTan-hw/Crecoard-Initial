@@ -379,7 +379,7 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
     const userIds = memberData.map((m) => m.user_id as string);
     const { data: profileData } = await supabase
       .from("profiles")
-      .select("id, display_name, avatar_url")
+      .select("id, display_name, avatar_url, banner_url")
       .in("id", userIds);
 
     const profileMap = new Map((profileData ?? []).map((p) => [p.id as string, p]));
@@ -391,6 +391,7 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
         userId:   row.user_id as string,
         username: displayName,
         avatar:   (profile?.avatar_url as string) ?? displayName[0]?.toUpperCase() ?? "?",
+        banner:   (profile?.banner_url as string) ?? undefined,
         role:     row.role as ServerMember["role"],
         roleIds:  (row.role_ids as string[] | null) ?? [],
         online:   false,
@@ -414,7 +415,7 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
     const userIds = memberData.map((m) => m.user_id as string);
     const { data: profileData } = await supabase
       .from("profiles")
-      .select("id, display_name, avatar_url")
+      .select("id, display_name, avatar_url, banner_url")
       .in("id", userIds);
 
     const profileMap = new Map((profileData ?? []).map((p) => [p.id as string, p]));
@@ -426,6 +427,7 @@ export function ServersProvider({ children }: { children: React.ReactNode }) {
         userId:   row.user_id as string,
         username: displayName,
         avatar:   (profile?.avatar_url as string) ?? displayName[0]?.toUpperCase() ?? "?",
+        banner:   (profile?.banner_url as string) ?? undefined,
         role:     row.role as ServerMember["role"],
         roleIds:  (row.role_ids as string[] | null) ?? [],
         online:   false,
