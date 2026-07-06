@@ -9,13 +9,12 @@
     "dev": "concurrently \"npm run start:web\" \"wait-on http://localhost:3000 && electron .\"",
     "start:web": "cd ../web && next dev",
     "build": "electron-builder",
-    "pack": "electron-builder --dir"
+    "pack": "electron-builder --dir",
+    "release": "electron-builder --publish always"
   },
   "dependencies": {
-    "electron-is-dev": "^3.0.0",
     "electron-updater": "^6.3.9",
-    "koffi": "^2.9.0",
-    "next": "^16.2.9"
+    "koffi": "^2.9.0"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
@@ -28,7 +27,7 @@
     "productName": "Crecoard",
     "electronVersion": "42.5.1",
     "publish": [
-      { "provider": "github", "owner": "ramButTan-hw", "repo": "Crecoard-releases" }
+      { "provider": "github", "owner": "ramButTan-hw", "repo": "Crecoard-releases", "releaseType": "release" }
     ],
     "protocols": [
       {
