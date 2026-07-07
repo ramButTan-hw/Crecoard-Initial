@@ -1,8 +1,8 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Smile, ImageIcon, X, Pin, Search, Plus, Bell, BellOff, AtSign, Check, Pencil, Trash2 } from "lucide-react";
-import type { BlockItem, Board } from "@/store/boardStore";
+import { Send, Smile, ImageIcon, X, Pin, Search, Plus, Bell, BellOff, AtSign, Check, Pencil, Trash2, Reply, MoreHorizontal } from "lucide-react";
+import type { BlockItem, Board, ChatMessage } from "@/store/boardStore";
 import { useBoardStore } from "@/store/boardStore";
 import { useServers } from "@/contexts/ServersContext";
 import { useBoardChatItem, useBoardChat } from "@/contexts/BoardChatContext";
@@ -27,6 +27,15 @@ function formatDateDivider(ts: string): string {
     day: "numeric",
     year: d.getFullYear() === today.getFullYear() ? undefined : "numeric",
   });
+}
+
+/** Short plaintext snippet of a message, for reply previews. Strips mention/box tags. */
+function replySnippet(m: ChatMessage): string {
+  const raw = (m.content ?? "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+  if (raw) return raw.length > 120 ? raw.slice(0, 120) + "…" : raw;
+  if (m.gif) return "GIF";
+  if (m.image) return "Photo";
+  return "message";
 }
 
 const MENTION_TOKEN = /<@([0-9a-fA-F-]{36})>/g;
@@ -146,6 +155,19 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [moreFor, setMoreFor] = useState<string | null>(null);
+
+  // Scroll to (and briefly highlight) the message a reply points at.
+  const jumpToMessage = (id?: string) => {
+    if (!id) return;
+    const el = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(id)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.style.transition = "background-color 0.2s";
+    el.style.backgroundColor = "color-mix(in srgb, var(--accent) 22%, transparent)";
+    setTimeout(() => { el.style.backgroundColor = ""; }, 900);
+  };
   const serverPref = useBoardChat().notifPrefs[`server::${serverId}`];
 
   // One-time heal: legacy chat backgrounds were stored as inline data URLs — a
@@ -400,9 +422,13 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
       identity.displayName,
       authorAvatar,
       encodeBoxes(encodeMentions(text)),
-      pendingImage ? { imageUrl, fileName: pendingImage.name } : undefined
+      {
+        ...(pendingImage ? { imageUrl, fileName: pendingImage.name } : {}),
+        ...(replyingTo ? { replyTo: { id: replyingTo.id, author: replyingTo.authorName, text: replySnippet(replyingTo) } } : {}),
+      }
     );
     setInput("");
+    setReplyingTo(null);
     setPendingImage(null);
     setMentionQuery(null);
     setBoxQuery(null);
@@ -411,8 +437,12 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
   };
 
   const sendGif = (gifUrl: string) => {
-    void send(identity.userId, identity.displayName, authorAvatar, "", { gifUrl });
+    void send(identity.userId, identity.displayName, authorAvatar, "", {
+      gifUrl,
+      ...(replyingTo ? { replyTo: { id: replyingTo.id, author: replyingTo.authorName, text: replySnippet(replyingTo) } } : {}),
+    });
     setShowGif(false);
+    setReplyingTo(null);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -605,7 +635,7 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
             const prev = displayed[i - 1];
             const showDate = !prev || new Date(prev.timestamp).toDateString() !== new Date(msg.timestamp).toDateString();
             const isSystem = msg.authorName === "System";
-            const consecutive = !searchTerm && !!prev && !showDate && !isSystem && prev.authorId === msg.authorId && prev.authorName !== "System";
+            const consecutive = !searchTerm && !!prev && !showDate && !isSystem && !msg.replyToId && prev.authorId === msg.authorId && prev.authorName !== "System";
             const isYou = msg.authorId === identity.userId;
             const liveAvatar = profiles.get(msg.authorId)?.avatarUrl ?? msg.authorAvatar;
             const liveName = profiles.get(msg.authorId)?.displayName ?? msg.authorName;
@@ -632,23 +662,23 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
               <Fragment key={msg.id}>
                 {dateDivider}
                 <div
+                  data-msg-id={msg.id}
                   className={cn(
                     "group relative flex items-start gap-2 rounded px-1 py-0.5 transition-colors hover:bg-[var(--surface-overlay)]/40",
                     consecutive ? "mt-0" : "mt-2.5"
                   )}
                 >
-                {/* Message actions — appear on row hover */}
-                <div className="absolute right-1 top-0 z-10 hidden items-center gap-0.5 rounded-md border border-[var(--border)] bg-[var(--surface-raised)] p-0.5 shadow-sm group-hover:flex">
-                  <button
-                    onClick={() => void togglePin(msg.id, !msg.pinned)}
-                    title={msg.pinned ? "Unpin" : "Pin"}
-                    className={cn(
-                      "rounded p-1 transition-colors hover:text-[var(--accent)]",
-                      msg.pinned ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
-                    )}
-                  >
-                    <Pin size={12} />
-                  </button>
+                {/* Message actions — Reply + React inline, everything else in a ⋯ menu */}
+                <div className="absolute right-1 -top-3 z-10 hidden items-center gap-0.5 rounded-md border border-[var(--border)] bg-[var(--surface-raised)] p-0.5 shadow-sm group-hover:flex">
+                  {!msg.id.startsWith("opt-") && (
+                    <button
+                      onClick={() => { setReplyingTo(msg); setMoreFor(null); }}
+                      title="Reply"
+                      className="rounded p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
+                    >
+                      <Reply size={12} />
+                    </button>
+                  )}
                   <button
                     onClick={() => setReactingTo((cur) => (cur === msg.id ? null : msg.id))}
                     title="Add reaction"
@@ -656,26 +686,48 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                   >
                     <Smile size={12} />
                   </button>
-                  {isYou && !msg.id.startsWith("opt-") && msg.content && (
-                    <button
-                      onClick={() => { setEditingId(msg.id); setEditDraft(msg.content ?? ""); setConfirmDeleteId(null); }}
-                      title="Edit message"
-                      className="rounded p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                  )}
-                  {(isYou || canModerate) && !msg.id.startsWith("opt-") && (
-                    <button
-                      onClick={() => {
-                        if (confirmDeleteId === msg.id) { void deleteOwnMessage(msg.id); setConfirmDeleteId(null); }
-                        else setConfirmDeleteId(msg.id);
-                      }}
-                      title={confirmDeleteId === msg.id ? "Click again to delete" : (isYou ? "Delete message" : "Delete (moderator)")}
-                      className={cn("rounded p-1 transition-colors", confirmDeleteId === msg.id ? "text-red-400" : "text-[var(--text-muted)] hover:text-red-400")}
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                  {!msg.id.startsWith("opt-") && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setMoreFor((cur) => (cur === msg.id ? null : msg.id))}
+                        title="More"
+                        className={cn("rounded p-1 transition-colors hover:text-[var(--accent)]", moreFor === msg.id ? "text-[var(--accent)]" : "text-[var(--text-muted)]")}
+                      >
+                        <MoreHorizontal size={12} />
+                      </button>
+                      {moreFor === msg.id && (
+                        <>
+                          <div className="fixed inset-0 z-[200]" onClick={() => { setMoreFor(null); setConfirmDeleteId(null); }} />
+                          <div className="absolute right-0 top-full z-[201] mt-1 w-36 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] py-1 shadow-2xl">
+                            <button
+                              onClick={() => { void togglePin(msg.id, !msg.pinned); setMoreFor(null); }}
+                              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
+                            >
+                              <Pin size={12} /> {msg.pinned ? "Unpin" : "Pin"}
+                            </button>
+                            {isYou && msg.content && (
+                              <button
+                                onClick={() => { setEditingId(msg.id); setEditDraft(msg.content ?? ""); setConfirmDeleteId(null); setMoreFor(null); }}
+                                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-overlay)] hover:text-[var(--text-primary)]"
+                              >
+                                <Pencil size={12} /> Edit
+                              </button>
+                            )}
+                            {(isYou || canModerate) && (
+                              <button
+                                onClick={() => {
+                                  if (confirmDeleteId === msg.id) { void deleteOwnMessage(msg.id); setConfirmDeleteId(null); setMoreFor(null); }
+                                  else setConfirmDeleteId(msg.id);
+                                }}
+                                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-red-400 transition-colors hover:bg-red-500/10"
+                              >
+                                <Trash2 size={12} /> {confirmDeleteId === msg.id ? "Click to confirm" : (isYou ? "Delete" : "Delete (mod)")}
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
                 {reactingTo === msg.id && (
@@ -717,6 +769,17 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </div>
+                  )}
+                  {msg.replyToId && (
+                    <button
+                      onClick={() => jumpToMessage(msg.replyToId)}
+                      title="Jump to replied message"
+                      className="mb-0.5 flex max-w-full items-center gap-1 text-left text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+                    >
+                      <Reply size={11} className="shrink-0 opacity-70" />
+                      <span className="shrink-0 font-medium text-[var(--text-secondary)]">{msg.replyToAuthor ?? "message"}</span>
+                      <span className="truncate opacity-80">{msg.replyToText}</span>
+                    </button>
                   )}
                   {editingId === msg.id ? (
                     <div className="mt-0.5 flex flex-col gap-1">
@@ -874,6 +937,18 @@ export function ChatBlock({ item, boardId, expanded = false }: ChatBlockProps) {
           </div>
         )}
 
+        {replyingTo && (
+          <div className="mb-1.5 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-overlay)] px-3 py-1.5">
+            <Reply size={12} className="flex-shrink-0 text-[var(--accent)]" />
+            <span className="flex-shrink-0 text-[11px] text-[var(--text-muted)]">
+              Replying to <span className="font-semibold text-[var(--text-secondary)]">{replyingTo.authorName}</span>
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-muted)] opacity-70">{replySnippet(replyingTo)}</span>
+            <button onClick={() => setReplyingTo(null)} title="Cancel reply" className="flex-shrink-0 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]">
+              <X size={12} />
+            </button>
+          </div>
+        )}
         <div className="flex items-center gap-1 rounded-2xl border border-[var(--border)] bg-[var(--surface-overlay)] py-1 pl-1.5 pr-1 transition-colors focus-within:border-[var(--accent)]/60">
           {/* Attachments — GIF + image grouped so the bar stays compact when narrow */}
           <div className="relative flex-shrink-0">

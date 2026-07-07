@@ -196,6 +196,9 @@ export interface ChatMessage {
   pinnedAt?: string;  // ISO string — when it was pinned
   pinnedBy?: string;  // user id who pinned it
   editedAt?: string;
+  replyToId?: string;      // id of the message this replies to (enables jump-to-original)
+  replyToAuthor?: string;  // snapshot of the replied-to author's name
+  replyToText?: string;    // snapshot snippet of the replied-to message
 }
 
 // ─── File bank item ───────────────────────────────────────────────────────────
@@ -797,6 +800,16 @@ export interface BlockItem {
   visualizerTrails?: boolean;   // motion trails / fade
   visualizerBarRounded?: boolean; // rounded (default) vs rectangular bars
   visualizerFreqFocus?: string;   // "full" | "vocal" | "bass" — spectrum window for bars/radial
+  // radial-only options (Wallpaper-Engine "PWCircle" style)
+  visualizerRadialWaveDir?: string;    // "outward" | "inward" | "both"
+  visualizerRadialWaveStyle?: string;  // "bar" | "peak" | "peakDots"
+  visualizerRadialSemicircle?: boolean;
+  visualizerRadialSemiDir?: string;    // "up" | "down" | "left" | "right"
+  visualizerRadialPolygon?: number;    // 0 = circle; 3..24 = polygon sides
+  visualizerBarCount?: number;         // number of bars/spokes (bars, wave bars, radial)
+  visualizerOpacity?: number;          // foreground opacity 0..1 (bars/lines/spokes)
+  visualizerRadialPeakFill?: boolean;  // radial peak: fill the ring instead of a thin outline
+  visualizerRadialFillStripes?: boolean; // radial peak fill: striped texture instead of solid
 }
 
 // ─── Block (box on the board) ─────────────────────────────────────────────────

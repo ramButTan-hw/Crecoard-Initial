@@ -3347,6 +3347,18 @@ function TimerItem({ item, upd, collapsed, isFinished, containerH, extraContextI
 
 // ─── Timer Style Panel ────────────────────────────────────────────────────────
 
+// Module-level so its identity is stable — a panel-local component would remount
+// its <input> on every onChange re-render, killing in-progress slider drags.
+function SliderRow({ label, value, min, max, step = 1, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-20 text-[var(--text-muted)] shrink-0">{label}</span>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="flex-1 accent-[var(--accent)]" />
+      <span className="w-8 text-right tabular-nums text-[var(--text-secondary)]">{value}</span>
+    </div>
+  );
+}
+
 export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
   const mode = item.timerMode ?? "countdown";
   const total = item.timerSeconds ?? 300;
@@ -3381,14 +3393,6 @@ export function TimerStylePanel({ item, upd }: { item: BlockItem; upd: (p: Parti
           {o.label}
         </button>
       ))}
-    </div>
-  );
-
-  const SliderRow = ({ label, value, min, max, step = 1, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) => (
-    <div className="flex items-center gap-2">
-      <span className="w-20 text-[var(--text-muted)] shrink-0">{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="flex-1 accent-[var(--accent)]" />
-      <span className="w-8 text-right tabular-nums text-[var(--text-secondary)]">{value}</span>
     </div>
   );
 
@@ -5001,19 +5005,25 @@ function ApiItem({ item, upd, collapsed, isFinished, extraContextItems }: { item
 
 // ─── API Style Panel ──────────────────────────────────────────────────────────
 
+// Hoisted to module scope so its identity is stable across re-renders. When this
+// lived inside ApiStylePanel, every keystroke's onChange re-rendered the panel,
+// gave <ApiInput> a new function identity, and React remounted the <input> —
+// dropping focus after each character. Keep it out here.
+function ApiInput({ value, onChange, placeholder, mono }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) {
+  return (
+    <input
+      className={cn("w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-muted)]", mono && "font-mono")}
+      value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+    />
+  );
+}
+
 export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
   const authType = item.apiAuthType ?? "none";
   const method = item.apiMethod ?? "GET";
 
   const PLabel = ({ children }: { children: React.ReactNode }) => (
     <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</p>
-  );
-
-  const Input = ({ value, onChange, placeholder, mono }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) => (
-    <input
-      className={cn("w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-muted)]", mono && "font-mono")}
-      value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-    />
   );
 
   const Btn = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
@@ -5046,7 +5056,7 @@ export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial
               <Btn key={m} active={method === m} onClick={() => upd({ apiMethod: m })}>{m}</Btn>
             ))}
           </div>
-          <Input value={item.apiUrl ?? ""} onChange={(v) => upd({ apiUrl: v })} placeholder="https://api.example.com/endpoint" mono />
+          <ApiInput value={item.apiUrl ?? ""} onChange={(v) => upd({ apiUrl: v })} placeholder="https://api.example.com/endpoint" mono />
         </div>
       </section>
 
@@ -5059,17 +5069,17 @@ export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial
               <Btn key={a} active={authType === a} onClick={() => upd({ apiAuthType: a })}>{a === "none" ? "None" : a === "bearer" ? "Bearer" : a === "apikey" ? "API Key" : "Basic"}</Btn>
             ))}
           </div>
-          {authType === "bearer" && <Input value={item.apiAuthValue ?? ""} onChange={(v) => upd({ apiAuthValue: v })} placeholder="Token / OAuth access token" />}
+          {authType === "bearer" && <ApiInput value={item.apiAuthValue ?? ""} onChange={(v) => upd({ apiAuthValue: v })} placeholder="Token / OAuth access token" />}
           {authType === "apikey" && (
             <>
-              <Input value={item.apiAuthHeader ?? "X-API-Key"} onChange={(v) => upd({ apiAuthHeader: v })} placeholder="Header name (e.g. X-API-Key)" />
-              <Input value={item.apiAuthValue ?? ""} onChange={(v) => upd({ apiAuthValue: v })} placeholder="Key value" />
+              <ApiInput value={item.apiAuthHeader ?? "X-API-Key"} onChange={(v) => upd({ apiAuthHeader: v })} placeholder="Header name (e.g. X-API-Key)" />
+              <ApiInput value={item.apiAuthValue ?? ""} onChange={(v) => upd({ apiAuthValue: v })} placeholder="Key value" />
             </>
           )}
           {authType === "basic" && (
             <>
-              <Input value={item.apiAuthUser ?? ""} onChange={(v) => upd({ apiAuthUser: v })} placeholder="Username" />
-              <Input value={item.apiAuthValue ?? ""} onChange={(v) => upd({ apiAuthValue: v })} placeholder="Password" />
+              <ApiInput value={item.apiAuthUser ?? ""} onChange={(v) => upd({ apiAuthUser: v })} placeholder="Username" />
+              <ApiInput value={item.apiAuthValue ?? ""} onChange={(v) => upd({ apiAuthValue: v })} placeholder="Password" />
             </>
           )}
         </div>
@@ -5110,9 +5120,9 @@ export function ApiStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial
               <Btn key={m} active={(item.apiDisplayMode ?? "value") === m} onClick={() => upd({ apiDisplayMode: m })}>{m === "value" ? "Value" : m === "json" ? "JSON" : "Table"}</Btn>
             ))}
           </div>
-          <Input value={item.apiResponsePath ?? ""} onChange={(v) => upd({ apiResponsePath: v })} placeholder="e.g. data.items[0].name" />
+          <ApiInput value={item.apiResponsePath ?? ""} onChange={(v) => upd({ apiResponsePath: v })} placeholder="e.g. data.items[0].name" />
           <p className="text-[10px] text-[var(--text-muted)]">Dot-path to extract a field from the response. Leave blank to use full response.</p>
-          <Input value={item.apiLabel ?? ""} onChange={(v) => upd({ apiLabel: v })} placeholder="Label (shown above value)" />
+          <ApiInput value={item.apiLabel ?? ""} onChange={(v) => upd({ apiLabel: v })} placeholder="Label (shown above value)" />
         </div>
       </section>
 
@@ -10765,22 +10775,16 @@ function KanbanItem({
 
 // ─── KanbanStylePanel ─────────────────────────────────────────────────────────
 
-export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
-  const SLabel = ({ children }: { children: React.ReactNode }) => (
-    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</div>
-  );
-  const accent = item.kanbanAccentColor ?? "#d59ee8";
-  const [openPicker, setOpenPicker] = useState<string | null>(null);
-  const [styleCol, setStyleCol] = useState<string | null>(null);
-  const cols = item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS;
-  const patchCol = (id: string, patch: Partial<KanbanColumn>) =>
-    upd({ kanbanColumns: cols.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
-
-  // Small swatch + color popover for the per-column style editor
-  const ColorField = ({ label, value, fallback, onChange, onClear, pkey }: {
-    label: string; value?: string; fallback: string;
-    onChange: (v: string) => void; onClear: () => void; pkey: string;
-  }) => (
+// Small swatch + color popover for the per-column style editor. Hoisted to module
+// scope for stable identity: inline, every upd()/setOpenPicker re-render gave
+// <KanbanColorField> a new function identity and remounted its <input type="color">,
+// closing the picker mid-interaction. openPicker/setOpenPicker are passed as props.
+function KanbanColorField({ label, value, fallback, onChange, onClear, pkey, openPicker, setOpenPicker }: {
+  label: string; value?: string; fallback: string;
+  onChange: (v: string) => void; onClear: () => void; pkey: string;
+  openPicker: string | null; setOpenPicker: (v: string | null) => void;
+}) {
+  return (
     <div className="flex items-center justify-between">
       <span className="text-[var(--text-secondary)]">{label}</span>
       <div className="relative">
@@ -10797,6 +10801,18 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
       </div>
     </div>
   );
+}
+
+export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Partial<BlockItem>) => void }) {
+  const SLabel = ({ children }: { children: React.ReactNode }) => (
+    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</div>
+  );
+  const accent = item.kanbanAccentColor ?? "#d59ee8";
+  const [openPicker, setOpenPicker] = useState<string | null>(null);
+  const [styleCol, setStyleCol] = useState<string | null>(null);
+  const cols = item.kanbanColumns ?? DEFAULT_KANBAN_COLUMNS;
+  const patchCol = (id: string, patch: Partial<KanbanColumn>) =>
+    upd({ kanbanColumns: cols.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
 
   return (
     <div className="flex flex-col gap-0 divide-y divide-[var(--border)] text-xs">
@@ -10852,10 +10868,10 @@ export function KanbanStylePanel({ item, upd }: { item: BlockItem; upd: (p: Part
               {/* Per-column style editor */}
               {styleCol === col.id && (
                 <div className="ml-1 flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2">
-                  <ColorField label="Column bg" value={col.bgColor} fallback={item.kanbanColumnBgColor ?? "var(--surface)"}
-                    onChange={(v) => patchCol(col.id, { bgColor: v })} onClear={() => patchCol(col.id, { bgColor: undefined })} pkey={`colbg-${col.id}`} />
-                  <ColorField label="Card bg" value={col.cardBgColor} fallback={item.kanbanCardBgColor ?? "var(--surface-overlay)"}
-                    onChange={(v) => patchCol(col.id, { cardBgColor: v })} onClear={() => patchCol(col.id, { cardBgColor: undefined })} pkey={`colcardbg-${col.id}`} />
+                  <KanbanColorField label="Column bg" value={col.bgColor} fallback={item.kanbanColumnBgColor ?? "var(--surface)"}
+                    onChange={(v) => patchCol(col.id, { bgColor: v })} onClear={() => patchCol(col.id, { bgColor: undefined })} pkey={`colbg-${col.id}`} openPicker={openPicker} setOpenPicker={setOpenPicker} />
+                  <KanbanColorField label="Card bg" value={col.cardBgColor} fallback={item.kanbanCardBgColor ?? "var(--surface-overlay)"}
+                    onChange={(v) => patchCol(col.id, { cardBgColor: v })} onClear={() => patchCol(col.id, { cardBgColor: undefined })} pkey={`colcardbg-${col.id}`} openPicker={openPicker} setOpenPicker={setOpenPicker} />
                   <div className="flex items-center justify-between">
                     <span className="text-[var(--text-secondary)]">Column image</span>
                     <div className="flex items-center gap-1.5">

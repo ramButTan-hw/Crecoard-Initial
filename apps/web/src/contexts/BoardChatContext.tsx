@@ -51,7 +51,7 @@ interface BoardChatContextValue {
     authorName: string,
     authorAvatar: string,
     content: string,
-    opts?: { gifUrl?: string; imageUrl?: string; fileName?: string }
+    opts?: { gifUrl?: string; imageUrl?: string; fileName?: string; replyTo?: { id: string; author: string; text: string } }
   ) => Promise<void>;
   /** Add or remove the current user's reaction to a message (optimistic). */
   toggleReaction: (messageId: string, boardId: string, emoji: string, userId: string) => Promise<void>;
@@ -122,7 +122,7 @@ export function useBoardChatItem(itemId: string, boardId: string, channelName?: 
       authorName: string,
       authorAvatar: string,
       content: string,
-      opts?: { gifUrl?: string; imageUrl?: string; fileName?: string }
+      opts?: { gifUrl?: string; imageUrl?: string; fileName?: string; replyTo?: { id: string; author: string; text: string } }
     ) => ctx.sendMessage(itemId, boardId, channel, authorId, authorName, authorAvatar, content, opts),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [chatKey]
@@ -167,6 +167,9 @@ function rowToMessage(row: Record<string, unknown>): ChatMessage {
     pinnedAt: (row.pinned_at as string | null) ?? undefined,
     pinnedBy: (row.pinned_by as string | null) ?? undefined,
     editedAt: (row.edited_at as string | null) ?? undefined,
+    replyToId: (row.reply_to_id as string | null) ?? undefined,
+    replyToAuthor: (row.reply_to_author as string | null) ?? undefined,
+    replyToText: (row.reply_to_text as string | null) ?? undefined,
   };
 }
 
@@ -567,7 +570,7 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
     authorName: string,
     authorAvatar: string,
     content: string,
-    opts: { gifUrl?: string; imageUrl?: string; fileName?: string } = {}
+    opts: { gifUrl?: string; imageUrl?: string; fileName?: string; replyTo?: { id: string; author: string; text: string } } = {}
   ) => {
     const key = chatKeyFor(boardId, channel);
     const optimisticId = `opt-${crypto.randomUUID()}`;
@@ -581,6 +584,9 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
       gif: opts.gifUrl,
       image: opts.imageUrl,
       fileName: opts.fileName,
+      replyToId: opts.replyTo?.id,
+      replyToAuthor: opts.replyTo?.author,
+      replyToText: opts.replyTo?.text,
     };
 
     setMessagesByItem((prev) => ({
@@ -603,6 +609,9 @@ export function BoardChatProvider({ children }: { children: React.ReactNode }) {
         gif_url: opts.gifUrl ?? null,
         image_url: opts.imageUrl ?? null,
         file_name: opts.fileName ?? null,
+        reply_to_id: opts.replyTo?.id ?? null,
+        reply_to_author: opts.replyTo?.author ?? null,
+        reply_to_text: opts.replyTo?.text ?? null,
       })
       .select()
       .single();

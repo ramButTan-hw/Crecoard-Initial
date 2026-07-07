@@ -11,7 +11,7 @@
 
 import { useEffect, useRef } from "react";
 import {
-  AudioLines, Waves, CloudRain, Sparkles, Wind, Mic, Disc3, Star,
+  AudioLines, AudioWaveform, Waves, CloudRain, Sparkles, Wind, Mic, Disc3, Star,
   Image as ImageIcon, Sun, Wand2,
 } from "lucide-react";
 import type { BlockItem } from "@/store/boardStore";
@@ -23,17 +23,22 @@ type Upd = (p: Partial<BlockItem>) => void;
 export const VISUALIZER_EFFECTS = [
   { id: "bars",      label: "Audio bars",    icon: AudioLines, audio: true },
   { id: "radial",    label: "Radial",        icon: Disc3,      audio: true },
-  { id: "wave",      label: "Waveform",      icon: Waves,      audio: true },
-  { id: "rain",      label: "Rain",          icon: CloudRain,  audio: false },
-  { id: "particles", label: "Particles",     icon: Sparkles,   audio: false },
-  { id: "starfield", label: "Starfield",     icon: Star,       audio: false },
-  { id: "aurora",    label: "Aurora",        icon: Wind,       audio: false },
+  { id: "wave",      label: "Waveform",      icon: Waves,          audio: true },
+  { id: "wavebars",  label: "Wave bars",     icon: AudioWaveform,  audio: true },
+  { id: "rain",      label: "Rain",          icon: CloudRain,  audio: true },
+  { id: "particles", label: "Particles",     icon: Sparkles,   audio: true },
+  { id: "starfield", label: "Starfield",     icon: Star,       audio: true },
+  { id: "aurora",    label: "Aurora",        icon: Wind,       audio: true },
 ] as const;
 
 type Params = {
   effect: string; color: string; color2: string; speed: number; intensity: number;
   bg: string; bgType: string; bgOpacity: number; glow: boolean; trails: boolean; barRounded: boolean;
   freqLo: number; freqHi: number; // spectrum window (bin indices) for bars/radial
+  barCount: number; // number of bars/spokes (bars, wave bars, radial)
+  opacity: number;  // foreground opacity 0..1
+  // radial-only (Wallpaper-Engine PWCircle style)
+  radWaveDir: string; radWaveStyle: string; radSemi: boolean; radSemiDir: string; radPoly: number; radPeakFill: boolean; radFillStripes: boolean;
 };
 
 /**
@@ -52,6 +57,30 @@ function bandValue(spec: number[], idx: number, nBars: number, loBin: number, hi
   return cnt ? sum / cnt : 0;
 }
 const tilt = (i: number, n: number) => 0.9 + 1.15 * (i / n); // boost highs
+
+/**
+ * Bar amplitude in 0..1 with real dynamic range, so bars actually dance instead
+ * of hovering at one height. A noise floor makes quiet bins fully retract; a
+ * gamma curve adds contrast; `intensity` is applied as GAIN (not a hard cap), so
+ * turning it up makes bars swing harder rather than clamping them flat.
+ */
+function barAmp(audio: number[] | null, i: number, n: number, p: Params, t: number): number {
+  if (!audio) {
+    const a = (Math.sin(t * 3 + i * 0.4) * 0.5 + 0.5) * (Math.sin(t + i) * 0.3 + 0.7);
+    return Math.min(1, a * p.intensity);
+  }
+  let raw = bandValue(audio, i, n, p.freqLo, p.freqHi) * tilt(i, n);
+  raw = Math.max(0, (raw - 0.06) / 0.94);                 // noise floor → quiet bins hit zero
+  return Math.min(1, Math.pow(raw, 1.6) * p.intensity * 1.5); // gamma for contrast + gain
+}
+
+/** Overall loudness 0..1 — drives the decorative effects so they react to audio too. */
+function audioLevel(spec: number[] | null): number {
+  if (!spec || spec.length === 0) return 0;
+  let s = 0;
+  for (let k = 0; k < spec.length; k++) s += spec[k];
+  return Math.min(1, (s / spec.length) * 2.4);
+}
 
 const FFT_SIZE = 1024;
 // Focus presets as [lowHz, highHz]. "vocal" spans voice fundamentals + formants
@@ -100,7 +129,7 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: numb
 // ─── Effects ──────────────────────────────────────────────────────────────────
 
 function drawBars(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, p: Params, audio: number[] | null) {
-  const n = 56;
+  const n = Math.max(4, Math.round(p.barCount));
   const bw = w / n;
   const grad = ctx.createLinearGradient(0, h, 0, h * 0.1);
   grad.addColorStop(0, p.color);
@@ -108,11 +137,8 @@ function drawBars(ctx: CanvasRenderingContext2D, w: number, h: number, t: number
   ctx.fillStyle = grad;
   const rad = p.barRounded ? 5 : 0;
   for (let i = 0; i < n; i++) {
-    let amp = audio
-      ? Math.min(1, bandValue(audio, i, n, p.freqLo, p.freqHi) * tilt(i, n))
-      : (Math.sin(t * 3 + i * 0.4) * 0.5 + 0.5) * (Math.sin(t + i) * 0.3 + 0.7);
-    amp = Math.pow(amp, 1.1) * p.intensity;
-    const bh = Math.max(3, amp * h * 0.82);
+    const amp = barAmp(audio, i, n, p, t);
+    const bh = Math.max(2, amp * h * 0.92);
     const x = i * bw + bw * 0.2, bwidth = bw * 0.6;
     if (rad > 0) { roundRect(ctx, x, h - bh, bwidth, bh, Math.min(bwidth / 2, rad)); ctx.fill(); }
     else ctx.fillRect(x, h - bh, bwidth, bh);
@@ -121,26 +147,130 @@ function drawBars(ctx: CanvasRenderingContext2D, w: number, h: number, t: number
 
 function drawRadial(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, p: Params, audio: number[] | null) {
   const cx = w / 2, cy = h / 2;
-  const n = 72;
-  const baseR = Math.min(w, h) * 0.16;
-  const maxLen = Math.min(w, h) * 0.3 * p.intensity;
+  const R = Math.min(w, h);
+  const baseR = R * 0.28;                        // larger ring so it isn't tiny at rest
+  const maxLen = R * 0.2;                        // bars reach ~96% of the short side
+  const semi = p.radSemi;
+  const sides = p.radPoly >= 3 ? Math.round(p.radPoly) : 0;
+
+  // Regular-polygon radius at an angle (flat sides); 0 sides ⇒ circle. Evaluated at
+  // the REAL angle for every spoke, so the polygon stays a clean, single shape.
+  const ringR = (ang: number): number => {
+    if (!sides) return baseR;
+    const seg = (Math.PI * 2) / sides;
+    const a = ((ang % seg) + seg) % seg - seg / 2;
+    return (baseR * Math.cos(seg / 2)) / Math.cos(a);
+  };
+
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(t * 0.12);
-  ctx.lineWidth = Math.max(2, Math.min(w, h) / 120);
-  ctx.lineCap = "round";
-  for (let i = 0; i < n; i++) {
-    const ang = (i / n) * Math.PI * 2;
-    let amp = audio ? Math.min(1, bandValue(audio, i, n, p.freqLo, p.freqHi) * tilt(i, n)) : (Math.sin(t * 3 + i * 0.3) * 0.5 + 0.5);
-    amp = Math.pow(amp, 1.1);
-    const len = baseR + amp * maxLen;
-    const x1 = Math.cos(ang) * baseR, y1 = Math.sin(ang) * baseR;
-    const x2 = Math.cos(ang) * len, y2 = Math.sin(ang) * len;
-    const g = ctx.createLinearGradient(x1, y1, x2, y2);
-    g.addColorStop(0, p.color); g.addColorStop(1, p.color2);
-    ctx.strokeStyle = g;
-    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  if (semi) {
+    const dirRot: Record<string, number> = { up: 0, down: Math.PI, right: Math.PI / 2, left: -Math.PI / 2 };
+    ctx.rotate(dirRot[p.radSemiDir] ?? 0);
+  } else {
+    ctx.rotate(t * 0.15);                        // gentle spin
   }
+
+  const count = Math.max(8, Math.round(p.barCount));
+  const N = semi ? count : count * 2;            // spokes
+  const nb = semi ? count : Math.max(6, Math.round(count / 2)); // distinct spectrum bands
+  const startAng = semi ? Math.PI : 0;
+  const span = semi ? Math.PI : Math.PI * 2;
+
+  // Faint base ring / polygon outline.
+  ctx.strokeStyle = hexA(p.color, 0.15);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let a = 0; a <= span + 0.001; a += 0.05) {
+    const ang = startAng + a;
+    const r = ringR(ang) - 2;
+    const x = Math.cos(ang) * r, y = Math.sin(ang) * r;
+    a === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Amplitude for an angle. Semicircle sweeps the spectrum across the half; the
+  // full circle folds the angle into a quadrant so it mirrors across BOTH the
+  // horizontal and vertical diameters (a true flip on every side, not a fold).
+  const ampAt = (ang: number, frac: number): number => {
+    if (semi) return barAmp(audio, Math.round(frac * (nb - 1)), nb, p, t);
+    let a = ((ang % Math.PI) + Math.PI) % Math.PI;
+    if (a > Math.PI / 2) a = Math.PI - a;
+    return barAmp(audio, Math.round((a / (Math.PI / 2)) * (nb - 1)), nb, p, t);
+  };
+
+  ctx.lineCap = p.barRounded ? "round" : "butt";  // rounded vs rectangular bars
+  ctx.lineWidth = Math.max(2, R / 120);
+  const outer: [number, number][] = [];
+  const inner: [number, number][] = [];
+  for (let i = 0; i < N; i++) {
+    const frac = i / (semi ? N - 1 : N);
+    const ang = startAng + frac * span;
+    const br = ringR(ang);
+    const ext = Math.max(3, ampAt(ang, frac) * maxLen);
+    let inR = br, outR = br;
+    if (p.radWaveDir === "inward") inR = br - ext;
+    else if (p.radWaveDir === "both") { inR = br - ext * 0.5; outR = br + ext * 0.5; }
+    else outR = br + ext;
+    const c = Math.cos(ang), s = Math.sin(ang);
+    inner.push([c * inR, s * inR]);
+    outer.push([c * outR, s * outR]);
+    if (p.radWaveStyle === "bar") {
+      const g = ctx.createLinearGradient(c * inR, s * inR, c * outR, s * outR);
+      g.addColorStop(0, p.color); g.addColorStop(1, p.color2);
+      ctx.strokeStyle = g;
+      ctx.beginPath(); ctx.moveTo(c * inR, s * inR); ctx.lineTo(c * outR, s * outR); ctx.stroke();
+    }
+  }
+  if (p.radWaveStyle === "peak") {
+    if (p.radPeakFill) {
+      // Fill the band between the base ring and the moving peak edge → a solid,
+      // spiky ring (like the reference) rather than a thin outline.
+      let fillStyle: string | CanvasPattern = p.color2;
+      if (p.radFillStripes) {
+        const sc = document.createElement("canvas");
+        sc.width = 8; sc.height = 8;
+        const scc = sc.getContext("2d");
+        if (scc) {
+          scc.strokeStyle = p.color2;
+          scc.lineWidth = 3;
+          scc.beginPath(); scc.moveTo(0, 8); scc.lineTo(8, 0); scc.stroke();
+          const pat = ctx.createPattern(sc, "repeat");
+          if (pat) fillStyle = pat;
+        }
+      }
+      ctx.fillStyle = fillStyle;
+      ctx.beginPath();
+      outer.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt[0], pt[1]) : ctx.lineTo(pt[0], pt[1])));
+      if (semi) {
+        // Half ring: close back along the diameter (single region, no gap).
+        for (let i = inner.length - 1; i >= 0; i--) ctx.lineTo(inner[i][0], inner[i][1]);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        // Full ring: two CLOSED loops + even-odd → a complete annulus with no seam gap.
+        ctx.closePath();
+        inner.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt[0], pt[1]) : ctx.lineTo(pt[0], pt[1])));
+        ctx.closePath();
+        ctx.fill("evenodd");
+      }
+    } else {
+      ctx.strokeStyle = p.color2;
+      ctx.lineWidth = Math.max(2, R / 150);
+      ctx.lineJoin = "round";
+      const strokeLoop = (pts: [number, number][]) => {
+        ctx.beginPath();
+        pts.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt[0], pt[1]) : ctx.lineTo(pt[0], pt[1])));
+        if (!semi) ctx.closePath();
+        ctx.stroke();
+      };
+      // Inward pushes the moving edge inward, so trace the inner points there.
+      if (p.radWaveDir === "inward") strokeLoop(inner);
+      else if (p.radWaveDir === "both") { strokeLoop(outer); strokeLoop(inner); }
+      else strokeLoop(outer);
+    }
+  }
+
   ctx.restore();
 }
 
@@ -189,8 +319,29 @@ function drawWave(ctx: CanvasRenderingContext2D, w: number, h: number, t: number
   ctx.stroke();
 }
 
-function drawRain(ctx: CanvasRenderingContext2D, w: number, h: number, p: Params, drops: Drop[]): Drop[] {
-  const target = Math.min(400, Math.floor((w / 6) * p.intensity));
+/** Double-sided bar waveform: vertical bars mirrored above/below a center line,
+ *  with a horizontal color→color2→color gradient across the width. */
+function drawWaveBars(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, p: Params, audio: number[] | null) {
+  const n = Math.max(4, Math.round(p.barCount));
+  const bw = w / n;
+  const mid = h / 2;
+  const grad = ctx.createLinearGradient(0, 0, w, 0);
+  grad.addColorStop(0, p.color);
+  grad.addColorStop(0.5, p.color2);
+  grad.addColorStop(1, p.color);
+  ctx.fillStyle = grad;
+  const rad = p.barRounded ? 4 : 0;
+  for (let i = 0; i < n; i++) {
+    const amp = barAmp(audio, i, n, p, t);
+    const half = Math.max(1, amp * h * 0.48); // half-height on each side of the center line
+    const x = i * bw + bw * 0.2, bwidth = bw * 0.6;
+    if (rad > 0) { roundRect(ctx, x, mid - half, bwidth, half * 2, Math.min(bwidth / 2, rad)); ctx.fill(); }
+    else ctx.fillRect(x, mid - half, bwidth, half * 2);
+  }
+}
+
+function drawRain(ctx: CanvasRenderingContext2D, w: number, h: number, p: Params, drops: Drop[], level = 0): Drop[] {
+  const target = Math.min(500, Math.floor((w / 6) * p.intensity * (1 + level * 0.6)));
   while (drops.length < target) drops.push({ x: Math.random() * w, y: Math.random() * h, len: 10 + Math.random() * 18, speed: 3 + Math.random() * 6, a: 0.3 + Math.random() * 0.5 });
   if (drops.length > target) drops.length = target;
   ctx.lineWidth = 1.3;
@@ -200,13 +351,13 @@ function drawRain(ctx: CanvasRenderingContext2D, w: number, h: number, p: Params
     g.addColorStop(1, hexA(p.color, d.a));
     ctx.strokeStyle = g;
     ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x, d.y + d.len); ctx.stroke();
-    d.y += d.speed * p.speed * 2;
+    d.y += d.speed * p.speed * 2 * (1 + level * 1.8); // audio makes it pour harder
     if (d.y > h) { d.y = -d.len; d.x = Math.random() * w; }
   }
   return drops;
 }
 
-function drawParticles(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, p: Params, ps: Particle[]): Particle[] {
+function drawParticles(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, p: Params, ps: Particle[], level = 0): Particle[] {
   const target = Math.min(90, Math.floor(((w * h) / 8000) * p.intensity));
   while (ps.length < target) ps.push({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.4, r: 0.8 + Math.random() * 2, tw: Math.random() * 6 });
   if (ps.length > target) ps.length = target;
@@ -224,17 +375,17 @@ function drawParticles(ctx: CanvasRenderingContext2D, w: number, h: number, t: n
   // dots with twinkle
   ctx.fillStyle = p.color;
   for (const a of ps) {
-    a.x += a.vx * p.speed; a.y += a.vy * p.speed;
+    a.x += a.vx * p.speed * (1 + level * 2.2); a.y += a.vy * p.speed * (1 + level * 2.2);
     if (a.x < 0) a.x += w; if (a.x > w) a.x -= w;
     if (a.y < 0) a.y += h; if (a.y > h) a.y -= h;
     ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 2 + a.tw);
-    ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(a.x, a.y, a.r * (1 + level * 0.9), 0, Math.PI * 2); ctx.fill();
   }
   ctx.globalAlpha = 1;
   return ps;
 }
 
-function drawStarfield(ctx: CanvasRenderingContext2D, w: number, h: number, p: Params, stars: Star3[]): Star3[] {
+function drawStarfield(ctx: CanvasRenderingContext2D, w: number, h: number, p: Params, stars: Star3[], level = 0): Star3[] {
   const cx = w / 2, cy = h / 2;
   const target = Math.min(320, Math.floor(((w * h) / 2600) * p.intensity));
   const reset = (s: Star3) => { s.x = (Math.random() * 2 - 1) * w; s.y = (Math.random() * 2 - 1) * h; s.z = w; };
@@ -242,7 +393,7 @@ function drawStarfield(ctx: CanvasRenderingContext2D, w: number, h: number, p: P
   if (stars.length > target) stars.length = target;
   ctx.fillStyle = p.color;
   for (const s of stars) {
-    s.z -= 4.5 * p.speed;
+    s.z -= 4.5 * p.speed * (1 + level * 3.5); // audio warps the starfield forward
     if (s.z <= 1) reset(s);
     const k = 128 / s.z;
     const px = cx + s.x * k, py = cy + s.y * k;
@@ -255,7 +406,7 @@ function drawStarfield(ctx: CanvasRenderingContext2D, w: number, h: number, p: P
   return stars;
 }
 
-function drawAurora(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, p: Params) {
+function drawAurora(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, p: Params, level = 0) {
   const blobs = [
     { c: p.color, ox: 0.25, oy: 0.4, s: 0.6 },
     { c: p.color2, ox: 0.7, oy: 0.55, s: 0.55 },
@@ -266,9 +417,9 @@ function drawAurora(ctx: CanvasRenderingContext2D, w: number, h: number, t: numb
   blobs.forEach((b, i) => {
     const x = (b.ox + Math.sin(t * 0.5 + i) * 0.16) * w;
     const y = (b.oy + Math.cos(t * 0.4 + i * 1.3) * 0.16) * h;
-    const rad = Math.max(w, h) * b.s * p.intensity;
+    const rad = Math.max(w, h) * b.s * p.intensity * (1 + level * 0.5);
     const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
-    g.addColorStop(0, hexA(b.c, 0.45));
+    g.addColorStop(0, hexA(b.c, 0.4 + level * 0.35)); // brightens with the audio
     g.addColorStop(1, hexA(b.c, 0));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
@@ -282,7 +433,7 @@ export function VisualizerItem({ item }: { item: BlockItem; upd: Upd; collapsed?
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bgImgRef = useRef<HTMLImageElement | null>(null);
   const [flo, fhi] = focusBins(item.visualizerFreqFocus ?? "full", 48000, FFT_SIZE / 2);
-  const paramsRef = useRef<Params>({ effect: "bars", color: "#d59ee8", color2: "#48cfa6", speed: 1, intensity: 1, bg: "#0d0e11", bgType: "color", bgOpacity: 1, glow: true, trails: false, barRounded: true, freqLo: flo, freqHi: fhi });
+  const paramsRef = useRef<Params>({ effect: "bars", color: "#d59ee8", color2: "#48cfa6", speed: 1, intensity: 1, bg: "#0d0e11", bgType: "color", bgOpacity: 1, glow: true, trails: false, barRounded: true, freqLo: flo, freqHi: fhi, barCount: 56, opacity: 1, radWaveDir: "outward", radWaveStyle: "bar", radSemi: false, radSemiDir: "up", radPoly: 0, radPeakFill: false, radFillStripes: false });
   paramsRef.current = {
     effect: item.visualizerEffect ?? "bars",
     color: item.visualizerColor || "#d59ee8",
@@ -297,6 +448,15 @@ export function VisualizerItem({ item }: { item: BlockItem; upd: Upd; collapsed?
     barRounded: item.visualizerBarRounded !== false,
     freqLo: flo,
     freqHi: fhi,
+    barCount: item.visualizerBarCount ?? 56,
+    opacity: item.visualizerOpacity ?? 1,
+    radWaveDir: item.visualizerRadialWaveDir ?? "outward",
+    radWaveStyle: item.visualizerRadialWaveStyle ?? "bar",
+    radSemi: !!item.visualizerRadialSemicircle,
+    radSemiDir: item.visualizerRadialSemiDir ?? "up",
+    radPoly: item.visualizerRadialPolygon ?? 0,
+    radPeakFill: !!item.visualizerRadialPeakFill,
+    radFillStripes: !!item.visualizerRadialFillStripes,
   };
   const source = item.visualizerAudioSource ?? (item.visualizerMic ? "mic" : "off");
 
@@ -336,8 +496,12 @@ export function VisualizerItem({ item }: { item: BlockItem; upd: Upd; collapsed?
       const maxSide = 4096;
       let dpr = Math.min(2, window.devicePixelRatio || 1);
       dpr = Math.max(0.5, Math.min(dpr, maxSide / cssW, maxSide / cssH));
-      canvas.width = Math.max(1, Math.round(cssW * dpr));
-      canvas.height = Math.max(1, Math.round(cssH * dpr));
+      const bw = Math.max(1, Math.round(cssW * dpr)), bh = Math.max(1, Math.round(cssH * dpr));
+      // Reassigning canvas.width/height CLEARS + reallocates the backing store —
+      // skip it when nothing actually changed so resize/zoom ticks don't flicker.
+      if (canvas.width === bw && canvas.height === bh) return;
+      canvas.width = bw;
+      canvas.height = bh;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
@@ -365,7 +529,7 @@ export function VisualizerItem({ item }: { item: BlockItem; upd: Upd; collapsed?
         const srcNode = audioCtx.createMediaStreamSource(stream);
         analyser = audioCtx.createAnalyser();
         analyser.fftSize = 1024; // longer time-domain window → smoother, more-structured waveform
-        analyser.smoothingTimeConstant = 0.75;
+        analyser.smoothingTimeConstant = 0.6; // snappier → bars react instead of hovering
         srcNode.connect(analyser);
         freqData = new Uint8Array(analyser.frequencyBinCount);
         timeData = new Uint8Array(analyser.fftSize);
@@ -420,16 +584,20 @@ export function VisualizerItem({ item }: { item: BlockItem; upd: Upd; collapsed?
       if (p.glow && p.effect !== "aurora") { ctx.shadowBlur = 14; ctx.shadowColor = p.color; }
       else { ctx.shadowBlur = 0; }
 
+      const level = audioLevel(audioFreq); // overall loudness → drives the "decorative" effects too
+      ctx.globalAlpha = p.opacity;          // foreground transparency
       switch (p.effect) {
         case "radial": drawRadial(ctx, w, h, t, p, audioFreq); break;
         case "wave": drawWave(ctx, w, h, t, p, audioWave); break;
-        case "rain": drops = drawRain(ctx, w, h, p, drops); break;
-        case "particles": particles = drawParticles(ctx, w, h, t, p, particles); break;
-        case "starfield": stars = drawStarfield(ctx, w, h, p, stars); break;
-        case "aurora": drawAurora(ctx, w, h, t, p); break;
+        case "wavebars": drawWaveBars(ctx, w, h, t, p, audioFreq); break;
+        case "rain": drops = drawRain(ctx, w, h, p, drops, level); break;
+        case "particles": particles = drawParticles(ctx, w, h, t, p, particles, level); break;
+        case "starfield": stars = drawStarfield(ctx, w, h, p, stars, level); break;
+        case "aurora": drawAurora(ctx, w, h, t, p, level); break;
         default: drawBars(ctx, w, h, t, p, audioFreq); break;
       }
       ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
     };
     raf = requestAnimationFrame(loop);
 
@@ -451,21 +619,18 @@ export function VisualizerItem({ item }: { item: BlockItem; upd: Upd; collapsed?
 }
 
 // ─── Style panel ──────────────────────────────────────────────────────────────
+// NOTE: these helpers are MODULE-LEVEL, not defined inside the panel. If they were
+// declared inside, every onChange re-render would give them a new identity and
+// React would remount the <input> — killing an in-progress drag (so a slider could
+// only be clicked, never dragged). Keep them out here.
 
-export function VisualizerStylePanel({ item, upd }: { item: BlockItem; upd: Upd }) {
-  const SLabel = ({ children }: { children: React.ReactNode }) => (
-    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</div>
-  );
-  const effect = item.visualizerEffect ?? "bars";
-  const isAudio = VISUALIZER_EFFECTS.find((e) => e.id === effect)?.audio;
-  const accent = item.visualizerColor || "#d59ee8";
-  const curSource = item.visualizerAudioSource ?? (item.visualizerMic ? "mic" : "off");
-  const isDesktop = typeof window !== "undefined" && !!window.electron;
-  const bgType = item.visualizerBgType ?? "color";
-
-  const Slider = ({ label, value, min, max, step, onChange, fmt }: {
-    label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; fmt?: (v: number) => string;
-  }) => (
+function SLabel({ children }: { children: React.ReactNode }) {
+  return <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{children}</div>;
+}
+function Slider({ label, value, min, max, step, onChange, fmt, accent }: {
+  label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; fmt?: (v: number) => string; accent: string;
+}) {
+  return (
     <div className="flex items-center justify-between">
       <span className="text-[var(--text-secondary)]">{label}</span>
       <div className="flex items-center gap-1.5">
@@ -475,17 +640,32 @@ export function VisualizerStylePanel({ item, upd }: { item: BlockItem; upd: Upd 
       </div>
     </div>
   );
-  const Color = ({ label, value, fallback, onChange }: { label: string; value?: string; fallback: string; onChange: (v: string) => void }) => (
+}
+function Color({ label, value, fallback, onChange }: { label: string; value?: string; fallback: string; onChange: (v: string) => void }) {
+  return (
     <div className="flex items-center justify-between">
       <span className="text-[var(--text-secondary)]">{label}</span>
       <input type="color" value={value || fallback} onChange={(e) => onChange(e.target.value)} className="h-6 w-10 cursor-pointer rounded border-0 p-0" />
     </div>
   );
-  const Toggle = ({ on, onClick }: { on: boolean; onClick: () => void }) => (
+}
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
     <button onClick={onClick} className={cn("h-4 w-8 rounded-full transition-colors", on ? "bg-[var(--accent)]" : "bg-[var(--surface-overlay)]")}>
       <div className={cn("mx-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform", on ? "translate-x-4" : "translate-x-0")} />
     </button>
   );
+}
+const pill = (active: boolean) => cn("rounded-lg border px-2 py-1.5 text-[11px] transition-colors",
+  active ? "border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]"
+    : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)]/40 hover:text-[var(--text-primary)]");
+
+export function VisualizerStylePanel({ item, upd }: { item: BlockItem; upd: Upd }) {
+  const effect = item.visualizerEffect ?? "bars";
+  const accent = item.visualizerColor || "#d59ee8";
+  const curSource = item.visualizerAudioSource ?? (item.visualizerMic ? "mic" : "off");
+  const isDesktop = typeof window !== "undefined" && !!window.electron;
+  const bgType = item.visualizerBgType ?? "color";
 
   return (
     <div className="flex flex-col gap-0 divide-y divide-[var(--border)] text-xs">
@@ -506,6 +686,55 @@ export function VisualizerStylePanel({ item, upd }: { item: BlockItem; upd: Upd 
         </div>
       </section>
 
+      {effect === "radial" && (
+        <section className="p-3">
+          <SLabel>Radial</SLabel>
+          <div className="flex flex-col gap-3">
+            <div>
+              <p className="mb-1 text-[10px] text-[var(--text-muted)]">Direction</p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {([["outward", "Outward"], ["inward", "Inward"], ["both", "Two-way"]] as const).map(([id, label]) => (
+                  <button key={id} onClick={() => upd({ visualizerRadialWaveDir: id })} className={pill((item.visualizerRadialWaveDir ?? "outward") === id)}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] text-[var(--text-muted)]">Style</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([["bar", "Bars"], ["peak", "Peak"]] as const).map(([id, label]) => (
+                  <button key={id} onClick={() => upd({ visualizerRadialWaveStyle: id })} className={pill((item.visualizerRadialWaveStyle ?? "bar") === id)}>{label}</button>
+                ))}
+              </div>
+            </div>
+            {item.visualizerRadialWaveStyle === "peak" && (
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--text-secondary)]">Fill peak</span>
+                <Toggle on={!!item.visualizerRadialPeakFill} onClick={() => upd({ visualizerRadialPeakFill: !item.visualizerRadialPeakFill })} />
+              </div>
+            )}
+            {item.visualizerRadialWaveStyle === "peak" && item.visualizerRadialPeakFill && (
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--text-secondary)]">Striped fill</span>
+                <Toggle on={!!item.visualizerRadialFillStripes} onClick={() => upd({ visualizerRadialFillStripes: !item.visualizerRadialFillStripes })} />
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-secondary)]">Semicircle</span>
+              <Toggle on={!!item.visualizerRadialSemicircle} onClick={() => upd({ visualizerRadialSemicircle: !item.visualizerRadialSemicircle })} />
+            </div>
+            {item.visualizerRadialSemicircle && (
+              <div className="grid grid-cols-4 gap-1.5">
+                {([["up", "Up"], ["down", "Down"], ["left", "Left"], ["right", "Right"]] as const).map(([id, label]) => (
+                  <button key={id} onClick={() => upd({ visualizerRadialSemiDir: id })} className={pill((item.visualizerRadialSemiDir ?? "up") === id)}>{label}</button>
+                ))}
+              </div>
+            )}
+            <Slider accent={accent} label="Polygon" value={item.visualizerRadialPolygon ?? 0} min={0} max={24} step={1} onChange={(v) => upd({ visualizerRadialPolygon: v })} fmt={(v) => (v < 3 ? "Off" : String(v))} />
+            <p className="text-[10px] text-[var(--text-muted)]">Polygon morphs the ring into an N-sided shape — most obvious with the Peak style.</p>
+          </div>
+        </section>
+      )}
+
       <section className="p-3">
         <SLabel>Colors</SLabel>
         <div className="flex flex-col gap-2">
@@ -521,12 +750,13 @@ export function VisualizerStylePanel({ item, upd }: { item: BlockItem; upd: Upd 
             <span className="flex items-center gap-1.5 text-[var(--text-secondary)]"><Wand2 size={12} /> Motion trails</span>
             <Toggle on={!!item.visualizerTrails} onClick={() => upd({ visualizerTrails: !item.visualizerTrails })} />
           </div>
-          {effect === "bars" && (
+          {(effect === "bars" || effect === "wavebars" || effect === "radial") && (
             <div className="flex items-center justify-between">
               <span className="text-[var(--text-secondary)]">Rounded bars</span>
               <Toggle on={item.visualizerBarRounded !== false} onClick={() => upd({ visualizerBarRounded: !(item.visualizerBarRounded !== false) })} />
             </div>
           )}
+          <Slider accent={accent} label="Opacity" value={item.visualizerOpacity ?? 1} min={0.1} max={1} step={0.05} onChange={(v) => upd({ visualizerOpacity: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
         </div>
       </section>
 
@@ -567,7 +797,7 @@ export function VisualizerStylePanel({ item, upd }: { item: BlockItem; upd: Upd 
                 </label>
               </div>
             </div>
-            <Slider label="Image opacity" value={item.visualizerBgOpacity ?? 1} min={0.1} max={1} step={0.05} onChange={(v) => upd({ visualizerBgOpacity: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
+            <Slider accent={accent} label="Image opacity" value={item.visualizerBgOpacity ?? 1} min={0.1} max={1} step={0.05} onChange={(v) => upd({ visualizerBgOpacity: v })} fmt={(v) => `${Math.round(v * 100)}%`} />
           </div>
         )}
       </section>
@@ -575,8 +805,11 @@ export function VisualizerStylePanel({ item, upd }: { item: BlockItem; upd: Upd 
       <section className="p-3">
         <SLabel>Motion</SLabel>
         <div className="flex flex-col gap-2">
-          <Slider label="Speed" value={item.visualizerSpeed ?? 1} min={0.25} max={3} step={0.05} onChange={(v) => upd({ visualizerSpeed: v })} fmt={(v) => `${v.toFixed(2)}x`} />
-          <Slider label="Intensity" value={item.visualizerIntensity ?? 1} min={0.25} max={2} step={0.05} onChange={(v) => upd({ visualizerIntensity: v })} fmt={(v) => `${v.toFixed(2)}x`} />
+          <Slider accent={accent} label="Speed" value={item.visualizerSpeed ?? 1} min={0.25} max={3} step={0.05} onChange={(v) => upd({ visualizerSpeed: v })} fmt={(v) => `${v.toFixed(2)}x`} />
+          <Slider accent={accent} label="Intensity" value={item.visualizerIntensity ?? 1} min={0.05} max={2} step={0.05} onChange={(v) => upd({ visualizerIntensity: v })} fmt={(v) => `${v.toFixed(2)}x`} />
+          {(effect === "bars" || effect === "wavebars" || effect === "radial") && (
+            <Slider accent={accent} label="Bars" value={item.visualizerBarCount ?? 56} min={12} max={160} step={2} onChange={(v) => upd({ visualizerBarCount: v })} fmt={(v) => String(v)} />
+          )}
         </div>
       </section>
 
@@ -598,16 +831,14 @@ export function VisualizerStylePanel({ item, upd }: { item: BlockItem; upd: Upd 
         </div>
         <p className="mt-1.5 flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
           <Mic size={10} />
-          {!isAudio
-            ? "This effect is decorative — audio only drives Bars, Radial & Waveform."
-            : curSource === "system"
-              ? (isDesktop ? "Visualizes whatever's playing on your PC (system loopback)." : "Browser will ask to share a tab/screen with audio.")
-              : curSource === "mic"
-                ? "Reacts to your microphone."
-                : "Smooth procedural motion (no audio)."}
+          {curSource === "system"
+            ? (isDesktop ? "Visualizes whatever's playing on your PC (system loopback)." : "Browser will ask to share a tab/screen with audio.")
+            : curSource === "mic"
+              ? "Reacts to your microphone."
+              : "Smooth procedural motion — pick Mic or System to make it react to sound."}
         </p>
 
-        {(effect === "bars" || effect === "radial") && (
+        {(effect === "bars" || effect === "radial" || effect === "wavebars") && (
           <div className="mt-3">
             <SLabel>Frequency focus</SLabel>
             <div className="grid grid-cols-3 gap-1.5">
