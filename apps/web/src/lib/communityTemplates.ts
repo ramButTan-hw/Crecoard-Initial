@@ -9,7 +9,8 @@
  */
 
 import { supabase } from "@/lib/supabase";
-import type { BlockItem, BoxStyle } from "@/store/boardStore";
+import type { BlockItem, BoxStyle, BoardLevelItem } from "@/store/boardStore";
+import type { ThemeVarMap } from "@/lib/appThemes";
 
 function isSupabaseReady(): boolean {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -52,7 +53,28 @@ export interface TemplateBox {
 
 /** The serialisable board payload stored in the DB and applied on "Use". */
 export interface BoardData {
+  // Canvas background (moves/scales with the board)
   backgroundColor?: string;
+  backgroundImage?: string;
+  backgroundOpacity?: number;
+  backgroundSize?: string;
+  backgroundPosition?: string;
+  backgroundFilter?: string;
+  backgroundOverlayColor?: string;
+  backgroundOverlayOpacity?: number;
+  // Live wallpaper
+  backgroundVideo?: string;
+  backgroundLiveEffect?: string;
+  backgroundLiveColor?: string;
+  backgroundLiveColor2?: string;
+  // Theme (outer) background + board-scoped theme
+  themeBgColor?: string;
+  themeBgImage?: string;
+  themeBgOpacity?: number;
+  themeBgSize?: "cover" | "contain" | "auto";
+  boardThemeVars?: ThemeVarMap;
+  // Board-level items (calendar, playlist, visualizer, … that live directly on the board)
+  boardItems?: Omit<BoardLevelItem, "id">[];
   boxes: TemplateBox[];
 }
 
@@ -80,8 +102,11 @@ export interface CommunityBoard {
   };
   likes: number;
   uses: number;
+  ratingAvg: number; // 0 when unrated
+  ratingCount: number;
   createdAt: string; // ISO 8601
-  previewUrl?: string; // screenshot uploaded by author
+  previewUrl?: string; // cover image uploaded by author
+  previewImages: string[]; // extra showcase screenshots (detail view)
   boardData: BoardData;
 }
 
@@ -93,6 +118,9 @@ export interface PublishBoardInput {
   category: TemplateCategory;
   tags: string[];
   boardData: BoardData;
+  /** Cover image + extra showcase screenshots (public URLs from storage). */
+  previewUrl?: string;
+  previewImages?: string[];
   /** Supplied by the auth layer once Supabase is wired. */
   authorId?: string;
   authorName?: string;
@@ -106,6 +134,8 @@ export interface FetchOptions {
   kind?: TemplateKind | "all";
   sort?: SortOrder;
   search?: string;
+  /** Restrict to a single author (drives the "Your boards" view). */
+  authorId?: string;
   page?: number;
   pageSize?: number;
 }
@@ -126,9 +156,12 @@ type CommunityBoardRow = {
   author_name: string;
   author_avatar: string | null;
   preview_url: string | null;
+  preview_images: string[] | null;
   board_data: BoardData;
   likes: number;
   uses: number;
+  rating_sum: number | null;
+  rating_count: number | null;
   created_at: string;
 };
 
@@ -147,8 +180,11 @@ function rowToBoard(r: CommunityBoardRow): CommunityBoard {
     },
     likes: r.likes,
     uses: r.uses,
+    ratingCount: r.rating_count ?? 0,
+    ratingAvg: (r.rating_count ?? 0) > 0 ? (r.rating_sum ?? 0) / (r.rating_count ?? 1) : 0,
     createdAt: r.created_at,
     previewUrl: r.preview_url ?? undefined,
+    previewImages: r.preview_images ?? [],
     boardData: r.board_data,
   };
 }
@@ -164,10 +200,16 @@ export async function fetchCommunityBoards(
   let q = supabase.from("community_boards").select("*");
   if (opts?.category && opts.category !== "all") q = q.eq("category", opts.category);
   if (opts?.kind && opts.kind !== "all") q = q.eq("kind", opts.kind);
+  if (opts?.authorId) q = q.eq("author_id", opts.authorId);
   if (opts?.search) {
-    // escape LIKE wildcards in user input
-    const term = opts.search.replace(/[%_]/g, (m) => `\\${m}`);
-    q = q.ilike("name", `%${term}%`);
+    // Match name/description (case-insensitive) and — for single-word queries — exact tags.
+    // Strip characters that would break PostgREST's `.or()` filter grammar.
+    const term = opts.search.trim().toLowerCase().replace(/[,(){}*%_\\]/g, " ").replace(/\s+/g, " ").trim();
+    if (term) {
+      const parts = [`name.ilike.*${term}*`, `description.ilike.*${term}*`];
+      if (!term.includes(" ")) parts.push(`tags.cs.{${term}}`);
+      q = q.or(parts.join(","));
+    }
   }
   const col = opts?.sort === "most_used" ? "uses" : opts?.sort === "most_liked" ? "likes" : "created_at";
   q = q.order(col, { ascending: false }).order("created_at", { ascending: false });
@@ -202,12 +244,21 @@ export async function publishCommunityBoard(
       author_id: input.authorId,
       author_name: input.authorName ?? "Anonymous",
       author_avatar: input.authorAvatarUrl ?? null,
+      preview_url: input.previewUrl ?? null,
+      preview_images: input.previewImages ?? [],
       board_data: input.boardData,
     })
     .select()
     .single();
   if (error) throw error;
   return rowToBoard(data as CommunityBoardRow);
+}
+
+/** Unpublish an entry you authored. RLS ensures you can only delete your own. */
+export async function deleteCommunityBoard(boardId: string): Promise<boolean> {
+  if (!isSupabaseReady()) return false;
+  const { error } = await supabase.from("community_boards").delete().eq("id", boardId);
+  return !error;
 }
 
 /** Toggle a like as the signed-in user. Returns the new state, or null on failure. */
@@ -229,15 +280,67 @@ export async function fetchMyLikes(): Promise<Set<string>> {
   return new Set(data.map((r) => r.board_id as string));
 }
 
+/** IDs of entries the signed-in user has already applied (drives "Downloaded ✓"). */
+export async function fetchMyUses(): Promise<Set<string>> {
+  if (!isSupabaseReady()) return new Set();
+  const { data, error } = await supabase.from("community_board_uses").select("board_id");
+  if (error || !data) return new Set();
+  return new Set(data.map((r) => r.board_id as string));
+}
+
+/** Count of entries per category, plus `all` = grand total. Empty on failure. */
+export async function fetchCategoryCounts(): Promise<Record<string, number>> {
+  if (!isSupabaseReady()) return {};
+  const { data, error } = await supabase.rpc("community_category_counts");
+  if (error || !data) return {};
+  const out: Record<string, number> = {};
+  let total = 0;
+  for (const row of data as { category: string; n: number }[]) {
+    const n = Number(row.n) || 0;
+    out[row.category] = n;
+    total += n;
+  }
+  out.all = total;
+  return out;
+}
+
+/** The signed-in user's own star ratings, keyed by board id. */
+export async function fetchMyRatings(): Promise<Map<string, number>> {
+  if (!isSupabaseReady()) return new Map();
+  const { data, error } = await supabase.from("community_board_ratings").select("board_id, rating");
+  if (error || !data) return new Map();
+  return new Map(data.map((r) => [r.board_id as string, r.rating as number]));
+}
+
+/** Upsert the caller's 1–5 rating. Returns the new average + count, or null. */
+export async function rateCommunityBoard(
+  boardId: string,
+  rating: number
+): Promise<{ avg: number; count: number } | null> {
+  if (!isSupabaseReady()) return null;
+  const { data, error } = await supabase.rpc("rate_community_board", {
+    p_board_id: boardId,
+    p_rating: rating,
+  });
+  if (error) return null;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  const count = Number(row.r_count) || 0;
+  const sum = Number(row.r_sum) || 0;
+  return { avg: count > 0 ? sum / count : 0, count };
+}
+
 /**
- * Increment the "uses" counter when someone applies an entry.
- * Fire-and-forget — never throw, never block the UI.
+ * Record a use when someone applies an entry — deduped per user server-side, so a
+ * single user re-adding a board never inflates the counter. Returns the new uses
+ * count (or null on failure). Fire-and-forget friendly — never throws.
  */
-export async function trackBoardUse(boardId: string): Promise<void> {
-  if (!isSupabaseReady()) return;
+export async function trackBoardUse(boardId: string): Promise<number | null> {
+  if (!isSupabaseReady()) return null;
   try {
-    await supabase.rpc("increment_community_board_uses", { p_board_id: boardId });
+    const { data } = await supabase.rpc("track_community_board_use", { p_board_id: boardId });
+    return typeof data === "number" ? data : null;
   } catch {
-    // fire-and-forget
+    return null;
   }
 }

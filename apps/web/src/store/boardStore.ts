@@ -1290,10 +1290,28 @@ export const useBoardStore = create<BoardState>()(
         const personal = s.boards.filter((b) => !b.serverId && !b.deletedAt);
         if (personal.length >= 3) return;
         const boardId = crypto.randomUUID();
+        const d = template.boardData;
         const board: Board = {
           ...makeDefaultBoard(template.name),
           id: boardId,
-          backgroundColor: template.boardData.backgroundColor ?? "#1a1b1e",
+          backgroundColor: d.backgroundColor ?? "#1a1b1e",
+          backgroundImage: d.backgroundImage,
+          backgroundOpacity: d.backgroundOpacity,
+          backgroundSize: d.backgroundSize,
+          backgroundPosition: d.backgroundPosition,
+          backgroundFilter: d.backgroundFilter,
+          backgroundOverlayColor: d.backgroundOverlayColor,
+          backgroundOverlayOpacity: d.backgroundOverlayOpacity,
+          backgroundVideo: d.backgroundVideo,
+          backgroundLiveEffect: d.backgroundLiveEffect,
+          backgroundLiveColor: d.backgroundLiveColor,
+          backgroundLiveColor2: d.backgroundLiveColor2,
+          themeBgColor: d.themeBgColor,
+          themeBgImage: d.themeBgImage,
+          themeBgOpacity: d.themeBgOpacity,
+          themeBgSize: d.themeBgSize,
+          boardThemeVars: d.boardThemeVars,
+          boardItems: (d.boardItems ?? []).map((it) => ({ ...it, id: nanoid() })) as BoardLevelItem[],
           boxes: template.boardData.boxes.map((tBox, i) => ({
             id: crypto.randomUUID(),
             boardId,
