@@ -44,8 +44,8 @@ Crecoard blends a freeform board with real-time collaboration, a server model, a
 
 | Layer | Tools |
 | --- | --- |
-| Web | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS, Zustand |
-| Backend | Supabase — Postgres with Row-Level Security, Auth, Storage, Realtime; SQL migrations, RPC functions, and triggers |
+| Web | Next.js 16, React 19, TypeScript, Tailwind CSS, Zustand |
+| Backend | Supabase — Postgres |
 | Desktop | Electron, electron-builder, electron-updater |
 | Tooling | Turborepo, npm workspaces |
 
